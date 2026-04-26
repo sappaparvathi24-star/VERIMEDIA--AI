@@ -1,0 +1,71 @@
+"""VeriMedia — Verification API"""
+import secrets
+from datetime import datetime, timezone
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.database import get_db, AssetRegistry
+from app.models.schemas import (
+    OwnershipVerifyRequest, OwnershipVerifyResult,
+    AssetRegisterRequest, AssetRegisterResult,
+)
+from app.utils.crypto import compute_watermark_hash
+
+router = APIRouter()
+
+
+@router.post("/ownership", response_model=OwnershipVerifyResult)
+async def verify_ownership(req: OwnershipVerifyRequest, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(AssetRegistry).where(AssetRegistry.asset_id == req.asset_id)
+    )
+    asset = result.scalar_one_or_none()
+    if not asset:
+        return OwnershipVerifyResult(
+            asset_id=req.asset_id, verified=False, watermark_intact=False,
+            watermark_hash=None, confidence=0.0, registered_at=None, owner=None,
+        )
+    computed = compute_watermark_hash(req.asset_id, asset.watermark_iv or "")
+    intact = computed == asset.watermark_hash
+    return OwnershipVerifyResult(
+        asset_id=req.asset_id, verified=intact, watermark_intact=intact,
+        watermark_hash=asset.watermark_hash,
+        confidence=0.97 if intact else 0.15,
+        registered_at=asset.registered_at.isoformat() if asset.registered_at else None,
+        owner=asset.owner,
+    )
+
+
+@router.post("/asset/register", response_model=AssetRegisterResult)
+async def register_asset(req: AssetRegisterRequest, db: AsyncSession = Depends(get_db)):
+    iv = secrets.token_hex(16)
+    wm_hash = compute_watermark_hash(req.asset_id, iv)
+    asset = AssetRegistry(
+        asset_id=req.asset_id, owner=req.owner,
+        content_type=req.content_type.value,
+        watermark_hash=wm_hash, watermark_iv=iv,
+        asset_metadata=req.metadata,
+    )
+    db.add(asset)
+    await db.flush()
+    return AssetRegisterResult(
+        asset_id=req.asset_id, watermark_hash=wm_hash,
+        registered_at=datetime.now(timezone.utc).isoformat(),
+    )
+
+
+@router.get("/asset/{asset_id}", response_model=OwnershipVerifyResult)
+async def get_asset(asset_id: str, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(AssetRegistry).where(AssetRegistry.asset_id == asset_id)
+    )
+    asset = result.scalar_one_or_none()
+    if not asset:
+        raise HTTPException(404, f"Asset {asset_id} not found")
+    return OwnershipVerifyResult(
+        asset_id=asset.asset_id, verified=True, watermark_intact=bool(asset.watermark_hash),
+        watermark_hash=asset.watermark_hash, confidence=0.99,
+        registered_at=asset.registered_at.isoformat() if asset.registered_at else None,
+        owner=asset.owner,
+    )
