@@ -1,0 +1,64 @@
+"""VeriMedia — Enforcement API: DMCA notices"""
+import uuid
+from datetime import datetime, timezone
+from fastapi import APIRouter, Depends
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.database import get_db, EnforcementCase
+from app.models.schemas import DMCARequest, DMCANotice
+from app.services import claude_ai
+from app.utils.logger import get_logger
+
+router = APIRouter()
+logger = get_logger(__name__)
+
+
+@router.post("/dmca", response_model=DMCANotice, summary="Generate and file DMCA notice")
+async def file_dmca(req: DMCARequest, db: AsyncSession = Depends(get_db)):
+    notice = await claude_ai.generate_dmca(
+        case_id=req.case_id, platform=req.platform.value,
+        username=req.username, caption=req.caption,
+        content_type=req.content_type.value, analysis=req.analysis,
+    )
+
+    try:
+        result = await db.execute(
+            select(EnforcementCase).where(EnforcementCase.case_id == req.case_id)
+        )
+        case = result.scalar_one_or_none()
+        if case:
+            case.dmca_filed = True
+            case.status = "dmca_filed"
+            case.dmca_notice_json = notice
+            case.updated_at = datetime.now(timezone.utc)
+        else:
+            case = EnforcementCase(
+                case_id=req.case_id, platform=req.platform.value,
+                username=req.username,
+                severity=req.analysis.get("severity", "HIGH"),
+                decision=req.analysis.get("decision", "TAKEDOWN"),
+                content_type=req.content_type.value,
+                status="dmca_filed", dmca_filed=True,
+                dmca_notice_json=notice,
+            )
+            db.add(case)
+        await db.flush()
+    except Exception as exc:
+        logger.warning(f"DB update failed: {exc}")
+
+    return DMCANotice(
+        case_id=req.case_id,
+        subject=notice.get("subject", ""),
+        body=notice.get("body", ""),
+        evidence_summary=notice.get("evidence_summary", ""),
+        evidence_json=notice,
+        claimant_name="[Authorized Rights Holder]",
+        organization="VeriMedia AI Rights Management",
+        original_asset_id=notice.get("original_asset_id", f"vm-{req.case_id}"),
+        detection_timestamp=datetime.now(timezone.utc).isoformat(),
+        match_score=notice.get("match_score", 80),
+        manipulation_details=req.analysis.get("scenario", "unauthorized modification"),
+        action_recommendation=notice.get("action_recommendation", ""),
+        source=notice.get("source", "fallback"),
+    )
