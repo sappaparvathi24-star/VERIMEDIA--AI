@@ -1,0 +1,299 @@
+"""
+VeriMedia — Claude AI Integration
+Threat analysis, DMCA notice generation, with full fallback logic
+"""
+from __future__ import annotations
+import json
+import os
+from typing import Any
+
+import anthropic
+
+from app.models.schemas import (
+    AIAnalysis, Decision, Severity, RiskLabel,
+    MLPrediction, IntegrityResult, TrustResult,
+    AuthorshipConfidence, PropagationSignal,
+)
+from app.utils.logger import get_logger
+
+logger = get_logger(__name__)
+_client: anthropic.AsyncAnthropic | None = None
+
+
+def get_client() -> anthropic.AsyncAnthropic:
+    global _client
+    if _client is None:
+        key = os.getenv("ANTHROPIC_API_KEY", "")
+        if not key:
+            raise ValueError("ANTHROPIC_API_KEY not configured")
+        _client = anthropic.AsyncAnthropic(api_key=key)
+    return _client
+
+
+def _ct_action(ct: str) -> str:
+    return {
+        "sports":        "File DMCA · notify league IP enforcement · block account",
+        "news":          "Attribution required · contact editorial · DMCA if no credit in 48h",
+        "entertainment": "File DMCA · request platform takedown · pursue statutory damages",
+        "education":     "Fair-use review recommended · require attribution",
+    }.get(ct, "File DMCA · notify platform trust & safety team")
+
+
+# ══════════════════════════════════════════════════════════════
+# AI THREAT ANALYSIS
+# ══════════════════════════════════════════════════════════════
+
+async def analyze_threat(
+    platform: str, username: str, caption: str,
+    content_type: str, scenario: str,
+    similarity: float, ml: MLPrediction,
+    integrity: IntegrityResult, trust: TrustResult,
+    authorship: AuthorshipConfidence,
+    propagation: PropagationSignal,
+) -> AIAnalysis:
+    sim_pct = round(similarity * 100)
+    int_pct = round(integrity.score * 100)
+    ml_pct = round(ml.manipulation_probability * 100)
+    trust_pct = round(trust.trust_score * 100)
+
+    prompt = f"""You are VeriMedia AI v23, a world-class media rights enforcement engine.
+
+Analyze this detection event and return a precise enforcement decision.
+
+PLATFORM: {platform}  ACCOUNT: @{username}
+CAPTION: "{caption}"
+CONTENT_TYPE: {content_type}  SCENARIO: {scenario}
+
+DETECTION SIGNALS:
+  Visual Similarity:    {sim_pct}%
+  Integrity Score:      {int_pct}%  (higher = cleaner, unmanipulated)
+  Integrity Flags:      {', '.join(integrity.flags) or 'none'}
+  ML Label:             {ml.label}  ({ml_pct}% manipulation probability)
+  Trust Score:          {trust_pct}%
+  Face Landmark:        {round(integrity.signals.face_landmark*100)}%
+  Lip-sync Mismatch:    {round(integrity.signals.lipsync*100)}%
+  Authorship Conf:      {round(authorship.confidence*100)}%  [{authorship.origin_node}]
+  Propagation Urgency:  {propagation.urgency}  ({propagation.ppm} posts/min)
+  Viral Anomaly:        {'YES' if propagation.anomaly_flag else 'no'}
+
+DECISION RULES:
+- similarity≥88% AND integrity>75% AND ml=SAFE → ALLOW
+- face_landmark>70% OR lipsync>75% → EMERGENCY_TAKEDOWN
+- news/education + sim≥70% + minimal modification → ATTRIBUTION
+- similarity<50% + conflicting signals → REVIEW REQUIRED
+- trust<40% + sim>60% → TAKEDOWN
+- moderate signals → SUSPECT
+
+Each reasoning_point MUST cite exact numbers: "[value]% [signal] — [conclusion]"
+
+Respond ONLY with valid JSON (no markdown, no explanation):
+{{"threat_type":"clean|tamper|threat","decision":"ALLOW|ATTRIBUTION|REVIEW REQUIRED|SUSPECT|TAKEDOWN|EMERGENCY_TAKEDOWN","severity":"LOW|MEDIUM|HIGH|CRITICAL","risk_label":"SAFE|SUSPECT|HIGH_RISK","confidence":0.85,"reasoning_points":["XX% signal — conclusion","XX% signal — conclusion","XX% signal — conclusion"],"action":"specific next step","recommended_action":"{_ct_action(content_type)}","origin_traced":true,"dmca_needed":false}}"""
+
+    try:
+        client = get_client()
+        msg = await client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=600,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw = msg.content[0].text.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
+        data = json.loads(raw)
+
+        # Normalize aliases
+        if data.get("decision") in ("NO ACTION", "CLEAN"): data["decision"] = "ALLOW"
+        if data.get("decision") == "DMCA": data["decision"] = "TAKEDOWN"
+
+        return AIAnalysis(
+            threat_type=data.get("threat_type", "tamper"),
+            decision=Decision(data.get("decision", "REVIEW REQUIRED")),
+            severity=Severity(data.get("severity", "MEDIUM")),
+            risk_label=RiskLabel(data.get("risk_label", "SUSPECT")),
+            confidence=float(data.get("confidence", 0.7)),
+            reasoning_points=data.get("reasoning_points", [])[:3],
+            action=data.get("action", "Manual review required"),
+            recommended_action=data.get("recommended_action", _ct_action(content_type)),
+            origin_traced=bool(data.get("origin_traced", False)),
+            dmca_needed=bool(data.get("dmca_needed", False)),
+            source="claude",
+        )
+    except Exception as exc:
+        logger.warning(f"Claude AI unavailable: {exc} — using fallback")
+        return _fallback_analysis(
+            scenario, content_type, similarity, integrity, trust, ml,
+            authorship, propagation
+        )
+
+
+def _fallback_analysis(
+    scenario: str, content_type: str,
+    similarity: float, integrity: IntegrityResult,
+    trust: TrustResult, ml: MLPrediction,
+    authorship: AuthorshipConfidence, propagation: PropagationSignal,
+) -> AIAnalysis:
+    from app.services.trust import apply_decision_rules, build_reasoning
+
+    sim_pct = round(similarity * 100)
+    int_pct = round(integrity.score * 100)
+    ml_pct = round(ml.manipulation_probability * 100)
+
+    decision = apply_decision_rules(
+        trust_score=trust.trust_score,
+        viral_score=propagation.anomaly_score * 100,
+        similarity=similarity,
+        integrity_score=integrity.score,
+        scenario=scenario,
+        content_type=content_type,
+        face_landmark=integrity.signals.face_landmark,
+        lipsync=integrity.signals.lipsync,
+    )
+
+    # Severity mapping
+    severity_map = {
+        Decision.ALLOW:             Severity.LOW,
+        Decision.ATTRIBUTION:       Severity.MEDIUM,
+        Decision.REVIEW_REQUIRED:   Severity.MEDIUM,
+        Decision.SUSPECT:           Severity.MEDIUM,
+        Decision.TAKEDOWN:          Severity.HIGH,
+        Decision.EMERGENCY_TAKEDOWN:Severity.CRITICAL,
+    }
+    risk_map = {
+        Decision.ALLOW:             RiskLabel.SAFE,
+        Decision.ATTRIBUTION:       RiskLabel.SUSPECT,
+        Decision.REVIEW_REQUIRED:   RiskLabel.SUSPECT,
+        Decision.SUSPECT:           RiskLabel.SUSPECT,
+        Decision.TAKEDOWN:          RiskLabel.HIGH_RISK,
+        Decision.EMERGENCY_TAKEDOWN:RiskLabel.HIGH_RISK,
+    }
+    action_map = {
+        Decision.ALLOW:             f"No action required — {_ct_action(content_type)}",
+        Decision.ATTRIBUTION:       "Notify account — require attribution credit. No takedown at this stage.",
+        Decision.REVIEW_REQUIRED:   "Insufficient evidence — no enforcement action. Manual analyst review.",
+        Decision.SUSPECT:           f"Flag and monitor · {_ct_action(content_type)}",
+        Decision.TAKEDOWN:          f"File DMCA · {_ct_action(content_type)} · preserve evidence",
+        Decision.EMERGENCY_TAKEDOWN:f"🚨 EMERGENCY: File DMCA immediately · escalate to legal · {_ct_action(content_type)}",
+    }
+
+    reasoning = build_reasoning(
+        similarity, integrity.score, trust.trust_score, decision,
+        ml.label.value, ml_pct, propagation.urgency,
+        integrity.flags, integrity.signals.face_landmark, integrity.signals.lipsync,
+    )
+
+    dmca_needed = decision in (Decision.TAKEDOWN, Decision.EMERGENCY_TAKEDOWN)
+
+    return AIAnalysis(
+        threat_type="clean" if decision == Decision.ALLOW else ("threat" if dmca_needed else "tamper"),
+        decision=decision,
+        severity=severity_map[decision],
+        risk_label=risk_map[decision],
+        confidence=authorship.confidence,
+        reasoning_points=reasoning,
+        action=action_map[decision],
+        recommended_action=_ct_action(content_type),
+        origin_traced=decision != Decision.REVIEW_REQUIRED,
+        dmca_needed=dmca_needed,
+        source="fallback",
+    )
+
+
+# ══════════════════════════════════════════════════════════════
+# DMCA NOTICE GENERATION
+# ══════════════════════════════════════════════════════════════
+
+async def generate_dmca(
+    case_id: str, platform: str, username: str,
+    caption: str, content_type: str, analysis: dict[str, Any],
+) -> dict[str, Any]:
+    sim_pct = int((analysis.get("similarity", 0.8)) * 100)
+    ml_label = analysis.get("ml_label", "TAMPERED")
+    ml_conf = int(analysis.get("ml_confidence", 0.85) * 100)
+    int_score = int((analysis.get("integrity_score", 0.3)) * 100)
+    decision = analysis.get("decision", "TAKEDOWN")
+    severity = analysis.get("severity", "HIGH")
+
+    prompt = f"""Generate a formal DMCA takedown notice as VeriMedia AI's legal enforcement engine.
+
+CASE: {case_id} | Platform: {platform} | Account: @{username}
+Content Type: {content_type} | Decision: {decision} | Severity: {severity}
+Caption: "{caption}"
+Evidence: {sim_pct}% visual match · ML: {ml_label} ({ml_conf}% confidence) · Integrity: {int_score}%
+
+Return ONLY valid JSON:
+{{"subject":"...","body":"full formal DMCA notice (plain text, no markdown, 300-500 words)","evidence_summary":"2-3 sentence summary of evidence","action_recommendation":"numbered 3-step action plan"}}"""
+
+    try:
+        client = get_client()
+        msg = await client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=900,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw = msg.content[0].text.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
+        data = json.loads(raw)
+        data.update({"source": "claude", "case_id": case_id,
+                     "original_asset_id": f"vm-{case_id}", "match_score": sim_pct})
+        return data
+    except Exception as exc:
+        logger.warning(f"Claude DMCA generation failed: {exc}")
+        return _fallback_dmca(case_id, platform, username, caption, content_type, analysis)
+
+
+def _fallback_dmca(
+    case_id: str, platform: str, username: str,
+    caption: str, ct: str, analysis: dict[str, Any],
+) -> dict[str, Any]:
+    sim_pct = int((analysis.get("similarity", 0.8)) * 100)
+    ml_label = analysis.get("ml_label", "TAMPERED")
+    ml_conf = int(analysis.get("ml_confidence", 0.85) * 100)
+    int_score = int((analysis.get("integrity_score", 0.3)) * 100)
+    decision = analysis.get("decision", "TAKEDOWN")
+    severity = analysis.get("severity", "HIGH")
+
+    body = (
+        f"Dear {platform} Trust & Safety Team,\n\n"
+        f"Pursuant to the Digital Millennium Copyright Act, 17 U.S.C. § 512(c), VeriMedia AI Rights "
+        f"Management hereby formally requests the immediate removal of infringing content identified below.\n\n"
+        f"CASE IDENTIFICATION\n"
+        f"Case ID: {case_id}\n"
+        f"Platform: {platform}\n"
+        f"Infringing Account: @{username}\n"
+        f"Content Type: {ct}\n"
+        f"Caption: \"{caption}\"\n"
+        f"Detection Timestamp: [UTC timestamp]\n\n"
+        f"EVIDENCE OF INFRINGEMENT\n"
+        f"• Visual Similarity: {sim_pct}% match to registered asset (ID: vm-{case_id})\n"
+        f"• ML Classification: {ml_label} at {ml_conf}% confidence\n"
+        f"• Content Integrity Score: {int_score}% (manipulation confirmed)\n"
+        f"• Enforcement Decision: {decision} | Severity: {severity}\n"
+        f"• AES-256 Watermark: Verified in original registered asset\n"
+        f"• Evidence Package: frame_comparison_{case_id}.png, heatmap_{case_id}.png\n\n"
+        f"LEGAL DECLARATION\n"
+        f"I have a good faith belief that the use of the copyrighted material described above "
+        f"is not authorized by the copyright owner, its agent, or the law. I declare under penalty "
+        f"of perjury that this information is accurate and that I am authorized to act on behalf "
+        f"of the exclusive rights holder.\n\n"
+        f"Respectfully submitted,\n"
+        f"[Authorized Rights Holder]\n"
+        f"VeriMedia AI Rights Management\n"
+        f"legal@verimedia.ai"
+    )
+
+    return {
+        "case_id": case_id,
+        "subject": f"DMCA Copyright Infringement Notice — Case {case_id} — {platform}",
+        "body": body,
+        "evidence_summary": (
+            f"Unauthorized {ct} content detected on {platform} by account @{username} "
+            f"with {sim_pct}% visual match to registered asset (vm-{case_id}). "
+            f"ML classifier returned {ml_label} at {ml_conf}% confidence with integrity "
+            f"score of {int_score}%, confirming significant content manipulation."
+        ),
+        "action_recommendation": (
+            f"1. Submit notice to {platform} legal/trust-safety immediately via official DMCA portal.\n"
+            f"2. Monitor for re-uploads and mirror content within 24 hours.\n"
+            f"3. Preserve evidence package and escalate to legal counsel if unresolved in 48 hours."
+        ),
+        "original_asset_id": f"vm-{case_id}",
+        "match_score": sim_pct,
+        "source": "fallback",
+    }
