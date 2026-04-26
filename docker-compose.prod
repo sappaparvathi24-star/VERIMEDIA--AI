@@ -1,0 +1,25 @@
+version: "3.9"
+
+services:
+  backend:
+    build:
+      target: production
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
+    restart: always
+    volumes: []  # No bind mounts in production
+
+  frontend:
+    build:
+      target: production
+    restart: always
+
+  db:
+    restart: always
+
+  redis:
+    restart: always
+
+  nginx:
+    volumes:
+      - ./infra/nginx/nginx.prod.conf:/etc/nginx/nginx.conf:ro
+    restart: always
