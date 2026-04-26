@@ -1,6 +1,6 @@
 import { useStore } from '../store'
 import { Nav } from '../components/layout/Nav'
-import { ControlBar } from '../components/layout/ControlBar'
+import { ControlBar } from '../components/layout/controlBar'
 import { FeedPanel } from '../components/panels/FeedPanel'
 import { PropagationGraph } from '../components/panels/PropagationGraph'
 import { ForensicPanel } from '../components/panels/ForensicPanel'
@@ -10,7 +10,7 @@ import { SystemPanel } from '../components/panels/SystemPanel'
 import { EvidenceModal } from '../components/modals/EvidenceModal'
 import { DMCAModal } from '../components/modals/DMCAModal'
 import type { TabId } from '../types'
-
+ 
 const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: 'feed',     label: 'Live Feed',   icon: '📡' },
   { id: 'origin',   label: 'Origin',      icon: '🔗' },
@@ -18,19 +18,19 @@ const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: 'cases',    label: 'Cases',       icon: '📋' },
   { id: 'system',   label: 'System',      icon: '⚙️'  },
 ]
-
+ 
 export function Dashboard() {
   const {
     activeTab, setActiveTab,
     showEvidenceModal, showDMCAModal,
     currentResult,
   } = useStore()
-
+ 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
       <Nav />
       <ControlBar />
-
+ 
       {/* Main 3-panel layout */}
       <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 340px', overflow: 'hidden' }}>
         {/* Left: propagation graph */}
@@ -43,7 +43,7 @@ export function Dashboard() {
         }}>
           <PropagationGraph />
         </div>
-
+ 
         {/* Right: tabbed detail panel */}
         <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           {/* Tabs */}
@@ -66,7 +66,7 @@ export function Dashboard() {
               </button>
             ))}
           </div>
-
+ 
           {/* Panel content */}
           <div style={{ flex: 1, overflow: 'hidden' }}>
             {activeTab === 'feed'     && <FeedPanel />}
@@ -77,7 +77,7 @@ export function Dashboard() {
           </div>
         </div>
       </div>
-
+ 
       {/* Modals */}
       {showEvidenceModal && currentResult && (
         <EvidenceModal result={currentResult} />
