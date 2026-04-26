@@ -1,0 +1,8 @@
+"""VeriMedia — Crypto utilities: AES-256 watermark hashing"""
+import hashlib, hmac, os
+
+def compute_watermark_hash(asset_id: str, iv: str) -> str:
+    secret = os.getenv("SECRET_KEY", "verimedia-dev-secret")
+    key = hashlib.sha256(secret.encode()).digest()
+    payload = f"{asset_id}:{iv}".encode()
+    return hmac.new(key, payload, hashlib.sha256).hexdigest()
