@@ -1,0 +1,262 @@
+"""VeriMedia — Complete Pydantic Schemas"""
+from __future__ import annotations
+from enum import Enum
+from typing import Any, Optional
+from pydantic import BaseModel, Field
+
+
+# ══════════════════════════════════════════════════════════════
+# ENUMS
+# ══════════════════════════════════════════════════════════════
+
+class Platform(str, Enum):
+    youtube = "YouTube"
+    instagram = "Instagram"
+    tiktok = "TikTok"
+    x = "X / Twitter"
+    facebook = "Facebook"
+    reddit = "Reddit"
+
+class ContentType(str, Enum):
+    sports = "sports"
+    news = "news"
+    entertainment = "entertainment"
+    education = "education"
+    unknown = "unknown"
+
+class Scenario(str, Enum):
+    normal = "normal"
+    crop = "crop"
+    blur = "blur"
+    manipulated = "manipulated"
+    deepfake = "deepfake"
+    adversarial = "adversarial"
+    news = "news"
+    entertainment = "entertainment"
+    education = "education"
+    scam = "scam"
+    insufficient = "insufficient"
+
+class Decision(str, Enum):
+    ALLOW = "ALLOW"
+    ATTRIBUTION = "ATTRIBUTION"
+    REVIEW_REQUIRED = "REVIEW REQUIRED"
+    SUSPECT = "SUSPECT"
+    TAKEDOWN = "TAKEDOWN"
+    EMERGENCY_TAKEDOWN = "EMERGENCY_TAKEDOWN"
+
+class Severity(str, Enum):
+    LOW = "LOW"
+    MEDIUM = "MEDIUM"
+    HIGH = "HIGH"
+    CRITICAL = "CRITICAL"
+
+class RiskLabel(str, Enum):
+    SAFE = "SAFE"
+    SUSPECT = "SUSPECT"
+    HIGH_RISK = "HIGH_RISK"
+
+class MLLabel(str, Enum):
+    SAFE = "SAFE"
+    SUSPICIOUS = "SUSPICIOUS"
+    TAMPERED = "TAMPERED"
+
+class CaseStatus(str, Enum):
+    open = "open"
+    under_review = "under_review"
+    dmca_filed = "dmca_filed"
+    resolved = "resolved"
+    closed = "closed"
+
+
+# ══════════════════════════════════════════════════════════════
+# DETECTION REQUEST / RESPONSE
+# ══════════════════════════════════════════════════════════════
+
+class DetectionRequest(BaseModel):
+    platform: Platform
+    username: str = Field(..., min_length=1, max_length=100)
+    caption: str = Field(default="", max_length=2000)
+    content_type: ContentType = ContentType.unknown
+    scenario: Optional[Scenario] = None
+    media_url: Optional[str] = None
+    media_b64: Optional[str] = None  # base64 image/video frame
+
+class MLSignals(BaseModel):
+    match_score: float
+    spatial_diff: float
+    color_diff: float
+    frame_diff: float
+    temporal_diff: float
+    noise_score: float
+    watermark_detected: int
+
+class MLPrediction(BaseModel):
+    label: MLLabel
+    manipulation_probability: float
+    trust_score: float
+    confidence: float
+    signals: MLSignals
+
+class IntegritySignals(BaseModel):
+    jpeg_artifact: float
+    noise_pattern: float
+    edge_consistency: float
+    metadata_coherence: float
+    color_histogram: float
+    face_landmark: float
+    lipsync: float
+    temporal_mismatch: float
+    watermark_presence: float
+
+class IntegrityResult(BaseModel):
+    score: float
+    flags: list[str]
+    signals: IntegritySignals
+
+class TrustResult(BaseModel):
+    trust_score: float
+    risk_tier: str  # "safe" | "suspect" | "high_risk"
+    verdict: str
+    factors: dict[str, float]
+
+class AuthorshipConfidence(BaseModel):
+    confidence: float
+    reason: str
+    origin_node: str
+    embedding_distance: float
+
+class PropagationSignal(BaseModel):
+    total_scans: int
+    velocity: float
+    urgency: str
+    indicator: str
+    ppm: float  # posts per minute
+    anomaly_flag: bool
+    anomaly_score: float
+
+class AIAnalysis(BaseModel):
+    threat_type: str
+    decision: Decision
+    severity: Severity
+    risk_label: RiskLabel
+    confidence: float
+    reasoning_points: list[str]
+    action: str
+    recommended_action: str
+    origin_traced: bool
+    dmca_needed: bool
+    source: str = "claude"  # "claude" | "fallback"
+
+class DetectionResult(BaseModel):
+    job_id: str
+    platform: Platform
+    username: str
+    caption: str
+    content_type: ContentType
+    scenario: str
+    similarity: float
+    fingerprint_hash: str
+    ml: MLPrediction
+    integrity: IntegrityResult
+    trust: TrustResult
+    authorship: AuthorshipConfidence
+    propagation: PropagationSignal
+    ai_analysis: AIAnalysis
+    timestamp: str
+    case_id: Optional[str] = None
+    processing_ms: float = 0.0
+
+
+# ══════════════════════════════════════════════════════════════
+# VERIFICATION
+# ══════════════════════════════════════════════════════════════
+
+class OwnershipVerifyRequest(BaseModel):
+    asset_id: str
+    media_b64: Optional[str] = None
+    media_url: Optional[str] = None
+
+class OwnershipVerifyResult(BaseModel):
+    asset_id: str
+    verified: bool
+    watermark_intact: bool
+    watermark_hash: Optional[str]
+    confidence: float
+    registered_at: Optional[str]
+    owner: Optional[str]
+
+class AssetRegisterRequest(BaseModel):
+    asset_id: str
+    owner: str
+    content_type: ContentType = ContentType.unknown
+    metadata: dict[str, Any] = {}
+
+class AssetRegisterResult(BaseModel):
+    asset_id: str
+    watermark_hash: str
+    registered_at: str
+
+
+# ══════════════════════════════════════════════════════════════
+# ENFORCEMENT / DMCA
+# ══════════════════════════════════════════════════════════════
+
+class DMCARequest(BaseModel):
+    case_id: str
+    platform: Platform
+    username: str
+    caption: str
+    content_type: ContentType
+    analysis: dict[str, Any]
+
+class DMCANotice(BaseModel):
+    case_id: str
+    subject: str
+    body: str
+    evidence_summary: str
+    evidence_json: dict[str, Any]
+    claimant_name: str
+    organization: str
+    original_asset_id: str
+    detection_timestamp: str
+    match_score: int
+    manipulation_details: str
+    action_recommendation: str
+    source: str = "claude"
+
+
+# ══════════════════════════════════════════════════════════════
+# CASE MANAGEMENT
+# ══════════════════════════════════════════════════════════════
+
+class CaseRecord(BaseModel):
+    id: str
+    case_id: str
+    platform: str
+    username: str
+    severity: str
+    decision: str
+    content_type: str
+    status: str
+    timestamp: str
+    dmca_filed: bool = False
+    similarity: Optional[float] = None
+    ml_label: Optional[str] = None
+    notes: Optional[str] = None
+
+class CaseUpdateRequest(BaseModel):
+    status: Optional[CaseStatus] = None
+    notes: Optional[str] = None
+
+
+# ══════════════════════════════════════════════════════════════
+# HEALTH
+# ══════════════════════════════════════════════════════════════
+
+class HealthResponse(BaseModel):
+    status: str
+    version: str
+    services: dict[str, str]
+    uptime_seconds: float
+    total_scans: int
