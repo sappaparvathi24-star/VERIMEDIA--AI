@@ -63,7 +63,7 @@ export function ForensicPanel() {
         marginBottom: 16,
       }}>
         {SIGNALS.map(sig => {
-          const raw = (sigs as Record<string, number>)[sig.key] ?? 0
+         const raw = (sigs as unknown as Record<string, number>)[sig.key] ?? 0
           const anomaly = sig.invert ? 1 - raw : raw
           const color = getColor(anomaly)
           const pct = Math.round(anomaly * 100)
