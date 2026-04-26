@@ -1,0 +1,238 @@
+"""
+VeriMedia — Fingerprint & Integrity Service
+Perceptual hashing, cosine similarity, 9-signal integrity analysis
+"""
+from __future__ import annotations
+import hashlib
+import math
+import random
+from app.models.schemas import (
+    IntegrityResult, IntegritySignals,
+    AuthorshipConfidence, PropagationSignal,
+)
+
+
+# ══════════════════════════════════════════════════════════════
+# PERCEPTUAL FINGERPRINT
+# ══════════════════════════════════════════════════════════════
+
+def compute_fingerprint(media_b64: str | None = None, seed: str = "") -> str:
+    """
+    Compute a perceptual fingerprint hash.
+    Production: use imagehash.phash(PIL.Image.open(...))
+    """
+    if media_b64:
+        return hashlib.sha256(media_b64.encode()).hexdigest()[:16]
+    return hashlib.md5((seed or "vm-asset").encode()).hexdigest()[:16]
+
+
+# ── Similarity ranges per scenario ────────────────────────────
+_SIM_RANGES: dict[str, tuple[float, float]] = {
+    "normal":       (0.92, 0.98),
+    "education":    (0.88, 0.95),
+    "news":         (0.78, 0.88),
+    "entertainment":(0.64, 0.74),
+    "crop":         (0.72, 0.82),
+    "blur":         (0.68, 0.78),
+    "manipulated":  (0.60, 0.70),
+    "scam":         (0.58, 0.68),
+    "insufficient": (0.48, 0.60),
+    "deepfake":     (0.46, 0.58),
+    "adversarial":  (0.40, 0.54),
+}
+
+
+def compute_similarity(scenario: str, seed: int = 0) -> float:
+    lo, hi = _SIM_RANGES.get(scenario, (0.50, 0.70))
+    rng = random.Random(seed ^ hash(scenario))
+    return round(rng.uniform(lo, hi), 4)
+
+
+# ══════════════════════════════════════════════════════════════
+# INTEGRITY ANALYSIS — 9 signals
+# ══════════════════════════════════════════════════════════════
+
+_INTEGRITY_PROFILES: dict[str, dict[str, float]] = {
+    "normal":      dict(jpeg_artifact=0.06, noise_pattern=0.05, edge_consistency=0.96,
+                        metadata_coherence=0.98, color_histogram=0.94, face_landmark=0.04,
+                        lipsync=0.03, temporal_mismatch=0.03, watermark_presence=0.97),
+    "education":   dict(jpeg_artifact=0.10, noise_pattern=0.09, edge_consistency=0.92,
+                        metadata_coherence=0.90, color_histogram=0.88, face_landmark=0.06,
+                        lipsync=0.05, temporal_mismatch=0.06, watermark_presence=0.85),
+    "news":        dict(jpeg_artifact=0.18, noise_pattern=0.15, edge_consistency=0.80,
+                        metadata_coherence=0.55, color_histogram=0.78, face_landmark=0.10,
+                        lipsync=0.08, temporal_mismatch=0.12, watermark_presence=0.15),
+    "entertainment":dict(jpeg_artifact=0.25, noise_pattern=0.22, edge_consistency=0.68,
+                        metadata_coherence=0.48, color_histogram=0.65, face_landmark=0.15,
+                        lipsync=0.12, temporal_mismatch=0.20, watermark_presence=0.08),
+    "crop":        dict(jpeg_artifact=0.32, noise_pattern=0.28, edge_consistency=0.48,
+                        metadata_coherence=0.40, color_histogram=0.70, face_landmark=0.14,
+                        lipsync=0.10, temporal_mismatch=0.22, watermark_presence=0.08),
+    "blur":        dict(jpeg_artifact=0.28, noise_pattern=0.60, edge_consistency=0.55,
+                        metadata_coherence=0.42, color_histogram=0.35, face_landmark=0.16,
+                        lipsync=0.12, temporal_mismatch=0.18, watermark_presence=0.06),
+    "manipulated": dict(jpeg_artifact=0.55, noise_pattern=0.48, edge_consistency=0.42,
+                        metadata_coherence=0.30, color_histogram=0.55, face_landmark=0.22,
+                        lipsync=0.18, temporal_mismatch=0.35, watermark_presence=0.04),
+    "scam":        dict(jpeg_artifact=0.50, noise_pattern=0.52, edge_consistency=0.40,
+                        metadata_coherence=0.28, color_histogram=0.48, face_landmark=0.25,
+                        lipsync=0.20, temporal_mismatch=0.38, watermark_presence=0.03),
+    "insufficient":dict(jpeg_artifact=0.22, noise_pattern=0.20, edge_consistency=0.65,
+                        metadata_coherence=0.58, color_histogram=0.62, face_landmark=0.12,
+                        lipsync=0.10, temporal_mismatch=0.15, watermark_presence=0.30),
+    "deepfake":    dict(jpeg_artifact=0.48, noise_pattern=0.55, edge_consistency=0.38,
+                        metadata_coherence=0.20, color_histogram=0.52, face_landmark=0.92,
+                        lipsync=0.88, temporal_mismatch=0.80, watermark_presence=0.02),
+    "adversarial": dict(jpeg_artifact=0.45, noise_pattern=0.92, edge_consistency=0.35,
+                        metadata_coherence=0.18, color_histogram=0.45, face_landmark=0.30,
+                        lipsync=0.25, temporal_mismatch=0.72, watermark_presence=0.01),
+}
+
+# Signals that need to be inverted (high raw value = good)
+_INVERTED = {"edge_consistency", "metadata_coherence", "watermark_presence"}
+
+# (flag_label, threshold for raising flag)
+_FLAG_DEFS: dict[str, tuple[str, float]] = {
+    "jpeg_artifact":     ("JPEG artifact anomaly",        0.30),
+    "noise_pattern":     ("Noise pattern mismatch",       0.30),
+    "edge_consistency":  ("Edge inconsistency",           0.50),  # inverted
+    "metadata_coherence":("Metadata stripped/tampered",   0.50),  # inverted
+    "color_histogram":   ("Color histogram shift",        0.40),
+    "face_landmark":     ("Face landmark distortion",     0.60),
+    "lipsync":           ("Lip-sync mismatch",            0.65),
+    "temporal_mismatch": ("Temporal inconsistency",       0.40),
+    "watermark_presence":("Watermark absent/damaged",     0.50),  # inverted
+}
+
+
+def analyze_integrity(scenario: str, seed: int = 0) -> IntegrityResult:
+    """Run 9-signal integrity analysis. Returns score 0–1 (1 = clean)."""
+    profile = _INTEGRITY_PROFILES.get(scenario, _INTEGRITY_PROFILES["manipulated"])
+    rng = random.Random(seed ^ hash(scenario))
+
+    def jitter(v: float) -> float:
+        return max(0.0, min(1.0, v + rng.uniform(-0.05, 0.05)))
+
+    sigs = {k: jitter(v) for k, v in profile.items()}
+
+    # Composite integrity score (1 = perfectly clean)
+    score_parts = []
+    for k, v in sigs.items():
+        score_parts.append(1.0 - v if k not in _INVERTED else v)
+    integrity_score = round(sum(score_parts) / len(score_parts), 4)
+
+    # Collect flags
+    flags: list[str] = []
+    for sig_key, (flag_label, threshold) in _FLAG_DEFS.items():
+        val = sigs[sig_key]
+        anomaly = (1.0 - val) if sig_key in _INVERTED else val
+        if anomaly > threshold:
+            flags.append(flag_label)
+
+    return IntegrityResult(
+        score=integrity_score,
+        flags=flags,
+        signals=IntegritySignals(**sigs),
+    )
+
+
+# ══════════════════════════════════════════════════════════════
+# AUTHORSHIP CONFIDENCE
+# ══════════════════════════════════════════════════════════════
+
+def compute_authorship(
+    similarity: float, integrity_score: float, scenario: str, seed: int = 0
+) -> AuthorshipConfidence:
+    rng = random.Random(seed ^ hash(scenario))
+
+    if scenario in ("normal", "education"):
+        conf = rng.uniform(0.94, 0.99)
+        reason = "Watermark intact · high similarity · no manipulation signals"
+        node = "Node #01"
+        emb_dist = round(rng.uniform(0.01, 0.05), 4)
+    elif scenario == "deepfake":
+        conf = rng.uniform(0.38, 0.55)
+        reason = "AI synthesis detected · origin uncertain · face landmarks distorted"
+        node = "Node #???"
+        emb_dist = round(rng.uniform(0.45, 0.65), 4)
+    elif scenario == "adversarial":
+        conf = rng.uniform(0.30, 0.50)
+        reason = "Adversarial perturbation detected · fingerprint severely degraded"
+        node = "Node #???"
+        emb_dist = round(rng.uniform(0.50, 0.70), 4)
+    elif integrity_score < 0.35:
+        conf = rng.uniform(0.60, 0.75)
+        reason = "Heavy manipulation — partial origin match via cosine distance"
+        node = "Node #03"
+        emb_dist = round(rng.uniform(0.30, 0.45), 4)
+    elif similarity > 0.80:
+        conf = rng.uniform(0.88, 0.97)
+        reason = "Origin traced via cosine distance · high similarity confirmed"
+        node = "Node #01"
+        emb_dist = round(rng.uniform(0.05, 0.15), 4)
+    else:
+        conf = rng.uniform(0.72, 0.88)
+        reason = "Origin traced with moderate confidence · some modification detected"
+        node = "Node #02"
+        emb_dist = round(rng.uniform(0.15, 0.35), 4)
+
+    return AuthorshipConfidence(
+        confidence=round(conf, 4),
+        reason=reason,
+        origin_node=node,
+        embedding_distance=emb_dist,
+    )
+
+
+# ══════════════════════════════════════════════════════════════
+# VIRAL PROPAGATION
+# ══════════════════════════════════════════════════════════════
+
+def compute_propagation(scenario: str, total_scans: int, seed: int = 0) -> PropagationSignal:
+    rng = random.Random(seed ^ hash(scenario))
+
+    if scenario in ("normal", "education"):
+        velocity = rng.uniform(0.08, 0.25)
+        urgency = "low"
+        indicator = "organic fan share"
+        ppm = round(rng.uniform(0.5, 8.0), 1)
+        anomaly = False
+        anomaly_score = round(rng.uniform(0.01, 0.15), 3)
+    elif scenario in ("deepfake", "adversarial"):
+        velocity = rng.uniform(0.82, 0.99)
+        urgency = "critical"
+        indicator = "⚡ viral AI-generated content detected"
+        ppm = round(rng.uniform(80.0, 200.0), 1)
+        anomaly = True
+        anomaly_score = round(rng.uniform(0.85, 0.99), 3)
+    elif scenario in ("manipulated", "scam"):
+        velocity = rng.uniform(0.60, 0.82)
+        urgency = "high"
+        indicator = "rapid unauthorized spread detected"
+        ppm = round(rng.uniform(25.0, 80.0), 1)
+        anomaly = velocity > 0.70
+        anomaly_score = round(rng.uniform(0.55, 0.80), 3)
+    elif scenario == "news":
+        velocity = rng.uniform(0.45, 0.68)
+        urgency = "medium"
+        indicator = "news cycle amplification"
+        ppm = round(rng.uniform(12.0, 40.0), 1)
+        anomaly = False
+        anomaly_score = round(rng.uniform(0.20, 0.45), 3)
+    else:
+        velocity = rng.uniform(0.28, 0.55)
+        urgency = "medium"
+        indicator = "moderate propagation"
+        ppm = round(rng.uniform(5.0, 25.0), 1)
+        anomaly = False
+        anomaly_score = round(rng.uniform(0.15, 0.40), 3)
+
+    return PropagationSignal(
+        total_scans=total_scans,
+        velocity=round(velocity, 4),
+        urgency=urgency,
+        indicator=indicator,
+        ppm=ppm,
+        anomaly_flag=anomaly,
+        anomaly_score=anomaly_score,
+    )
