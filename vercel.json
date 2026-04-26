@@ -5,7 +5,7 @@
   "installCommand": "cd frontend && npm install",
   "framework": "vite",
   "rewrites": [
-    { "source": "/(.*)", "destination": "/index(14).html" }
+    { "source": "/(.*)", "destination": "/index.html" }
   ],
   "build": {
     "env": {
