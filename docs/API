@@ -1,0 +1,147 @@
+# VeriMedia AI — API Reference
+
+Base URL: `http://localhost:8000/api/v1`
+
+Interactive docs: `http://localhost:8000/docs`
+
+---
+
+## Detection
+
+### `POST /detect/`
+
+Run the full 7-step detection pipeline.
+
+**Request**
+```json
+{
+  "platform": "YouTube",
+  "username": "@creator",
+  "caption": "Match highlights reel",
+  "content_type": "sports",
+  "scenario": "deepfake",
+  "media_url": "https://..."
+}
+```
+
+**Scenarios**: `normal`, `crop`, `blur`, `manipulated`, `deepfake`, `adversarial`, `news`, `entertainment`, `education`, `scam`, `insufficient`
+
+**Response** (truncated)
+```json
+{
+  "job_id": "uuid",
+  "platform": "YouTube",
+  "similarity": 0.52,
+  "fingerprint_hash": "a3f1c2d4",
+  "ml": { "label": "TAMPERED", "manipulation_probability": 0.89, "trust_score": 0.11 },
+  "integrity": { "score": 0.28, "flags": ["Face landmark distortion", "Lip-sync mismatch"] },
+  "trust": { "trust_score": 0.40, "risk_tier": "high_risk" },
+  "ai_analysis": {
+    "decision": "EMERGENCY_TAKEDOWN",
+    "severity": "CRITICAL",
+    "risk_label": "HIGH_RISK",
+    "reasoning_points": ["92% face landmark — exceeds AI threshold", "..."],
+    "dmca_needed": true,
+    "source": "claude"
+  },
+  "case_id": "VM-A1B2C3D4",
+  "processing_ms": 1420.5
+}
+```
+
+### `GET /detect/stats`
+
+```json
+{ "total_scans": 42, "status": "operational" }
+```
+
+---
+
+## Enforcement
+
+### `POST /enforce/dmca`
+
+Generate a DMCA takedown notice via Claude AI.
+
+**Request**
+```json
+{
+  "case_id": "VM-A1B2C3D4",
+  "platform": "YouTube",
+  "username": "@infringer",
+  "caption": "stolen content",
+  "content_type": "sports",
+  "analysis": {
+    "similarity": 0.82,
+    "integrity_score": 0.25,
+    "ml_label": "TAMPERED",
+    "ml_confidence": 0.91,
+    "decision": "TAKEDOWN",
+    "severity": "HIGH"
+  }
+}
+```
+
+**Response**
+```json
+{
+  "case_id": "VM-A1B2C3D4",
+  "subject": "DMCA Copyright Infringement Notice — Case VM-A1B2C3D4",
+  "body": "Dear YouTube Trust & Safety Team...",
+  "evidence_summary": "...",
+  "action_recommendation": "1. Submit...",
+  "source": "claude"
+}
+```
+
+---
+
+## Cases
+
+### `GET /cases/`
+
+List enforcement cases (newest first).
+
+Query params: `limit` (default 50), `offset` (default 0)
+
+### `PATCH /cases/{case_id}`
+
+```json
+{ "status": "dmca_filed", "notes": "Submitted to YouTube legal" }
+```
+
+Status values: `open`, `under_review`, `dmca_filed`, `resolved`, `closed`
+
+---
+
+## Verification
+
+### `POST /verify/ownership`
+
+```json
+{ "asset_id": "asset-001" }
+```
+
+### `POST /verify/asset/register`
+
+```json
+{ "asset_id": "asset-001", "owner": "Sports Network Inc", "content_type": "sports" }
+```
+
+### `GET /verify/asset/{asset_id}`
+
+---
+
+## Health
+
+### `GET /health`
+
+```json
+{
+  "status": "operational",
+  "version": "v23",
+  "services": { "api": "operational", "claude_ai": "enabled" },
+  "uptime_seconds": 3600,
+  "total_scans": 142
+}
+```
