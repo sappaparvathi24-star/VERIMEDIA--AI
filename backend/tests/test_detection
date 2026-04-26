@@ -1,0 +1,113 @@
+"""VeriMedia — Test: Detection Pipeline"""
+import pytest
+from httpx import AsyncClient, ASGITransport
+from app.main import app
+
+
+@pytest.fixture
+def anyio_backend():
+    return "asyncio"
+
+
+@pytest.fixture
+async def client():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        yield c
+
+
+@pytest.mark.anyio
+async def test_health(client):
+    r = await client.get("/api/v1/health")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["status"] == "operational"
+    assert data["version"] == "v23"
+
+
+@pytest.mark.anyio
+async def test_detect_normal(client):
+    r = await client.post("/api/v1/detect/", json={
+        "platform": "YouTube",
+        "username": "test_creator",
+        "caption": "Match highlights",
+        "content_type": "sports",
+        "scenario": "normal",
+    })
+    assert r.status_code == 200
+    d = r.json()
+    assert "job_id" in d
+    assert d["similarity"] >= 0.88
+    assert d["ai_analysis"]["decision"] == "ALLOW"
+    assert d["ai_analysis"]["risk_label"] == "SAFE"
+
+
+@pytest.mark.anyio
+async def test_detect_deepfake(client):
+    r = await client.post("/api/v1/detect/", json={
+        "platform": "Instagram",
+        "username": "bad_actor",
+        "caption": "fake video",
+        "content_type": "entertainment",
+        "scenario": "deepfake",
+    })
+    assert r.status_code == 200
+    d = r.json()
+    assert d["ai_analysis"]["decision"] in ("TAKEDOWN", "EMERGENCY_TAKEDOWN")
+    assert d["ai_analysis"]["risk_label"] == "HIGH_RISK"
+    assert d["integrity"]["signals"]["face_landmark"] > 0.7
+
+
+@pytest.mark.anyio
+async def test_detect_news_attribution(client):
+    r = await client.post("/api/v1/detect/", json={
+        "platform": "X / Twitter",
+        "username": "news_repost",
+        "caption": "Breaking news clip",
+        "content_type": "news",
+        "scenario": "news",
+    })
+    assert r.status_code == 200
+    d = r.json()
+    assert d["ai_analysis"]["decision"] in ("ATTRIBUTION", "SUSPECT", "REVIEW REQUIRED")
+
+
+@pytest.mark.anyio
+async def test_ml_signals_present(client):
+    r = await client.post("/api/v1/detect/", json={
+        "platform": "TikTok",
+        "username": "creator",
+        "caption": "cool video",
+        "content_type": "entertainment",
+        "scenario": "manipulated",
+    })
+    d = r.json()
+    ml = d["ml"]
+    assert ml["label"] in ("SAFE", "SUSPICIOUS", "TAMPERED")
+    assert 0.0 <= ml["manipulation_probability"] <= 1.0
+    assert 0.0 <= ml["trust_score"] <= 1.0
+    assert "signals" in ml
+
+
+@pytest.mark.anyio
+async def test_integrity_flags(client):
+    r = await client.post("/api/v1/detect/", json={
+        "platform": "YouTube",
+        "username": "test",
+        "caption": "test",
+        "content_type": "unknown",
+        "scenario": "deepfake",
+    })
+    d = r.json()
+    integrity = d["integrity"]
+    assert isinstance(integrity["flags"], list)
+    assert len(integrity["flags"]) > 0  # deepfake should have flags
+    signals = integrity["signals"]
+    assert signals["face_landmark"] > 0.7
+    assert signals["lipsync"] > 0.7
+
+
+@pytest.mark.anyio
+async def test_detect_stats(client):
+    r = await client.get("/api/v1/detect/stats")
+    assert r.status_code == 200
+    assert "total_scans" in r.json()
