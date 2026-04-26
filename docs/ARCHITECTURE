@@ -1,0 +1,105 @@
+# VeriMedia AI — Architecture
+
+## System Design
+
+```
+Browser
+  │
+  ▼
+Nginx (:80)
+  ├── /        → Frontend (React SPA, :5173)
+  ├── /api/*   → Backend (FastAPI, :8000)
+  └── /ws/*    → WebSocket
+         │
+         ▼
+    FastAPI Backend
+         │
+    ┌────┴─────────────────────────┐
+    │           Pipeline           │
+    │  1. Fingerprint              │
+    │  2. Similarity (pHash+CLIP)  │
+    │  3. ML Classify (6-signal)   │
+    │  4. Integrity (9-signal)     │
+    │  5. Trust Score              │
+    │  6. Propagation Tracking     │
+    │  7. Claude AI Analysis       │
+    └──────────────────────────────┘
+         │
+    ┌────┴──────────────────────────────────────┐
+    │  PostgreSQL (pgvector)  Redis   MinIO/S3   │
+    └───────────────────────────────────────────┘
+```
+
+## Decision Flow
+
+```
+Detection Result
+      │
+      ├─ similarity ≥ 88% AND integrity > 75% AND ml=SAFE
+      │    └─► ALLOW (green)
+      │
+      ├─ face_landmark > 70% OR lipsync > 75%
+      │    └─► EMERGENCY_TAKEDOWN (red critical)
+      │
+      ├─ content_type in (news, education) AND sim ≥ 70%
+      │    └─► ATTRIBUTION (amber)
+      │
+      ├─ similarity < 50% AND integrity > 55%
+      │    └─► REVIEW REQUIRED (indigo)
+      │
+      ├─ trust < 40% AND sim > 60%
+      │    └─► TAKEDOWN (red)
+      │
+      ├─ 40% ≤ trust < 65%
+      │    └─► SUSPECT (orange)
+      │
+      └─ trust ≥ 78%
+           └─► ALLOW (green)
+```
+
+## ML Pipeline — 6 Signals
+
+| Signal | Weight | Description |
+|--------|--------|-------------|
+| match_score | -2.1 | Visual similarity (lower match = more suspicious) |
+| spatial_diff | 1.8 | Pixel-level spatial manipulation |
+| color_diff | 1.2 | Color histogram shift |
+| frame_diff | 2.3 | Inter-frame inconsistency |
+| temporal_diff | 1.9 | Temporal coherence mismatch |
+| noise_score | 1.6 | Noise pattern anomaly |
+| watermark_detected | -3.4 | Watermark presence (strong negative weight) |
+
+Output: manipulation probability via logistic regression → SAFE / SUSPICIOUS / TAMPERED
+
+## Integrity Analysis — 9 Signals
+
+1. JPEG Artifact — re-compression artifacts
+2. Noise Pattern — sensor/encoder fingerprint mismatch
+3. Edge Consistency — pixel edge coherence (inverted)
+4. Metadata Coherence — EXIF/container consistency (inverted)
+5. Color Histogram — palette distribution shift
+6. Face Landmark — facial structure distortion (deepfake indicator)
+7. Lip-sync — audio-visual alignment (deepfake indicator)
+8. Temporal Mismatch — frame timestamp inconsistency
+9. Watermark Presence — embedded rights marker (inverted)
+
+## Trust Score
+
+```
+trust = 0.55 × similarity + 0.45 × integrity_score
+```
+
+## Claude AI Integration
+
+The system sends a structured prompt to `claude-sonnet-4-20250514` with:
+- All numerical signals (exact percentages)
+- Enforcement decision rules
+- Content type context
+
+Claude returns structured JSON with:
+- `decision` — enforcement action
+- `severity` — LOW/MEDIUM/HIGH/CRITICAL
+- `reasoning_points[]` — evidence-cited reasoning (3 points)
+- `dmca_needed` — boolean
+
+Fallback: if Claude API is unavailable, the deterministic `_fallback_analysis()` applies the same decision rules locally.
