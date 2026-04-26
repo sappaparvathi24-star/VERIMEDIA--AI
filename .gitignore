@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+*.so
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Node / Frontend
+node_modules/
+frontend/dist/
+frontend/.vite/
+*.local
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Docker
+*.log
+
+# Models (large files)
+backend/models/*.pkl
+backend/models/*.onnx
+backend/models/*.pt
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
