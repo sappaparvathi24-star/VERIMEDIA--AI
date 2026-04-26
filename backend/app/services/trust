@@ -1,0 +1,143 @@
+"""
+VeriMedia — Trust Scoring Service
+Unified trust formula: calcTrust() + applyDecisionRules() from original frontend
+"""
+from __future__ import annotations
+from app.models.schemas import TrustResult, Decision
+
+
+def compute_trust(similarity: float, integrity_score: float) -> TrustResult:
+    """
+    Unified trust score — mirrors frontend calcTrust() logic.
+    trust_score = weighted combination of similarity and integrity.
+    """
+    # Weights: similarity is primary signal, integrity secondary
+    w_sim = 0.55
+    w_int = 0.45
+    trust = w_sim * similarity + w_int * integrity_score
+    trust = max(0.0, min(1.0, round(trust, 4)))
+
+    # Risk tier thresholds
+    if trust >= 0.78:
+        risk_tier = "safe"
+        verdict = "ALLOW"
+    elif trust >= 0.52:
+        risk_tier = "suspect"
+        verdict = "REVIEW"
+    else:
+        risk_tier = "high_risk"
+        verdict = "TAKEDOWN"
+
+    return TrustResult(
+        trust_score=trust,
+        risk_tier=risk_tier,
+        verdict=verdict,
+        factors={"similarity": round(similarity, 4), "integrity": round(integrity_score, 4)},
+    )
+
+
+def apply_decision_rules(
+    trust_score: float,
+    viral_score: float,
+    similarity: float,
+    integrity_score: float,
+    scenario: str,
+    content_type: str,
+    face_landmark: float,
+    lipsync: float,
+) -> Decision:
+    """
+    Full decision tree matching frontend applyDecisionRules() logic.
+    """
+    # ── EMERGENCY: deepfake / adversarial with high landmark scores ──
+    if scenario in ("deepfake", "adversarial") and (face_landmark > 0.70 or lipsync > 0.75):
+        return Decision.EMERGENCY_TAKEDOWN
+
+    # ── ALLOW: clearly clean content ──
+    if scenario in ("normal", "education") and similarity >= 0.88 and integrity_score >= 0.75:
+        return Decision.ALLOW
+
+    # ── INSUFFICIENT EVIDENCE ──
+    if similarity < 0.50 and integrity_score > 0.55 and scenario not in ("deepfake", "adversarial"):
+        return Decision.REVIEW_REQUIRED
+
+    # ── ATTRIBUTION: news/education with high sim but no source ──
+    if content_type in ("news", "education") and similarity >= 0.70 and integrity_score >= 0.55:
+        if scenario not in ("deepfake", "adversarial", "manipulated"):
+            return Decision.ATTRIBUTION
+
+    # ── TAKEDOWN: clear violation ──
+    if trust_score < 0.40 and similarity > 0.60:
+        return Decision.TAKEDOWN
+
+    # ── VIRAL ESCALATION ──
+    if viral_score > 60 and trust_score < 0.60:
+        return Decision.TAKEDOWN
+
+    # ── SUSPECT: medium confidence ──
+    if 0.40 <= trust_score < 0.65:
+        return Decision.SUSPECT
+
+    # ── ALLOW: safe ──
+    if trust_score >= 0.78:
+        return Decision.ALLOW
+
+    return Decision.REVIEW_REQUIRED
+
+
+def build_reasoning(
+    similarity: float,
+    integrity_score: float,
+    trust_score: float,
+    decision: Decision,
+    ml_label: str,
+    ml_pct: int,
+    propagation_urgency: str,
+    flags: list[str],
+    face_landmark: float,
+    lipsync: float,
+) -> list[str]:
+    """Build evidence-backed reasoning points for a decision."""
+    sim_pct = round(similarity * 100)
+    int_pct = round(integrity_score * 100)
+    trust_pct = round(trust_score * 100)
+
+    if decision == Decision.ALLOW:
+        return [
+            f"{sim_pct}% visual similarity — within licensed share threshold (≥88% = clean)",
+            f"Integrity score {int_pct}% — no manipulation signals exceed detection threshold across 9 signals",
+            f"Trust score {trust_pct}% — origin confirmed via cosine distance · watermark AES-256 intact",
+        ]
+    elif decision == Decision.EMERGENCY_TAKEDOWN:
+        return [
+            f"Face landmark inconsistency {round(face_landmark*100)}% — exceeds AI-generation threshold of 70%",
+            f"Lip-sync mismatch {round(lipsync*100)}% — AI-generated audio detected",
+            f"ML classifier: {ml_label} at {ml_pct}% confidence — EMERGENCY enforcement required",
+        ]
+    elif decision == Decision.ATTRIBUTION:
+        return [
+            f"{sim_pct}% visual similarity — content identifiable as original registered asset",
+            f"Integrity score {int_pct}% — minimal modification detected but source attribution absent from post",
+            f"ML: {ml_label} at {ml_pct}% confidence — attribution notice appropriate; DMCA not warranted",
+        ]
+    elif decision == Decision.REVIEW_REQUIRED:
+        flag_str = ', '.join(flags[:2]) or 'ambiguous signals'
+        return [
+            f"{sim_pct}% visual similarity — below enforcement threshold (60%). Signals are ambiguous",
+            f"Integrity score {int_pct}% — inconclusive: {flag_str} · none exceed 70% anomaly threshold",
+            f"ML classifier: {ml_label} at {ml_pct}% confidence — insufficient evidence for origin determination",
+        ]
+    elif decision == Decision.TAKEDOWN:
+        flag_str = ', '.join(flags[:2]) or 'modification signals'
+        return [
+            f"{sim_pct}% visual similarity to registered asset — content derived from protected source",
+            f"Integrity degraded to {int_pct}% — {flag_str} detected · watermark compromised",
+            f"ML classifier: {ml_label} at {ml_pct}% — propagation urgency: {propagation_urgency}",
+        ]
+    else:  # SUSPECT
+        flag_str = ', '.join(flags[:2]) or 'moderate signals'
+        return [
+            f"{sim_pct}% visual similarity — moderate match range (55–80%) indicates possible modification",
+            f"Integrity score {int_pct}% — {flag_str} detected · manual review recommended",
+            f"Trust score {trust_pct}% — {ml_label} at {ml_pct}% confidence · urgency: {propagation_urgency}",
+        ]
