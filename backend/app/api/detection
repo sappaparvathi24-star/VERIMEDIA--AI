@@ -1,0 +1,132 @@
+"""VeriMedia — Detection API: Full 7-step pipeline"""
+import time
+import uuid
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.database import get_db, DetectionJob, EnforcementCase
+from app.models.schemas import DetectionRequest, DetectionResult, Scenario, ContentType
+from app.services import fingerprint as fp
+from app.services import ml_pipeline as ml
+from app.services import claude_ai
+from app.services.trust import compute_trust
+from app.utils.logger import get_logger
+
+router = APIRouter()
+logger = get_logger(__name__)
+
+# In-memory scan counter (use Redis counter in production)
+_total_scans: int = 0
+
+
+@router.post("/", response_model=DetectionResult, summary="Run full detection pipeline")
+async def detect(req: DetectionRequest, db: AsyncSession = Depends(get_db)):
+    """
+    Complete 7-step VeriMedia detection pipeline:
+    1. Fingerprint → 2. Similarity → 3. ML classify → 4. Integrity →
+    5. Trust score → 6. Propagation → 7. Claude AI analysis
+    """
+    global _total_scans
+    _total_scans += 1
+    job_id = str(uuid.uuid4())
+    t_start = time.perf_counter()
+
+    scenario = req.scenario.value if req.scenario else "manipulated"
+    platform = req.platform.value
+    content_type = req.content_type.value
+    seed = _total_scans ^ hash(req.username)
+
+    # ── 1. Fingerprint ─────────────────────────────────────────────────────
+    fingerprint_hash = fp.compute_fingerprint(media_b64=req.media_b64, seed=f"{platform}:{req.username}")
+
+    # ── 2. Similarity ──────────────────────────────────────────────────────
+    similarity = fp.compute_similarity(scenario, seed=seed)
+
+    # ── 3. ML Classification ───────────────────────────────────────────────
+    ml_features = ml.features_from_scenario(scenario, similarity, seed=seed)
+    ml_result = ml.predict(ml_features)
+
+    # ── 4. Integrity Analysis ──────────────────────────────────────────────
+    integrity_result = fp.analyze_integrity(scenario, seed=seed)
+
+    # ── 5. Trust Score ─────────────────────────────────────────────────────
+    trust_result = compute_trust(similarity, integrity_result.score)
+
+    # ── 6. Authorship + Propagation ────────────────────────────────────────
+    authorship = fp.compute_authorship(similarity, integrity_result.score, scenario, seed=seed)
+    propagation = fp.compute_propagation(scenario, _total_scans, seed=seed)
+
+    # ── 7. Claude AI Analysis ──────────────────────────────────────────────
+    ai_analysis = await claude_ai.analyze_threat(
+        platform=platform, username=req.username, caption=req.caption,
+        content_type=content_type, scenario=scenario,
+        similarity=similarity, ml=ml_result, integrity=integrity_result,
+        trust=trust_result, authorship=authorship, propagation=propagation,
+    )
+
+    processing_ms = (time.perf_counter() - t_start) * 1000
+
+    # ── Auto case ID if enforcement needed ─────────────────────────────────
+    case_id = None
+    if ai_analysis.dmca_needed:
+        case_id = f"VM-{uuid.uuid4().hex[:8].upper()}"
+
+    # ── Persist to DB ──────────────────────────────────────────────────────
+    try:
+        job = DetectionJob(
+            id=uuid.UUID(job_id),
+            platform=platform, username=req.username, caption=req.caption,
+            content_type=content_type, scenario=scenario,
+            similarity=similarity, fingerprint_hash=fingerprint_hash,
+            ml_label=ml_result.label.value, ml_confidence=ml_result.confidence,
+            manipulation_probability=ml_result.manipulation_probability,
+            integrity_score=integrity_result.score, integrity_flags=integrity_result.flags,
+            trust_score=trust_result.trust_score, risk_tier=trust_result.risk_tier,
+            decision=ai_analysis.decision.value, severity=ai_analysis.severity.value,
+            risk_label=ai_analysis.risk_label.value, ai_confidence=ai_analysis.confidence,
+            reasoning_points=ai_analysis.reasoning_points, action=ai_analysis.action,
+            dmca_needed=ai_analysis.dmca_needed, origin_traced=ai_analysis.origin_traced,
+            ai_source=ai_analysis.source, processing_ms=processing_ms, case_id=case_id,
+        )
+        db.add(job)
+
+        if case_id:
+            case = EnforcementCase(
+                case_id=case_id, detection_job_id=uuid.UUID(job_id),
+                platform=platform, username=req.username,
+                severity=ai_analysis.severity.value, decision=ai_analysis.decision.value,
+                content_type=content_type, similarity=similarity,
+                ml_label=ml_result.label.value, status="open",
+            )
+            db.add(case)
+
+        await db.flush()
+    except Exception as exc:
+        logger.warning(f"DB persist failed (non-fatal): {exc}")
+
+    return DetectionResult(
+        job_id=job_id,
+        platform=req.platform,
+        username=req.username,
+        caption=req.caption,
+        content_type=req.content_type,
+        scenario=scenario,
+        similarity=similarity,
+        fingerprint_hash=fingerprint_hash,
+        ml=ml_result,
+        integrity=integrity_result,
+        trust=trust_result,
+        authorship=authorship,
+        propagation=propagation,
+        ai_analysis=ai_analysis,
+        timestamp=datetime.now(timezone.utc).isoformat(),
+        case_id=case_id,
+        processing_ms=round(processing_ms, 1),
+    )
+
+
+@router.get("/stats")
+async def get_stats():
+    return {"total_scans": _total_scans, "status": "operational"}
