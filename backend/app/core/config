@@ -1,0 +1,56 @@
+"""VeriMedia — Application Settings"""
+from functools import lru_cache
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    # App
+    app_name: str = "VeriMedia AI"
+    app_version: str = "v23"
+    app_env: str = "development"
+    debug: bool = False
+    log_level: str = "info"
+
+    # Server
+    app_host: str = "0.0.0.0"
+    app_port: int = 8000
+    cors_origins: str = "http://localhost:5173,http://localhost:3000,http://localhost"
+
+    # AI
+    anthropic_api_key: str = ""
+
+    # Database
+    database_url: str = "postgresql+asyncpg://verimedia:password@localhost:5432/verimedia"
+
+    # Redis
+    redis_url: str = "redis://localhost:6379/0"
+
+    # Security
+    secret_key: str = "dev-secret-key-change-in-production"
+    api_key_salt: str = "dev-salt"
+
+    # Storage
+    s3_endpoint: str = "http://localhost:9000"
+    s3_bucket: str = "verimedia-assets"
+    s3_access_key: str = "minioadmin"
+    s3_secret_key: str = "minioadmin"
+    s3_region: str = "us-east-1"
+
+    # ML
+    ml_model_path: str = "./models"
+    embedding_dim: int = 512
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_origins.split(",")]
+
+    @property
+    def is_production(self) -> bool:
+        return self.app_env == "production"
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()
