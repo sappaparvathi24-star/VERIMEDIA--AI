@@ -1,0 +1,50 @@
+"""VeriMedia — Cases API: case management"""
+from datetime import datetime, timezone
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.database import get_db, EnforcementCase
+from app.models.schemas import CaseRecord, CaseUpdateRequest
+
+router = APIRouter()
+
+
+@router.get("/", response_model=list[CaseRecord])
+async def list_cases(limit: int = 50, offset: int = 0, db: AsyncSession = Depends(get_db)):
+    try:
+        result = await db.execute(
+            select(EnforcementCase)
+            .order_by(EnforcementCase.created_at.desc())
+            .limit(limit).offset(offset)
+        )
+        cases = result.scalars().all()
+        return [
+            CaseRecord(
+                id=str(c.id), case_id=c.case_id, platform=c.platform,
+                username=c.username, severity=c.severity, decision=c.decision,
+                content_type=c.content_type or "unknown", status=c.status,
+                timestamp=c.created_at.isoformat(), dmca_filed=c.dmca_filed,
+                similarity=c.similarity, ml_label=c.ml_label, notes=c.notes,
+            )
+            for c in cases
+        ]
+    except Exception:
+        return []
+
+
+@router.patch("/{case_id}")
+async def update_case(case_id: str, req: CaseUpdateRequest, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(EnforcementCase).where(EnforcementCase.case_id == case_id)
+    )
+    case = result.scalar_one_or_none()
+    if not case:
+        raise HTTPException(404, f"Case {case_id} not found")
+    if req.status:
+        case.status = req.status.value
+    if req.notes is not None:
+        case.notes = req.notes
+    case.updated_at = datetime.now(timezone.utc)
+    await db.flush()
+    return {"success": True, "case_id": case_id, "status": case.status}
