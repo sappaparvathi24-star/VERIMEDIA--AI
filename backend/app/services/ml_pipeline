@@ -1,0 +1,118 @@
+"""
+VeriMedia — ML Pipeline Service
+6-signal manipulation classifier matching the original frontend mlPredict() logic.
+Scenarios: normal, crop, blur, manipulated, deepfake, adversarial, news, entertainment, education, scam
+"""
+from __future__ import annotations
+import math
+import random
+from dataclasses import dataclass
+from app.models.schemas import MLLabel, MLPrediction, MLSignals
+
+
+@dataclass
+class MLFeatures:
+    match_score: float
+    spatial_diff: float
+    color_diff: float
+    frame_diff: float
+    temporal_diff: float
+    noise_score: float
+    watermark_detected: int  # 0 or 1
+
+
+# ── Logistic Regression Weights ────────────────────────────────────────────
+# Calibrated to replicate browser-side mlPredict() decision boundaries
+_W = {
+    "match_score":       -2.1,
+    "spatial_diff":       1.8,
+    "color_diff":         1.2,
+    "frame_diff":         2.3,
+    "temporal_diff":      1.9,
+    "noise_score":        1.6,
+    "watermark_detected": -3.4,
+    "bias":               0.5,
+}
+
+
+def _sigmoid(x: float) -> float:
+    return 1.0 / (1.0 + math.exp(-max(-20, min(20, x))))
+
+
+def predict(features: MLFeatures) -> MLPrediction:
+    """Run the 6-signal ML classifier."""
+    raw = (
+        _W["match_score"] * features.match_score
+        + _W["spatial_diff"] * features.spatial_diff
+        + _W["color_diff"] * features.color_diff
+        + _W["frame_diff"] * features.frame_diff
+        + _W["temporal_diff"] * features.temporal_diff
+        + _W["noise_score"] * features.noise_score
+        + _W["watermark_detected"] * features.watermark_detected
+        + _W["bias"]
+    )
+    manip_prob = max(0.0, min(1.0, _sigmoid(raw)))
+
+    if manip_prob < 0.35:
+        label = MLLabel.SAFE
+    elif manip_prob < 0.65:
+        label = MLLabel.SUSPICIOUS
+    else:
+        label = MLLabel.TAMPERED
+
+    trust_score = 1.0 - manip_prob
+    # Confidence = how far we are from decision boundaries
+    dist = min(abs(manip_prob - 0.35), abs(manip_prob - 0.65))
+    confidence = min(0.99, 0.5 + dist * 3.0)
+
+    return MLPrediction(
+        label=label,
+        manipulation_probability=round(manip_prob, 4),
+        trust_score=round(trust_score, 4),
+        confidence=round(confidence, 4),
+        signals=MLSignals(
+            match_score=features.match_score,
+            spatial_diff=features.spatial_diff,
+            color_diff=features.color_diff,
+            frame_diff=features.frame_diff,
+            temporal_diff=features.temporal_diff,
+            noise_score=features.noise_score,
+            watermark_detected=features.watermark_detected,
+        ),
+    )
+
+
+# ── Scenario Feature Profiles ──────────────────────────────────────────────
+# (match_score, spatial, color, frame, temporal, noise, watermark)
+_PROFILES: dict[str, tuple] = {
+    "normal":       (0.93, 0.04, 0.04, 0.04, 0.04, 0.04, 1),
+    "education":    (0.90, 0.07, 0.06, 0.06, 0.05, 0.06, 1),
+    "crop":         (0.76, 0.38, 0.18, 0.28, 0.22, 0.16, 0),
+    "blur":         (0.70, 0.30, 0.25, 0.35, 0.28, 0.55, 0),
+    "manipulated":  (0.63, 0.55, 0.42, 0.60, 0.48, 0.38, 0),
+    "deepfake":     (0.52, 0.72, 0.60, 0.78, 0.82, 0.65, 0),
+    "adversarial":  (0.48, 0.80, 0.70, 0.82, 0.78, 0.90, 0),
+    "news":         (0.80, 0.20, 0.18, 0.16, 0.14, 0.12, 0),
+    "entertainment":(0.66, 0.35, 0.30, 0.32, 0.28, 0.25, 0),
+    "scam":         (0.62, 0.50, 0.45, 0.55, 0.50, 0.48, 0),
+    "insufficient": (0.53, 0.28, 0.24, 0.26, 0.22, 0.20, 0),
+}
+
+
+def features_from_scenario(scenario: str, similarity: float, seed: int = 0) -> MLFeatures:
+    """Generate realistic ML features for a scenario (demo / simulation mode)."""
+    profile = _PROFILES.get(scenario, _PROFILES["manipulated"])
+    rng = random.Random(seed ^ hash(scenario))
+
+    def jitter(v: float, spread: float = 0.08) -> float:
+        return max(0.0, min(1.0, v + rng.uniform(-spread, spread)))
+
+    return MLFeatures(
+        match_score=jitter(similarity, 0.06),
+        spatial_diff=jitter(profile[1]),
+        color_diff=jitter(profile[2]),
+        frame_diff=jitter(profile[3]),
+        temporal_diff=jitter(profile[4]),
+        noise_score=jitter(profile[5]),
+        watermark_detected=profile[6],
+    )
