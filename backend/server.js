@@ -18,6 +18,7 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 // ── CORS: allow Vercel frontend + localhost ────────────────────────────
 const ALLOWED_ORIGINS = [
+  'https://verimedia-ai-jade.vercel.app',
   'https://veri-media-ai-xi.vercel.app',
   'http://localhost:3000',
   'http://localhost:5500',
