@@ -25,13 +25,10 @@ const ALLOWED_ORIGINS = [
   'http://127.0.0.1:5500',
 ];
 app.use(cors({
-  origin: (origin, cb) => {
-    // allow requests with no origin (Postman, server-to-server)
-    if (!origin || ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
-    cb(new Error(`CORS blocked: ${origin}`));
-  },
-  methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  origin: '*', // Allow all origins (or specify your frontend URL)
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'anthropic-version', 'x-api-key'],
+  credentials: true
 }));
 app.use(express.json({ limit: '2mb' }));
 
