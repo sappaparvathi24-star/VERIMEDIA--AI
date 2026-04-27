@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <!-- Add this in the <head> section of index.html -->
-<link rel="icon" type="image/x-icon" href="assets/favicon.ico">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛡️</text></svg>">
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231e293b'/><text x='50%25' y='56%25' font-family='monospace' font-size='18' font-weight='bold' fill='%2338bdf8' text-anchor='middle' dominant-baseline='middle'>V</text></svg>">
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
@@ -2115,7 +2115,14 @@ html,body{height:100%;font-family:var(--font);background:var(--bg);color:var(--t
 
 </div>
 </div>
-
+<!-- ✅ Gemini AI SDK -->
+<script type="importmap">
+{
+  "imports": {
+    "@google/generative-ai": "https://esm.run/@google/generative-ai"
+  }
+}
+</script>
 <script>
 // ── CONFIG ──────────────────────────────────────────────────────────
 const VERIMEDIA_API_URL='https://verimedia-ai-backend.onrender.com/analyze';
@@ -7808,7 +7815,352 @@ END EVERY RESPONSE WITH:
   console.log('[VeriMedia Assistant] Initialized · Powered by Gemini');
 })();
 </script>
-  
+  <!-- ============================================================
+     VERIMEDIA AI — FULL GEMINI INTEGRATION
+     Powers: Assistant · Detection · DMCA Generation
+============================================================ -->
+<script type="module">
+import { GoogleGenerativeAI } from "@google/generative-ai";
+
+// 🔑 YOUR API KEY
+const GEMINI_API_KEY = "YOUR_GEMINI_API_KEY_HERE";
+
+const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+// ─────────────────────────────────────────────────────
+// GEMINI SERVICE — all 3 features in one object
+// ─────────────────────────────────────────────────────
+window.VeriMediaAI = {
+
+  // ── 1. DETECTION & THREAT ANALYSIS ──────────────────
+  async analyzeContent(data) {
+    const {
+      platform = "Unknown",
+      similarity = 0,
+      integrity = 0,
+      mlLabel = "UNKNOWN",
+      spreadRisk = 0,
+      contentType = "general",
+      caption = ""
+    } = data;
+
+    const prompt = `
+You are VeriMedia AI — an expert in digital media forensics and IP enforcement.
+
+Analyze this content detection result and return a structured enforcement decision.
+
+INPUT DATA:
+- Platform: ${platform}
+- Content Type: ${contentType}
+- Caption: "${caption}"
+- Similarity Score: ${similarity} (0–1 scale, higher = more similar to original)
+- Integrity Score: ${integrity} (0–1 scale, higher = less tampered)
+- ML Classification: ${mlLabel} (SAFE / SUSPICIOUS / TAMPERED)
+- Viral Spread Risk: ${spreadRisk}%
+
+DECISION RULES:
+- similarity ≥ 0.75 AND integrity ≥ 0.75 → ALLOW
+- similarity 0.40–0.75 OR mixed signals → REVIEW REQUIRED  
+- similarity < 0.40 OR integrity < 0.40 → TAKEDOWN
+- face anomaly OR deepfake detected → EMERGENCY TAKEDOWN
+- similarity < 0.30 AND spreadRisk > 85 → EMERGENCY TAKEDOWN
+
+Respond ONLY in valid JSON, no extra text:
+{
+  "decision": "ALLOW | REVIEW REQUIRED | TAKEDOWN | EMERGENCY TAKEDOWN",
+  "confidence": 0.0,
+  "threat_type": "none | unauthorized_reuse | deepfake | manipulation | attribution_missing",
+  "reasoning": "2-3 sentence professional explanation",
+  "enforcement_action": "none | attribution_required | dmca_notice | emergency_dmca",
+  "legal_basis": "relevant legal citation or empty string",
+  "risk_label": "LOW | MEDIUM | HIGH | CRITICAL"
+}`;
+
+    try {
+      const result = await model.generateContent(prompt);
+      const text = result.response.text().replace(/```json|```/g, "").trim();
+      const parsed = JSON.parse(text);
+
+      // Update the UI with the result
+      updateDecisionUI(parsed);
+      return parsed;
+    } catch (err) {
+      console.error("[VeriMedia] Detection error:", err);
+      return {
+        decision: "REVIEW REQUIRED",
+        confidence: 0.5,
+        threat_type: "unknown",
+        reasoning: "AI analysis unavailable. Manual review recommended.",
+        enforcement_action: "none",
+        legal_basis: "",
+        risk_label: "MEDIUM"
+      };
+    }
+  },
+
+  // ── 2. DMCA REPORT GENERATION ────────────────────────
+  async generateDMCA(data) {
+    const {
+      platform = "Unknown Platform",
+      username = "Unknown Account",
+      contentUrl = "URL in evidence package",
+      originalOwner = "Rights Holder",
+      similarityScore = 0,
+      caseId = "VM-000",
+      handle = ""
+    } = data;
+
+    const today = new Date().toLocaleDateString("en-US", {
+      year: "numeric", month: "long", day: "numeric"
+    });
+
+    const prompt = `
+You are a legal document assistant for VeriMedia AI, specializing in DMCA enforcement.
+
+Generate a complete, professional DMCA Section 512(c) takedown notice.
+
+CASE DETAILS:
+- Date: ${today}
+- Case ID: ${caseId}
+- Platform: ${platform}
+- Infringing Account: ${username}
+- Content URL: ${contentUrl}
+- Original Rights Holder: ${originalOwner}
+- AI Similarity Match: ${Math.round(similarityScore * 100)}%
+- Reported by: ${handle ? "@" + handle : "Anonymous User"}
+
+Write a complete formal DMCA notice that includes:
+1. Header with case reference and date
+2. Identification of the copyrighted work being infringed
+3. Description of the infringing material and its location
+4. Statement of good faith belief
+5. Statement of accuracy under penalty of perjury
+6. Rights holder contact information (use placeholder brackets)
+7. Electronic signature line
+8. Instructions for the platform on required actions
+
+Format as a ready-to-send legal document. Be formal and thorough.`;
+
+    try {
+      const result = await model.generateContent(prompt);
+      const report = result.response.text();
+
+      // Show in the DMCA modal
+      const preview = document.getElementById("dmca-preview") ||
+                      document.querySelector(".dmca-preview") ||
+                      document.querySelector("[class*='dmca'][class*='preview']");
+      if (preview) preview.innerText = report;
+
+      return report;
+    } catch (err) {
+      console.error("[VeriMedia] DMCA error:", err);
+      return "Error generating DMCA report. Please try again.";
+    }
+  },
+
+  // ── 3. ASSISTANT CHATBOT ─────────────────────────────
+  _chat: null,
+
+  _initChat() {
+    const chatModel = genAI.getGenerativeModel({
+      model: "gemini-1.5-flash",
+      systemInstruction: `You are VeriMedia Assistant — an expert AI for digital media 
+verification, copyright enforcement, and deepfake detection built into VeriMedia AI v24.
+
+You help users with:
+- Understanding detection results, trust scores, and similarity metrics
+- DMCA takedown procedures and filing guidance
+- Deepfake and manipulation analysis explanations
+- Content rights, IP law basics, and enforcement options
+- How the VeriMedia AI pipeline works (ResNet-18, cosine similarity, integrity scoring)
+- Interpreting case history and forensic analysis results
+
+Rules:
+- Be concise, professional, and helpful
+- Always clarify you are not a lawyer when giving legal info
+- If user attaches an image/video, analyze it for authenticity clues
+- Reference VeriMedia AI features naturally in your responses`
+    });
+
+    this._chat = chatModel.startChat({ history: [] });
+    console.log("[VeriMedia Assistant] Initialized · Powered by Gemini ✅");
+  },
+
+  async chat(userMessage, file = null) {
+    if (!this._chat) this._initChat();
+
+    try {
+      let parts = [{ text: userMessage }];
+
+      // Handle file attachment (image analysis)
+      if (file) {
+        const base64 = await this._fileToBase64(file);
+        parts = [
+          { inlineData: { data: base64, mimeType: file.type } },
+          { text: userMessage || "Analyze this media for authenticity and manipulation." }
+        ];
+      }
+
+      const result = await this._chat.sendMessage(parts);
+      return result.response.text();
+    } catch (err) {
+      console.error("[VeriMedia] Chat error:", err);
+      return "I'm having trouble connecting right now. Please try again in a moment.";
+    }
+  },
+
+  _fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result.split(",")[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+};
+
+// ─────────────────────────────────────────────────────
+// UI HELPERS — update your existing HTML elements
+// ─────────────────────────────────────────────────────
+function updateDecisionUI(result) {
+  const decisionColors = {
+    "ALLOW": "#00ff88",
+    "REVIEW REQUIRED": "#ffaa00",
+    "TAKEDOWN": "#ff4444",
+    "EMERGENCY TAKEDOWN": "#ff0000"
+  };
+
+  // Try to update decision badge
+  const decisionEl = document.querySelector(
+    "[class*='decision'], [class*='verdict'], #final-decision, #decision"
+  );
+  if (decisionEl) {
+    decisionEl.textContent = result.decision;
+    decisionEl.style.color = decisionColors[result.decision] || "#ffffff";
+  }
+
+  // Try to update reasoning text
+  const reasonEl = document.querySelector(
+    "[class*='reasoning'], [class*='explanation'], #reasoning"
+  );
+  if (reasonEl) reasonEl.textContent = result.reasoning;
+
+  // Try to update confidence / trust score
+  const trustEl = document.querySelector(
+    "[class*='trust'], [class*='confidence'], #trust-score"
+  );
+  if (trustEl) trustEl.textContent = Math.round(result.confidence * 100) + "%";
+
+  console.log("[VeriMedia] AI Decision:", result.decision, "| Confidence:", result.confidence);
+}
+
+// ─────────────────────────────────────────────────────
+// WIRE UP ASSISTANT CHAT UI
+// ─────────────────────────────────────────────────────
+function initAssistantUI() {
+  // Find send button in the assistant widget
+  const sendBtn = document.querySelector(
+    "[class*='send'], [class*='submit'], #assistant-send, button[class*='chat']"
+  );
+  const inputEl = document.querySelector(
+    "[class*='chat-input'], [class*='message-input'], #assistant-input, textarea[class*='assistant']"
+  );
+  const outputEl = document.querySelector(
+    "[class*='chat-output'], [class*='chat-messages'], #assistant-output"
+  );
+  const fileInput = document.querySelector(
+    "input[type='file'][class*='assistant'], #assistant-file, [class*='attach']"
+  );
+
+  if (sendBtn && inputEl) {
+    sendBtn.addEventListener("click", async () => {
+      const msg = inputEl.value.trim();
+      const file = fileInput?.files?.[0] || null;
+      if (!msg && !file) return;
+
+      // Show user message
+      if (outputEl) {
+        outputEl.innerHTML += `<div style="text-align:right;margin:8px 0;color:#aaa">${msg}</div>`;
+      }
+      inputEl.value = "";
+      if (sendBtn) sendBtn.disabled = true;
+
+      // Get Gemini response
+      const reply = await window.VeriMediaAI.chat(msg, file);
+
+      // Show assistant reply
+      if (outputEl) {
+        outputEl.innerHTML += `<div style="text-align:left;margin:8px 0;color:#00ff88">🛡️ ${reply}</div>`;
+        outputEl.scrollTop = outputEl.scrollHeight;
+      } else {
+        alert("VeriMedia Assistant: " + reply);
+      }
+
+      if (sendBtn) sendBtn.disabled = false;
+    });
+
+    // Allow Enter key to send
+    inputEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendBtn.click();
+      }
+    });
+  }
+}
+
+// ─────────────────────────────────────────────────────
+// WIRE UP DMCA BUTTON
+// ─────────────────────────────────────────────────────
+function initDMCAButton() {
+  const dmcaBtn = document.querySelector(
+    "button[class*='dmca'], button[class*='takedown'], #generate-dmca, [class*='generate'][class*='report']"
+  );
+
+  if (dmcaBtn) {
+    dmcaBtn.addEventListener("click", async () => {
+      dmcaBtn.textContent = "⏳ Generating...";
+      dmcaBtn.disabled = true;
+
+      const report = await window.VeriMediaAI.generateDMCA({
+        platform: window._currentPlatform || "YouTube",
+        username: window._currentUsername || "@unknown",
+        contentUrl: window._currentContentUrl || "",
+        originalOwner: window._currentOwner || "Rights Holder",
+        similarityScore: window._currentSimilarity || 0.85,
+        caseId: "VM-" + Date.now(),
+        handle: window._currentHandle || ""
+      });
+
+      dmcaBtn.textContent = "📋 Generate Takedown Report";
+      dmcaBtn.disabled = false;
+
+      // Put report in preview area
+      const preview = document.querySelector(
+        "#dmca-preview, [class*='dmca-preview'], [class*='report-preview']"
+      );
+      if (preview) preview.innerText = report;
+    });
+  }
+}
+
+// ─────────────────────────────────────────────────────
+// AUTO-INIT EVERYTHING ON PAGE LOAD
+// ─────────────────────────────────────────────────────
+window.addEventListener("DOMContentLoaded", () => {
+  window.VeriMediaAI._initChat();
+  initAssistantUI();
+  initDMCAButton();
+  console.log("[VeriMedia] ✅ Gemini fully integrated — Assistant · Detection · DMCA");
+});
+
+// Make analyzeContent callable from your existing demo buttons
+// Usage anywhere in your code: VeriMediaAI.analyzeContent({...})
+window.runGeminiDetection = async (scenarioData) => {
+  return await window.VeriMediaAI.analyzeContent(scenarioData);
+};
+</script>
 
 </body>
 </html>
