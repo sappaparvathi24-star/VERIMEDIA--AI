@@ -38,6 +38,9 @@ app.use(express.json({ limit: '2mb' }));
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', service: 'VeriMedia AI Backend', gemini: 'connected' });
 });
+app.get('/', (_req, res) => {
+  res.json({ status: '✅ VeriMedia AI Backend Running', gemini: 'connected' });
+});
 
 // ── POST /analyze ─────────────────────────────────────────────────────
 /**
@@ -254,9 +257,7 @@ function decisionAction(decision, platform) {
 function deriveRisk(decision) {
   return { ALLOW: 'Low', REVIEW: 'Moderate', TAKEDOWN: 'High', EMERGENCY_TAKEDOWN: 'Critical' }[decision] || 'Moderate';
 }
-app.get('/', (_req, res) => {
-  res.json({ status: '✅ VeriMedia AI Backend Running', gemini: 'connected' });
-});
+
 // ── Start ─────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`✅  VeriMedia AI backend running → http://localhost:${PORT}`);
