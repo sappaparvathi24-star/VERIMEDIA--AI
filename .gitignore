@@ -20,24 +20,7 @@ frontend/dist/
 frontend/.vite/
 *.local
 
-# Environment
-.env
-.env.*
-!.env.example
-
-# Docker
-*.log
-
-# Models (large files)
-backend/models/*.pkl
-backend/models/*.onnx
-backend/models/*.pt
-
-# OS
-.DS_Store
-Thumbs.db
-*.swp
-*.swo# Environment variables
+ Environment variables
 backend/.env
 .env
 
