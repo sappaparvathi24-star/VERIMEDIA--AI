@@ -20,18 +20,21 @@ frontend/dist/
 frontend/.vite/
 *.local
 
- Environment variables
-backend/.env
+# Environment
 .env
+.env.*
+!.env.example
 
-# Dependencies
-backend/node_modules/
-node_modules/
-
-# Logs
+# Docker
 *.log
-npm-debug.log*
 
-# OS files
+# Models (large files)
+backend/models/*.pkl
+backend/models/*.onnx
+backend/models/*.pt
+
+# OS
 .DS_Store
 Thumbs.db
+*.swp
+*.swo#
