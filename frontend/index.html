@@ -2116,6 +2116,7 @@ html,body{height:100%;font-family:var(--font);background:var(--bg);color:var(--t
 <script>
 // ── CONFIG ──────────────────────────────────────────────────────────
 const VERIMEDIA_API_URL='https://api.anthropic.com/v1/messages';
+   window.VERIMEDIA_BACKEND_URL = 'https://verimedia-ai-backend.onrender.com';
 // ── API KEY MANAGEMENT ──────────────────────────────────────────────────────
 let _apiKey = localStorage.getItem('vm_api_key') || '';
 function getApiKey(){ return _apiKey; }
@@ -7804,5 +7805,7 @@ END EVERY RESPONSE WITH:
   console.log('[VeriMedia Assistant] Initialized · Powered by Gemini');
 })();
 </script>
+  <script src="gemini-integration.js"></script>
+
 </body>
 </html>
