@@ -37,4 +37,18 @@ backend/models/*.pt
 .DS_Store
 Thumbs.db
 *.swp
-*.swo
+*.swo# Environment variables
+backend/.env
+.env
+
+# Dependencies
+backend/node_modules/
+node_modules/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
