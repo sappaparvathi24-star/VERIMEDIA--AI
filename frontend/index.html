@@ -2121,10 +2121,10 @@ html,body{height:100%;font-family:var(--font);background:var(--bg);color:var(--t
 const VERIMEDIA_API_URL='https://verimedia-ai-backend.onrender.com/analyze';
    window.VERIMEDIA_BACKEND_URL = 'https://verimedia-ai-backend.onrender.com';
 // ── API KEY MANAGEMENT ──────────────────────────────────────────────────────
-let _apiKey = localStorage.getItem('vm_api_key') || '';
-function getApiKey(){ return _apiKey; }
-function setApiKey(k){ _apiKey = k.trim(); if(k.trim()) localStorage.setItem('vm_api_key',k.trim()); else localStorage.removeItem('vm_api_key'); }
-function showApiKeyModal(){
+let _apiKey = '';
+function getApiKey(){ return localStorage.getItem('vm_gemini_key') || window.GEMINI_API_KEY || ''; }
+function setApiKey(k){ localStorage.setItem('vm_gemini_key', k.trim()); }
+function showApiKeyModal() /* Gemini key managed by gemini-patch.js */ {
   if(document.getElementById('apiKeyOverlay')) return;
   const ov = document.createElement('div');
   ov.id='apiKeyOverlay';
@@ -2994,16 +2994,20 @@ function downloadReport() {
 
 async function callVeriMediaAI(prompt,maxT=700){
   setAIStatus('processing');
-  const key=getApiKey();
-  const headers={'Content-Type':'application/json','anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'};
-  if(key) headers['x-api-key']=key;
-  const r=await fetch(VERIMEDIA_API_URL,{method:'POST',headers,body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:maxT,messages:[{role:'user',content:prompt}]})});
+  // Routes to backend /chat which calls Gemini server-side — no Anthropic headers
+  const r=await fetch('https://verimedia-ai-backend.onrender.com/chat',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({
+      messages:[{role:'user',content:prompt}],
+      max_tokens:maxT
+    })
+  });
   if(!r.ok)throw new Error('API '+r.status);
   const d=await r.json();
   setAIStatus('success');
-  return d.content.map(b=>b.type==='text'?b.text:'').join('');
+  return (d.content||[]).map(b=>b.type==='text'?b.text:'').join('');
 }
-
 function setAIStatus(state){
   const pill=document.getElementById('aiStatusPill');
   const dot=document.getElementById('aiStatusDot');
@@ -7808,7 +7812,8 @@ END EVERY RESPONSE WITH:
   console.log('[VeriMedia Assistant] Initialized · Powered by Gemini');
 })();
 </script>
-  
+  <meta name="gemini-key" content="YOUR_GEMINI_API_KEY_HERE">
+<script src="gemini-patch.js"></script>
 
 </body>
 </html>
