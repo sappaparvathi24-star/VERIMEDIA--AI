@@ -64,7 +64,7 @@
       },
     };
 
-    const url = `${GEMINI_BASE}/${GEMINI_MODEL}:generateContent?key=${key}`;
+    const url = `${BACKEND_URL}/analyze`;
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
