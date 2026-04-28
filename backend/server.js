@@ -19,17 +19,26 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 // ── CORS: allow Vercel frontend + localhost ────────────────────────────
 const ALLOWED_ORIGINS = [
   'https://verimedia-ai-jade.vercel.app',
-  'https://veri-media-ai-xi.vercel.app',
+  'https://verimedia-m43u8ruee-sappaparvathi24-5741s-projects.vercel.app',
   'http://localhost:3000',
   'http://localhost:5500',
   'http://127.0.0.1:5500',
 ];
 app.use(cors({
-  origin: '*', // Allow all origins (or specify your frontend URL)
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'anthropic-version', 'x-api-key'],
-  credentials: true
+  origin: (origin, cb) => {
+    if (!origin || ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
+    cb(new Error(`CORS blocked: ${origin}`));
+  },
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'anthropic-dangerous-direct-browser-access',
+    'anthropic-version',
+    'x-api-key'
+  ],
 }));
+app.options('*', cors());
 app.use(express.json({ limit: '2mb' }));
 
 // ── Health check ──────────────────────────────────────────────────────
