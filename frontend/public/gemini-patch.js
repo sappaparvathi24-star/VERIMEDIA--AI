@@ -243,50 +243,41 @@ Cite exact numbers. Explain the primary risk. Give one clear next action. Plain 
   // ─── VMA Assistant widget ────────────────────────────────────────────────
   // Patches the existing assistant to use Gemini directly (not Anthropic)
   window._vmaAssistantHistory = [];
-
-  window._vmaGeminiChat = async function (userText, fileB64, fileMime) {
-    const parts = [];
-    if (fileB64 && fileMime && fileMime.startsWith("image/")) {
-      parts.push({ inlineData: { mimeType: fileMime, data: fileB64 } });
-    }
-    parts.push({ text: userText });
-
-    const key = requireGeminiKey();
-    const assistantSystem = `You are VeriMedia Assistant, an expert in media authenticity, deepfake detection, and DMCA enforcement. Be concise and actionable. Use bullet points for lists.`;
-
-    const body = {
-      system_instruction: { parts: [{ text: assistantSystem }] },
-      contents: [
-        ...(window._vmaAssistantHistory || []),
-        { role: "user", parts },
-      ],
-      generationConfig: { temperature: 0.4, maxOutputTokens: 1024 },
-    };
-
-    const url = `${GEMINI_BASE}/${GEMINI_MODEL}:generateContent?key=${key}`;
-    const res = await fetch(url, {
+window._vmaGeminiChat = async function (userText, fileB64, fileMime) {
+  try {
+    const res = await fetch(`${BACKEND_URL}/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify({
+        messages: [
+          ...(window._vmaAssistantHistory || []),
+          { role: "user", content: userText }
+        ],
+        system_prompt: "You are VeriMedia Assistant, an expert in media authenticity, deepfake detection, and DMCA enforcement. Be concise and actionable. Use bullet points for lists.",
+        max_tokens: 1024,
+      }),
     });
 
     if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err?.error?.message || `HTTP ${res.status}`);
+      if (res.status === 429) throw new Error("⏳ Rate limit — please wait 30 seconds and try again.");
+      throw new Error(`Backend error ${res.status}`);
     }
 
     const data = await res.json();
-    const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text || "No response.";
+    const reply = data?.reply || data?.text || data?.summary || "No response.";
 
-    // Update conversation history
     window._vmaAssistantHistory = [
       ...(window._vmaAssistantHistory || []),
-      { role: "user", parts: [{ text: userText }] },
-      { role: "model", parts: [{ text: reply }] },
+      { role: "user", content: userText },
+      { role: "assistant", content: reply }
     ];
 
     return reply;
-  };
+
+  } catch (e) {
+    throw e;
+  }
+};
 
   // Patch the existing vmaSend to use Gemini
   window._vmaOrigSend = window.vmaSend;
@@ -358,3 +349,18 @@ Cite exact numbers. Explain the primary risk. Give one clear next action. Plain 
 
   init();
 })();
+app.post('/chat', async (req, res) => {
+  const { messages = [], system_prompt = '', max_tokens = 1024 } = req.body;
+  try {
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const lastMsg = messages[messages.length - 1]?.content || '';
+    const result = await model.generateContent(
+      system_prompt ? `${system_prompt}\n\nUser: ${lastMsg}` : lastMsg
+    );
+    const reply = result.response.text().trim();
+    return res.json({ reply });
+  } catch (err) {
+    if (err.status === 429) return res.status(429).json({ error: 'Rate limit exceeded' });
+    return res.json({ reply: 'I am unable to respond right now. Please try again shortly.' });
+  }
+});
