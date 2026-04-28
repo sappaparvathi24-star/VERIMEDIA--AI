@@ -71,10 +71,13 @@
       body: JSON.stringify(body),
     });
 
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err?.error?.message || `Gemini HTTP ${res.status}`);
-    }
+ if (!res.ok) {
+  const err = await res.json().catch(() => ({}));
+  if (res.status === 429) {
+    throw new Error("Rate limit reached — please wait 30 seconds and try again.");
+  }
+  throw new Error(err?.error?.message || `HTTP ${res.status}`);
+}
 
     const data = await res.json();
     return data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
