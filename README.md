@@ -1,316 +1,331 @@
 # 🛡️ VeriMedia AI
 
-> **AI-powered media intelligence platform** — Real-time unauthorized content detection, deepfake analysis, manipulation forensics, and automated DMCA enforcement across social platforms.
+> **AI-powered media rights enforcement platform** — Real-time unauthorized content detection, deepfake analysis, manipulation forensics, and automated DMCA enforcement powered by Google Gemini.
 
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Vercel-black?logo=vercel)](https://verimedia-ai-jade.vercel.app/)
+[![Backend](https://img.shields.io/badge/Backend-Render-46E3B7?logo=render&logoColor=white)](https://verimedia-ai-backend.onrender.com/health)
+[![Gemini](https://img.shields.io/badge/AI-Gemini%202.0%20Flash-4285F4?logo=google&logoColor=white)](https://aistudio.google.com)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Python 3.11+](https://img.shields.io/badge/Python-3.11+-brightgreen.svg)](https://python.org)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.111-009688.svg)](https://fastapi.tiangolo.com)
-[![React 18](https://img.shields.io/badge/React-18-61DAFB.svg)](https://react.dev)
-[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED.svg)](https://docker.com)
 
 ---
 
-## 🏆 Hackathon Submission
+## 🔗 Live Links
 
-**Problem**: Content creators and rights holders lose billions annually to unauthorized media reuse, deepfakes, and IP violations across social platforms. Manual detection is too slow; existing tools miss AI-generated manipulations.
-
-**Solution**: VeriMedia AI is a full-stack platform that combines:
-- **Perceptual fingerprinting** — identify original assets even after heavy manipulation
-- **6-signal ML pipeline** — detect spatial, temporal, noise, color, face, and lipsync anomalies
-- **Claude AI reasoning** — evidence-backed enforcement decisions with legal citations
-- **Automated DMCA engine** — generate and file takedown notices in seconds
-- **Viral propagation tracking** — catch content before it spreads
+| | URL |
+|---|---|
+| **Frontend** | https://verimedia-ai-jade.vercel.app/ |
+| **Backend health** | https://verimedia-ai-backend.onrender.com/health |
+| **API — analyze** | `POST https://verimedia-ai-backend.onrender.com/analyze` |
+| **API — DMCA** | `POST https://verimedia-ai-backend.onrender.com/dmca-reasoning` |
 
 ---
 
-## 🎬 Demo
+## 🏆 What It Does
 
-```
-http://localhost:5173
-```
+Content creators and rights holders lose billions annually to unauthorized media reuse, deepfakes, and IP violations. Manual detection is too slow; existing tools miss AI-generated manipulations.
 
-Try scenarios: **Normal Share** → **Deepfake** → **Crop Attack** → **News Attribution** → **Adversarial Noise**
+VeriMedia AI solves this with a **6-signal detection pipeline** + **Gemini AI reasoning** that runs in under 2 seconds:
+
+- 🔍 **Perceptual fingerprinting** — identifies originals even after cropping, compression, or recoloring
+- 🧠 **6-signal ML classifier** — detects spatial, temporal, noise, color, face landmark, and lipsync anomalies
+- ⚡ **Gemini 2.0 Flash** — produces evidence-backed enforcement decisions with plain-English reasoning
+- 📋 **Automated DMCA engine** — generates formal takedown notices in seconds
+- 📡 **Viral propagation tracker** — catches content before it spreads
 
 ---
 
 ## 🏗️ Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                         VeriMedia AI v23                             │
-├─────────────────┬───────────────────────────┬───────────────────────┤
-│   Frontend      │        Backend (FastAPI)   │     Infrastructure    │
-│                 │                            │                       │
-│  React 18 + TS  │  ┌─ Detection Service     │  PostgreSQL + pgvector│
-│  Vite 5         │  │   · Perceptual hash     │  Redis (queue/cache)  │
-│  Zustand        │  │   · Embedding search    │  MinIO (S3 assets)    │
-│  TailwindCSS    │  ├─ ML Pipeline           │  Nginx (reverse proxy)│
-│  Canvas API     │  │   · 6-signal classifier │  Docker Compose       │
-│  WebSocket      │  │   · Trust scoring       │                       │
-│                 │  ├─ Claude AI Service     │                       │
-│                 │  │   · Threat analysis     │                       │
-│                 │  │   · DMCA generation     │                       │
-│                 │  ├─ Enforcement Engine    │                       │
-│                 │  │   · Case management     │                       │
-│                 │  └─ Viral Intelligence    │                       │
-└─────────────────┴───────────────────────────┴───────────────────────┘
+┌──────────────────────────────┐        ┌──────────────────────────────────┐
+│      Frontend  (Vercel)      │        │       Backend  (Render)           │
+│                              │        │                                   │
+│  index.html                  │        │  Node.js 18 + Express             │
+│  gemini-integration.js       │──POST─►│                                   │
+│                              │        │  POST  /analyze                   │
+│  · 6-signal detection UI     │        │  POST  /dmca-reasoning            │
+│  · Live pipeline log         │◄─JSON──│  GET   /health                    │
+│  · DMCA notice generator     │        │                                   │
+│  · Evidence export (PDF)     │        │  @google/generative-ai SDK        │
+│  · AI assistant chatbot      │        │  GEMINI_API_KEY  ← server only    │
+└──────────────────────────────┘        └──────────────────────────────────┘
 ```
 
----
-
-## ⚡ Quick Start (3 commands)
-
-```bash
-git clone https://github.com/your-org/verimedia.git && cd verimedia
-cp .env.example .env           # Add your ANTHROPIC_API_KEY
-docker compose up --build -d   # Starts everything
-```
-
-**Open:** http://localhost (frontend) · http://localhost:8000/docs (API docs)
+> **Security:** The Gemini API key **never reaches the browser**. Every Gemini call is made server-side by Express. The frontend only sends `Content-Type: application/json` — no auth headers, no secrets.
 
 ---
 
 ## 📁 Repository Structure
 
 ```
-verimedia/
-├── 📂 backend/                   Python FastAPI backend
-│   ├── app/
-│   │   ├── api/                  REST API route handlers
-│   │   │   ├── detection.py      POST /detect — full pipeline
-│   │   │   ├── verification.py   POST /verify — ownership & integrity
-│   │   │   ├── enforcement.py    POST /enforce/dmca — DMCA notices
-│   │   │   ├── cases.py          GET/PATCH /cases — case management
-│   │   │   └── health.py         GET /health
-│   │   ├── services/             Business logic
-│   │   │   ├── fingerprint.py    Perceptual hash + similarity
-│   │   │   ├── ml_pipeline.py    6-signal ML classifier
-│   │   │   ├── integrity.py      9-signal integrity analysis
-│   │   │   ├── claude_ai.py      Anthropic Claude integration
-│   │   │   ├── dmca.py           DMCA notice generation
-│   │   │   ├── viral.py          Propagation tracking
-│   │   │   └── trust.py          Unified trust scoring
-│   │   ├── models/               Data models
-│   │   │   ├── schemas.py        Pydantic request/response models
-│   │   │   └── database.py       SQLAlchemy ORM + pgvector
-│   │   ├── core/                 App config, security, middleware
-│   │   │   ├── config.py         Environment settings
-│   │   │   ├── security.py       API key auth
-│   │   │   └── middleware.py     CORS, rate limiting, logging
-│   │   └── utils/
-│   │       ├── crypto.py         AES-256 watermarking
-│   │       └── logger.py         Structured logging
-│   ├── tests/                    Pytest test suite (70%+ coverage)
-│   ├── alembic/                  DB migrations
-│   ├── requirements.txt
-│   └── Dockerfile
+VERIMEDIA--AI/
 │
-├── 📂 frontend/                  React + TypeScript SPA
-│   ├── src/
-│   │   ├── components/
-│   │   │   ├── layout/           Nav, Ticker, ControlBar, Sidebar
-│   │   │   ├── panels/           PropagationGraph, FeedPanel, ForensicPanel
-│   │   │   ├── modals/           EvidenceModal, DMCAModal, HeroOverlay
-│   │   │   └── ui/               Cards, Badges, Charts, Buttons
-│   │   ├── pages/Dashboard.tsx   Main 3-panel dashboard
-│   │   ├── hooks/                useDetection, useWebSocket, useStore
-│   │   ├── services/api.ts       Typed API client (all endpoints)
-│   │   ├── store/index.ts        Zustand global state
-│   │   └── types/index.ts        Full TypeScript type definitions
-│   ├── public/
-│   ├── index.html
-│   ├── vite.config.ts
-│   ├── tailwind.config.ts
-│   └── Dockerfile
+├── 📂 frontend/                    Static HTML/CSS/JS — deployed to Vercel
+│   ├── index.html                  Entire frontend app (detection UI, pipeline, DMCA)
+│   ├── gemini-integration.js       AI assistant chatbot widget (source)
+│   └── public/
+│       └── gemini-integration.js   Copy served by Vite build output
 │
-├── 📂 infra/
-│   ├── nginx/nginx.conf          Reverse proxy + SSL termination
-│   └── docker/                   Production compose override
+├── 📂 backend/                     Node.js Express API — deployed to Render
+│   ├── server.js                   All endpoints + Gemini SDK calls
+│   ├── package.json                express · @google/generative-ai · cors · dotenv
+│   ├── .env                        ⚠️ LOCAL ONLY — never committed
+│   └── .env.example                Safe template — commit this
 │
-├── 📂 .github/
-│   └── workflows/ci.yml          CI: lint → test → build → deploy
-│
-├── 📂 docs/
-│   ├── API.md                    Full API reference
-│   ├── ARCHITECTURE.md           System design deep-dive
-│   └── DEPLOYMENT.md             Production deployment guide
-│
-├── docker-compose.yml            Development stack
-├── docker-compose.prod.yml       Production overrides
-├── .env.example                  All env vars documented
-└── Makefile                      Dev shortcuts
+├── render.yaml                     Render auto-deploy config
+├── vercel.json                     Vercel SPA routing config
+└── .gitignore                      Excludes .env, node_modules, dist
 ```
+
+---
+
+## ⚡ Quick Start
+
+**Prerequisites:** Node.js 18+ · [Free Gemini API key](https://aistudio.google.com/app/apikey)
+
+### 1 — Run the backend locally
+
+```bash
+git clone https://github.com/sappaparvathi24-star/VERIMEDIA--AI.git
+cd VERIMEDIA--AI/backend
+
+npm install
+
+# Create your local env file (never commit this)
+cp .env.example .env
+# Edit .env and paste your GEMINI_API_KEY
+
+npm start
+# ✅  VeriMedia AI backend → http://localhost:3001
+# ✅  Health check         → http://localhost:3001/health
+```
+
+### 2 — Open the frontend
+
+```bash
+# Option A — open directly in browser
+open ../frontend/index.html
+
+# Option B — serve with a local static server
+cd ../frontend && npx serve .
+```
+
+The frontend auto-targets `http://localhost:3001` when running locally.
 
 ---
 
 ## 🔌 API Reference
 
-### Detection Pipeline
-```http
-POST /api/v1/detect
-Content-Type: application/json
+### `POST /analyze`
 
+Runs the full detection pipeline and returns a Gemini AI enforcement decision.
+
+**Request:**
+```json
 {
-  "platform": "YouTube",
-  "username": "@creator",
-  "caption": "Match highlights reel",
-  "content_type": "sports",
-  "scenario": "deepfake",
-  "media_url": "https://..."
+  "contentDescription": "Sports highlight reel posted on Instagram",
+  "matchScore": 0.87,
+  "integrityScore": 0.42,
+  "viralScore": 73,
+  "decision": "TAKEDOWN",
+  "platform": "Instagram",
+  "contentType": "sports",
+  "flags": ["low_integrity", "viral_spread"]
 }
 ```
 
-**Response includes:**
-- `similarity` — perceptual match score (0–1)
-- `ml` — 6-signal ML prediction (SAFE/SUSPICIOUS/TAMPERED)
-- `integrity` — 9-signal forensic integrity analysis
-- `ai_analysis` — Claude AI reasoning + enforcement decision
-- `propagation` — viral spread velocity + urgency
-- `case_id` — auto-generated if enforcement needed
-
-### DMCA Filing
-```http
-POST /api/v1/enforce/dmca
+**Response:**
+```json
+{
+  "summary": "87% visual match with critically low integrity (42%) confirms unauthorized distribution of manipulated sports content.",
+  "authenticity": "Manipulated",
+  "authenticityDetail": "Trust score 37% (match × integrity) falls below the 40% TAKEDOWN threshold.",
+  "confidence": 82,
+  "keyInsights": [
+    "87% match score — content is derived from the registered original",
+    "42% integrity score — significant post-processing or re-encoding detected",
+    "Viral score 73/100 — content is spreading rapidly across platforms"
+  ],
+  "whyThisResult": "High similarity combined with low integrity is the primary indicator of unauthorized reuse after manipulation.",
+  "riskLevel": "High",
+  "recommendedAction": "File DMCA takedown with Instagram and preserve the evidence package.",
+  "_meta": { "decision": "TAKEDOWN", "ai_source": "gemini" }
+}
 ```
-
-### Case Management
-```http
-GET    /api/v1/cases              # List all cases
-PATCH  /api/v1/cases/{id}         # Update status
-GET    /api/v1/cases/{id}/export  # Export evidence PDF
-```
-
-### Full docs: [docs/API.md](docs/API.md) · [/docs Swagger UI](http://localhost:8000/docs)
 
 ---
 
-## 🧠 How It Works
+### `POST /dmca-reasoning`
 
-### Detection Pipeline (1.4s end-to-end)
+Generates a formal DMCA takedown notice body (17 U.S.C. § 512(c)).
 
+**Request:**
+```json
+{
+  "caseId": "VM-ABC123",
+  "platform": "Instagram",
+  "user": "@infringer_handle",
+  "decision": "TAKEDOWN",
+  "trustScore": 0.37,
+  "matchScore": 0.87,
+  "integrityScore": 0.42,
+  "contentType": "sports"
+}
 ```
-Upload ──► Fingerprint ──► ML Classify ──► Integrity Check ──► Trust Score ──► Claude AI ──► Decision
-  │           │                │                  │                │              │
-  │      pHash + embed    6 signals:          9 signals:      unified score    threat type
-  │      cosine sim       spatial             JPEG artifact   risk_label       reasoning
-  │                       temporal            noise pattern   confidence       DMCA needed
-  │                       color shift         edge consist.
-  │                       frame var.          face landmark
-  │                       noise               lipsync
-  │                       watermark           metadata
+
+**Response:**
+```json
+{
+  "caseId": "VM-ABC123",
+  "body": "Dear Instagram Trust & Safety Team,\n\nPursuant to 17 U.S.C. § 512(c)...",
+  "ai_source": "gemini"
+}
 ```
-
-### Decision Logic
-
-| Similarity | Integrity | ML Label | Decision |
-|-----------|-----------|----------|----------|
-| ≥88% | >75% | SAFE | ✅ ALLOW |
-| ≥70% | ≥55% | SUSPICIOUS | 📋 ATTRIBUTION |
-| <60% | conflicting | any | ⚖️ REVIEW REQUIRED |
-| >75% | <40% | TAMPERED | 🔴 TAKEDOWN |
-| face_landmark >70% | any | TAMPERED | 🚨 EMERGENCY |
 
 ---
 
-## 🛠️ Development
+### `GET /health`
 
-```bash
-# Install dependencies
-make install
-
-# Run with hot reload
-make dev
-
-# Run tests
-make test
-
-# Lint + format
-make lint
-
-# Build for production
-make build
+```json
+{
+  "status": "ok",
+  "service": "VeriMedia AI",
+  "model": "gemini-2.0-flash",
+  "gemini": "connected"
+}
 ```
 
-### Makefile targets
+---
+
+## 🧠 Detection Pipeline
+
 ```
-make install    Install all deps (backend + frontend)
-make dev        Start dev servers (backend :8000, frontend :5173)
-make test       Run pytest + vitest
-make lint       ruff + eslint
-make build      Production Docker build
-make migrate    Run DB migrations
-make seed       Seed demo data
+User Input
+    │
+    ▼
+┌─ Step 1 ──────────────────────────────────────────────────────────┐
+│  Perceptual Fingerprinting                                         │
+│  pHash + cosine similarity  →  matchScore  (0 – 1)               │
+└───────────────────────────────────────────────────────────────────┘
+    │
+    ▼
+┌─ Step 2 ──────────────────────────────────────────────────────────┐
+│  6-Signal ML Classification                                        │
+│  spatial · temporal · color · noise · face_landmark · lipsync     │
+│  →  integrityScore  +  label  (SAFE / SUSPICIOUS / TAMPERED)     │
+└───────────────────────────────────────────────────────────────────┘
+    │
+    ▼
+┌─ Step 3 ──────────────────────────────────────────────────────────┐
+│  Trust Score                                                       │
+│  trustScore = matchScore × integrityScore                         │
+└───────────────────────────────────────────────────────────────────┘
+    │
+    ▼
+┌─ Step 4 ──────────────────────────────────────────────────────────┐
+│  Viral Propagation Tracking                                        │
+│  Cross-platform spread velocity  →  viralScore  (0 – 100)        │
+└───────────────────────────────────────────────────────────────────┘
+    │
+    ▼
+┌─ Step 5 ──────────────────────────────────────────────────────────┐
+│  Rule-Based Pre-Decision  (instant — shown while Gemini loads)    │
+└───────────────────────────────────────────────────────────────────┘
+    │
+    ▼
+┌─ Step 6 ──────────────────────────────────────────────────────────┐
+│  Gemini 2.0 Flash AI Reasoning                                     │
+│  Contextual analysis  →  plain-English summary + recommended action│
+└───────────────────────────────────────────────────────────────────┘
+    │
+    ▼
+  Final Decision  +  DMCA notice (if needed)
 ```
+
+### Decision Thresholds
+
+| Trust Score | Additional Condition | Decision |
+|:-----------:|----------------------|----------|
+| > 75% | — | ✅ **ALLOW** |
+| 40 – 75% | — | 📋 **REVIEW** |
+| < 40% | — | 🔴 **TAKEDOWN** |
+| < 30% | viral > 85 | 🚨 **EMERGENCY TAKEDOWN** |
+| any | face_landmark > 70% | 🚨 **EMERGENCY TAKEDOWN** |
+
+---
+
+## 🚀 Deployment
+
+### Backend → Render
+
+1. [render.com](https://render.com) → **New → Web Service** → connect this repo
+2. Settings:
+
+   | Field | Value |
+   |-------|-------|
+   | Root directory | `backend` |
+   | Build command | `npm install` |
+   | Start command | `node server.js` |
+
+3. Environment variables (Render dashboard → **Environment**):
+
+   ```
+   GEMINI_API_KEY = your_key_here
+   PORT           = 3001
+   ```
+
+4. Deploy — you get `https://your-service.onrender.com`
+5. Update `VERIMEDIA_BACKEND` in `frontend/index.html` to your Render URL if it differs from the default.
+
+---
+
+### Frontend → Vercel
+
+1. [vercel.com](https://vercel.com) → **New Project** → connect this repo
+2. Settings:
+
+   | Field | Value |
+   |-------|-------|
+   | Root directory | `frontend` |
+   | Framework preset | **Other** (static) |
+   | Output directory | `.` |
+
+3. No environment variables needed — the Gemini key lives on the backend only.
+4. Deploy — you get `https://your-app.vercel.app`.
+
+> Every Vercel push generates a new preview URL (`verimedia-abc123-....vercel.app`). The backend CORS config allows all `*.vercel.app` subdomains automatically — no extra config required for previews.
 
 ---
 
 ## 🔐 Environment Variables
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `ANTHROPIC_API_KEY` | ✅ | Claude AI API key |
-| `DATABASE_URL` | ✅ | PostgreSQL connection string |
-| `REDIS_URL` | ✅ | Redis connection string |
-| `SECRET_KEY` | ✅ | JWT/HMAC secret (32+ chars) |
-| `S3_ENDPOINT` | ⬜ | MinIO/S3 endpoint (optional) |
-| `CORS_ORIGINS` | ⬜ | Allowed frontend origins |
-| `LOG_LEVEL` | ⬜ | `debug`/`info`/`warning` |
+| Variable | Where | Required | Description |
+|----------|-------|:--------:|-------------|
+| `GEMINI_API_KEY` | Render / `backend/.env` | ✅ | Google Gemini key — [get one free](https://aistudio.google.com/app/apikey) |
+| `PORT` | Render / `backend/.env` | ⬜ | Defaults to `3001` |
+
+No database. No Redis. No Docker required.
 
 ---
 
-## 🚀 Production Deployment
+## 🔒 Security Notes
 
-```bash
-# Build production images
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
-
-# With SSL (update nginx/nginx.conf with your domain)
-DOMAIN=verimedia.yourdomain.com docker compose up -d
-```
-
-See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for full guide including SSL, scaling, and monitoring.
-
----
-
-## 🧪 Test Coverage
-
-```
-backend/tests/
-├── test_detection.py       Detection pipeline end-to-end
-├── test_ml_pipeline.py     ML classifier accuracy
-├── test_integrity.py       9-signal integrity analysis
-├── test_claude_ai.py       AI analysis + fallback
-├── test_enforcement.py     DMCA generation
-└── test_cases.py           Case management CRUD
-```
-
-```bash
-cd backend && pytest --cov=app tests/ -v
-```
-
----
-
-## 📊 Performance Benchmarks
-
-| Operation | Latency | Throughput |
-|-----------|---------|------------|
-| Fingerprint compute | ~12ms | 80/s |
-| ML pipeline | ~8ms | 120/s |
-| Claude AI analysis | ~1.2s | 5/s |
-| Full detection pipeline | ~1.4s | 4/s |
-| DMCA generation | ~1.8s | 3/s |
+- The Gemini API key **never leaves the server** — the frontend sends zero auth headers
+- `backend/.env` is in `.gitignore` and must never be committed
+- CORS is restricted to `*.vercel.app` and `localhost` — arbitrary origins are blocked with a 403
+- If you accidentally commit your key: **[revoke it immediately](https://aistudio.google.com/app/apikey)** and generate a new one before the next push
 
 ---
 
 ## 🤝 Contributing
 
 1. Fork the repo
-2. Create feature branch (`git checkout -b feat/my-feature`)
-3. Commit changes (`git commit -m 'feat: add my feature'`)
-4. Push and open PR
+2. Create a feature branch — `git checkout -b feat/my-feature`
+3. Commit — `git commit -m 'feat: describe the change'`
+4. Push and open a Pull Request
 
 ---
 
 ## 📄 License
 
-MIT © 2024 VeriMedia AI
+MIT © 2025 VeriMedia AI
