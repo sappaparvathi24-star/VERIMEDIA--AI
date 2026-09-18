@@ -3,13 +3,15 @@
 <head>
   <!-- Add this in the <head> section of index.html -->
 <script>
-  window.VERIMEDIA_BACKEND_URL = 'https://verimedia-ai-backend.onrender.com';
-  window.GEMINI_API_KEY = 'AIzaSyAVa9HWDiOTU4g3YFRGtA1fuvvQzoXAXBo';
+  window.VERIMEDIA_BACKEND_URL = '';
 </script>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231e293b'/><text x='50%25' y='56%25' font-family='monospace' font-size='18' font-weight='bold' fill='%2338bdf8' text-anchor='middle' dominant-baseline='middle'>V</text></svg>">
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>VeriMedia AI — Detection · Verification · Enforcement</title>
+<title>VeriMedia AI</title>
+<meta name="description" content="Multimodal media provenance, integrity & propagation intelligence platform with evidence-first verification, cryptographic hashing, and automated forensic analysis."/>
+<meta property="og:title" content="VeriMedia AI"/>
+<meta property="og:description" content="Multimodal media provenance, integrity & propagation intelligence platform with evidence-first verification, cryptographic hashing, and automated forensic analysis."/>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@300;400;500;600;700&display=swap');
 *{box-sizing:border-box;margin:0;padding:0}
@@ -1772,21 +1774,38 @@ html,body{height:100%;font-family:var(--font);background:var(--bg);color:var(--t
 <div class="upload-hero">
   <div class="uh-icon">⬆</div>
   <div class="uh-text">
-    <div class="uh-title">Upload Your Content to Protect</div>
-    <div class="uh-sub">Drop a video or image — VeriMedia AI registers a fingerprint and scans all major platforms in real time</div>
+    <div class="uh-title">VeriMedia Forensics Ingestion & Provenance</div>
+    <div class="uh-sub">Ingest local media or public URL — computes cryptographic SHA-256, extracts container metadata, and anchors evidence chain</div>
   </div>
-  <label class="uh-upload-btn">
-    📁 Upload Content <span style="opacity:.7;font-size:9px">video · image</span>
-    <input type="file" accept="video/*,image/*" style="display:none" onchange="handleUpload(this)">
-  </label>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <label class="uh-upload-btn" id="uploadBtnLabel">
+      📁 Upload Media <span style="opacity:.7;font-size:9px">video · audio · image</span>
+      <input type="file" id="fileUploadInput" accept="video/*,image/*,audio/*" style="display:none" onchange="handleUpload(this)">
+    </label>
+    <div style="display:flex;align-items:center;background:var(--bg);border:1px solid var(--border2);border-radius:6px;overflow:hidden">
+      <input type="url" id="mediaUrlInput" placeholder="https://domain.com/sample.jpg" style="background:transparent;border:none;outline:none;padding:7px 10px;font-size:10px;font-family:var(--mono);color:var(--text);min-width:220px" onkeydown="if(event.key==='Enter')handleUrlIngest()">
+      <button onclick="handleUrlIngest()" style="background:var(--bg3);border:none;border-left:1px solid var(--border2);color:var(--cyan);font-family:var(--mono);font-size:10px;font-weight:600;padding:7px 12px;cursor:pointer">Fetch & Ingest</button>
+    </div>
+  </div>
   <div class="uh-chips">
-    <span style="font-size:8px;color:var(--text3);font-family:var(--mono);white-space:nowrap">Or try a demo:</span>
-    <span class="uh-chip" onclick="runDemo('crop')" title="Clear violation — unauthorized reuse">✂ Clear violation</span>
-    <span class="uh-chip" onclick="runDemo('deepfake')">🤖 Deepfake</span>
-    <span class="uh-chip" onclick="runDemo('news')">📰 News</span>
-    <span class="uh-chip" onclick="runDemo('entertainment')">🎬 Entertainment</span>
-    <span class="uh-chip" onclick="runDemo('manipulated')">🎛 Manipulated</span>
-    <span class="uh-chip" onclick="runDemo('insufficient')" style="border-color:rgba(139,92,246,.3);color:var(--purpleL)" title="Insufficient evidence — system abstains">⚖ Uncertain</span>
+    <span style="font-size:8px;color:var(--text3);font-family:var(--mono);white-space:nowrap">Or run demo scenario:</span>
+    <span class="uh-chip" onclick="runDemo('crop')" title="Simulated: unauthorized reuse">✂ Reuse</span>
+    <span class="uh-chip" onclick="runDemo('deepfake')" title="Simulated: deepfake">🤖 Deepfake</span>
+    <span class="uh-chip" onclick="runDemo('news')" title="Simulated: news">📰 News</span>
+    <span class="uh-chip" onclick="runDemo('entertainment')" title="Simulated: entertainment">🎬 Entertainment</span>
+    <span class="uh-chip" onclick="runDemo('manipulated')" title="Simulated: manipulated">🎛 Manipulated</span>
+    <span class="uh-chip" onclick="runDemo('insufficient')" style="border-color:rgba(139,92,246,.3);color:var(--purpleL)" title="Simulated: insufficient evidence">⚖ Uncertain</span>
+  </div>
+</div>
+
+<!-- INVESTIGATION STATUS BANNER -->
+<div id="investigationStatusBar" style="display:flex;align-items:center;justify-content:space-between;padding:6px 20px;background:var(--bg2);border-bottom:1px solid var(--border);font-family:var(--mono);font-size:10px;gap:12px;flex-wrap:wrap">
+  <div style="display:flex;align-items:center;gap:8px">
+    <span id="invModePill" style="padding:2px 8px;border-radius:4px;font-weight:700;font-size:9px;background:rgba(255,255,255,0.06);color:var(--text2);border:1px solid rgba(255,255,255,0.1)">MODE: STANDBY</span>
+    <span id="invArtifactSummary" style="color:var(--text3);font-size:9px">Awaiting media ingestion (file upload, public URL, or demo scenario)</span>
+  </div>
+  <div id="invHashSummary" style="color:var(--text3);font-size:9px;display:flex;gap:10px;align-items:center">
+    <span>SHA-256: <strong id="invSha256Top" style="color:var(--text2);font-weight:400;letter-spacing:0.02em">—</strong></span>
   </div>
 </div>
 
@@ -1899,10 +1918,11 @@ html,body{height:100%;font-family:var(--font);background:var(--bg);color:var(--t
 
     <!-- Content DNA -->
     <div class="sb-section">
-      <div class="sb-hd"><span class="sb-title">Content DNA</span><span class="sb-pill p-idle" id="dnaPill">Idle</span></div>
+      <div class="sb-hd"><span class="sb-title">Content DNA & Integrity</span><span class="sb-pill p-idle" id="dnaPill">Idle</span></div>
       <div class="dna-box">
+        <div id="investigationModeBadge" style="margin-bottom:8px;padding:4px 8px;border-radius:4px;font-size:9px;font-weight:700;font-family:var(--mono);text-align:center;background:rgba(255,255,255,0.05);color:var(--text2);border:1px solid rgba(255,255,255,0.1)">MODE: STANDBY</div>
         <div class="dna-thumb" id="dnaThumb"><span style="font-size:9px;color:var(--text3);font-family:var(--mono)">No content</span></div>
-        <div class="dna-row"><span class="dk">Hash</span><span class="dv" id="dH">—</span></div>
+        <div class="dna-row"><span class="dk">Hash</span><span class="dv" id="dH" style="word-break:break-all;font-size:8.5px;line-height:1.3">—</span></div>
         <div class="dna-row"><span class="dk">Watermark</span><span class="dv" id="dW">—</span></div>
         <div class="dna-row"><span class="dk">Embedding</span><span class="dv" id="dE">—</span></div>
         <div class="dna-row"><span class="dk">Storage</span><span class="dv" id="dS">—</span></div>
@@ -2121,8 +2141,8 @@ html,body{height:100%;font-family:var(--font);background:var(--bg);color:var(--t
 
 <script>
 // ── CONFIG ──────────────────────────────────────────────────────────
-const VERIMEDIA_API_URL='https://verimedia-ai-backend.onrender.com/analyze';
-   window.VERIMEDIA_BACKEND_URL = 'https://verimedia-ai-backend.onrender.com';
+window.VERIMEDIA_BACKEND_URL = window.VERIMEDIA_BACKEND_URL || '';
+const VERIMEDIA_API_URL = (window.VERIMEDIA_BACKEND_URL || '') + '/analyze';
 // ── API KEY MANAGEMENT ──────────────────────────────────────────────────────
 let _apiKey = '';
 function getApiKey(){ return localStorage.getItem('vm_gemini_key') || window.GEMINI_API_KEY || ''; }
@@ -2998,7 +3018,7 @@ function downloadReport() {
 async function callVeriMediaAI(prompt,maxT=700){
   setAIStatus('processing');
   // Routes to backend /chat which calls Gemini server-side — no Anthropic headers
-  const r=await fetch('https://verimedia-ai-backend.onrender.com/chat',{
+  const r=await fetch((window.VERIMEDIA_BACKEND_URL || '') + '/chat',{
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({
@@ -3009,7 +3029,7 @@ async function callVeriMediaAI(prompt,maxT=700){
   if(!r.ok)throw new Error('API '+r.status);
   const d=await r.json();
   setAIStatus('success');
-  return (d.content||[]).map(b=>b.type==='text'?b.text:'').join('');
+  return d.reply || (d.content||[]).map(b=>b.type==='text'?b.text:'').join('');
 }
 function setAIStatus(state){
   const pill=document.getElementById('aiStatusPill');
@@ -4411,19 +4431,185 @@ function dlPDF(enc){
 }
 function openEmail(s,b){window.open('mailto:?subject='+s+'&body='+b);}
 
-// ── FILE UPLOAD ──────────────────────────────────────────────────────
-function handleUpload(input){
-  const f=input.files[0];if(!f)return;
-  origFile=f;
-  const reader=new FileReader();
-  reader.onload=e=>{origDataURL=e.target.result;};
+// ── GLOBAL INVESTIGATION STATE & INGESTION ───────────────────────────
+window.VERIMEDIA_MODE = 'STANDBY';
+window.CURRENT_ARTIFACT = null;
+window.CURRENT_INVESTIGATION = null;
+
+function updateInvestigationModeUI(mode, identifier, artifact) {
+  window.VERIMEDIA_MODE = mode;
+  const modePill = document.getElementById('invModePill');
+  const summary = document.getElementById('invArtifactSummary');
+  const hashTop = document.getElementById('invSha256Top');
+  const badgeSide = document.getElementById('investigationModeBadge');
+
+  if (mode === 'REAL_INVESTIGATION') {
+    if (modePill) {
+      modePill.textContent = '🟢 REAL INVESTIGATION (AUTHENTIC MEDIA)';
+      modePill.style.background = 'rgba(16,185,129,0.18)';
+      modePill.style.color = 'var(--green)';
+      modePill.style.border = '1px solid rgba(16,185,129,0.45)';
+    }
+    if (badgeSide) {
+      badgeSide.textContent = '🟢 REAL INVESTIGATION';
+      badgeSide.style.background = 'rgba(16,185,129,0.18)';
+      badgeSide.style.color = 'var(--green)';
+      badgeSide.style.border = '1px solid rgba(16,185,129,0.45)';
+    }
+    if (summary) {
+      const sz = artifact ? (artifact.size / 1024).toFixed(1) + ' KB' : '';
+      const mime = artifact ? artifact.mimeType : '';
+      summary.textContent = `Artifact: ${identifier} · ${mime} · ${sz} · Cryptographic Evidence Preserved`;
+      summary.style.color = 'var(--text)';
+    }
+    if (hashTop && artifact) {
+      hashTop.textContent = artifact.sha256;
+      hashTop.style.color = 'var(--cyan)';
+      hashTop.title = 'Observed SHA-256 Digest (Verified from bytes)';
+    }
+  } else if (mode === 'DEMO_SCENARIO') {
+    if (modePill) {
+      modePill.textContent = '⚠️ DEMO SCENARIO (SYNTHETIC SIMULATION)';
+      modePill.style.background = 'rgba(245,158,11,0.18)';
+      modePill.style.color = 'var(--amber)';
+      modePill.style.border = '1px solid rgba(245,158,11,0.45)';
+    }
+    if (badgeSide) {
+      badgeSide.textContent = '⚠️ DEMO SCENARIO';
+      badgeSide.style.background = 'rgba(245,158,11,0.18)';
+      badgeSide.style.color = 'var(--amber)';
+      badgeSide.style.border = '1px solid rgba(245,158,11,0.45)';
+    }
+    if (summary) {
+      summary.textContent = `Scenario: ${identifier} · Simulated Demonstration — NOT REAL FORENSIC EVIDENCE`;
+      summary.style.color = 'var(--amberL)';
+    }
+    if (hashTop) {
+      hashTop.textContent = 'Simulated / Synthetic Demo Hash';
+      hashTop.style.color = 'var(--text3)';
+      hashTop.title = 'Synthetic hash generated for demonstration purposes';
+    }
+  }
+}
+
+// ── REAL MEDIA INGESTION: FILE UPLOAD ────────────────────────────────
+async function handleUpload(input) {
+  const f = input.files[0];
+  if (!f) return;
+  origFile = f;
+
+  window.CURRENT_ARTIFACT = null;
+  window.CURRENT_INVESTIGATION = null;
+  updateInvestigationModeUI('REAL_INVESTIGATION', f.name);
+
+  addSys(`[INGESTION] Received binary upload: ${f.name} (${(f.size/1024/1024).toFixed(2)} MB)`);
+  addSys(`[SECURITY] Verifying magic bytes & generating SHA-256 digest...`);
+
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    origDataURL = e.target.result;
+    try {
+      addSys(`[VAULT] Submitting to /api/media/ingest for cryptographic anchoring...`);
+      const resp = await fetch('/api/media/ingest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filename: f.name,
+          fileData: origDataURL,
+          mimeType: f.type
+        })
+      });
+
+      if (!resp.ok) {
+        const errJson = await resp.json().catch(() => ({}));
+        throw new Error(errJson.error || `HTTP ${resp.status}`);
+      }
+
+      const resData = await resp.json();
+      const artifact = resData.artifact;
+      const investigation = resData.investigation;
+      window.CURRENT_ARTIFACT = artifact;
+      window.CURRENT_INVESTIGATION = investigation;
+
+      addSys(`✔ [OBSERVED SHA-256] ${artifact.sha256}`);
+      addSys(`✔ [CONTAINER] Detected MIME: ${artifact.mimeType} (${(artifact.size/1024).toFixed(1)} KB) · pHash: ${artifact.perceptualHash}`);
+      if (artifact.metadata && artifact.metadata.width) {
+        addSys(`✔ [METADATA] Resolution: ${artifact.metadata.width}x${artifact.metadata.height} (${artifact.metadata.format})`);
+      }
+
+      updateInvestigationModeUI('REAL_INVESTIGATION', f.name, artifact);
+
+      // Choose appropriate scenario baseline
+      const ct = classifyContent(f.name, '', '');
+      addSys(`Content classifier: ${ct} · Proceeding with Real Investigation`);
+      const ctScenario = ct === 'news' ? 'news' : ct === 'entertainment' ? 'entertainment' : ct === 'education' ? 'education' : 'normal';
+      startPipeline(ctScenario, artifact);
+    } catch (err) {
+      console.error('Ingestion failed:', err);
+      addSys(`⚠️ Ingestion fallback: ${err.message} — proceeding with local browser buffer analysis`);
+      startPipeline('normal');
+    }
+  };
   reader.readAsDataURL(f);
-  addSys(`File uploaded: ${f.name} (${(f.size/1024/1024).toFixed(2)}MB) — starting AI Content Intelligence Pipeline pipeline`);
-  const ct=classifyContent(f.name,'','');
-  addSys(`AI Content Intelligence Pipeline classified: ${ct} · Scenario: content analysis`);
-  // Choose appropriate scenario based on content type
-  const ctScenario=ct==='news'?'news':ct==='entertainment'?'entertainment':ct==='education'?'education':'normal';
-  startPipeline(ctScenario);
+}
+
+// ── REAL MEDIA INGESTION: PUBLIC URL ─────────────────────────────────
+async function handleUrlIngest() {
+  const urlInput = document.getElementById('mediaUrlInput');
+  const url = urlInput ? urlInput.value.trim() : '';
+  if (!url) {
+    alert('Please enter a valid media URL (e.g. https://domain.com/sample.jpg)');
+    return;
+  }
+
+  if (isRunning) return;
+  window.CURRENT_ARTIFACT = null;
+  window.CURRENT_INVESTIGATION = null;
+
+  const urlFilename = url.split('/').pop().split('?')[0] || 'remote_media';
+  updateInvestigationModeUI('REAL_INVESTIGATION', urlFilename);
+  addSys(`[REMOTE INGESTION] Requesting media from URL: ${url}`);
+  addSys(`[SECURITY] Executing SSRF validation and streaming binary fetch...`);
+
+  try {
+    const resp = await fetch('/api/media/ingest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        url,
+        filename: urlFilename
+      })
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.error || `HTTP ${resp.status}`);
+    }
+
+    const data = await resp.json();
+    const artifact = data.artifact;
+    window.CURRENT_ARTIFACT = artifact;
+    window.CURRENT_INVESTIGATION = data.investigation;
+
+    addSys(`✔ [INGESTION VERIFIED] ID: ${artifact.id}`);
+    addSys(`✔ [OBSERVED SHA-256] ${artifact.sha256}`);
+    addSys(`✔ [CONTAINER] MIME: ${artifact.mimeType} (${(artifact.size/1024).toFixed(1)} KB) · pHash: ${artifact.perceptualHash}`);
+    if (artifact.metadata && artifact.metadata.width) {
+      addSys(`✔ [METADATA] Dimensions: ${artifact.metadata.width}x${artifact.metadata.height} (${artifact.metadata.format})`);
+    }
+
+    updateInvestigationModeUI('REAL_INVESTIGATION', urlFilename, artifact);
+    origFile = { name: artifact.filename, type: artifact.mimeType, size: artifact.size };
+    origDataURL = null;
+
+    const ct = classifyContent(artifact.filename, '', '');
+    const ctScenario = ct === 'news' ? 'news' : ct === 'entertainment' ? 'entertainment' : ct === 'education' ? 'education' : 'normal';
+    startPipeline(ctScenario, artifact);
+  } catch (err) {
+    console.error('URL Ingestion failed:', err);
+    addSys(`❌ URL Ingestion failed: ${err.message}`);
+    updateInvestigationModeUI('STANDBY', 'Failed');
+  }
 }
 
 // ── ADAPTIVE LEARNING ────────────────────────────────────────────────
@@ -4491,6 +4677,23 @@ async function runAttackDemo(){
 // ── MAIN PIPELINE ────────────────────────────────────────────────────
 function runDemo(type){
   if(isRunning)return;
+  window.VERIMEDIA_MODE = 'DEMO_SCENARIO';
+  window.CURRENT_ARTIFACT = null;
+  window.CURRENT_INVESTIGATION = null;
+  updateInvestigationModeUI('DEMO_SCENARIO', type);
+
+  // Notify backend of demo scenario run
+  fetch('/api/demo/scenario', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scenario: type })
+  }).then(r => r.json()).then(d => {
+    if (d && d.artifact) {
+      window.CURRENT_ARTIFACT = d.artifact;
+      window.CURRENT_INVESTIGATION = d.investigation;
+    }
+  }).catch(() => {});
+
   _runSeed=(_runSeed*31+17+Date.now()%997)%99991; // truly unique per run
   if(liveStreamInterval){clearInterval(liveStreamInterval);liveStreamInterval=null;const btn=document.getElementById('db-live');if(btn){btn.classList.remove('on');btn.textContent='⚡ Live Stream';}}
   document.querySelectorAll('.dbtn').forEach(b=>b.classList.remove('on'));
@@ -4535,7 +4738,7 @@ function addQueueLog(tag,cls,msg){
   // Queue & Worker Log suppressed
 }
 
-async function startPipeline(scenario){
+async function startPipeline(scenario, realArtifact){
   if(isRunning)return;isRunning=true;
   setAIStatus('ready');
   Object.keys(actorReg).forEach(k=>delete actorReg[k]);
@@ -4555,29 +4758,41 @@ async function startPipeline(scenario){
   document.getElementById('viralPill').textContent='Idle';document.getElementById('viralPill').className='sb-pill p-idle';
   switchTab('feed');
 
-  // ── LAYER 1A: Content DNA ──
+  // ── LAYER 1A: Content DNA & Ingested Artifact ──
   setSt('ps1','active');document.getElementById('dnaPill').className='sb-pill p-run';
-  addSys('LAYER 1A — Registering Content DNA: hash + watermark (encrypted) + 512-dim ResNet-18 embedding...');
+  
+  const activeArt = realArtifact || window.CURRENT_ARTIFACT;
+  const isReal = window.VERIMEDIA_MODE === 'REAL_INVESTIGATION' && activeArt && activeArt.sourceType !== 'demo';
+  
+  addSys(isReal 
+    ? 'LAYER 1A — Verified Media Ingestion: Cryptographic SHA-256 + Container Metadata + Perceptual Fingerprint...'
+    : 'LAYER 1A — Registering Content DNA: hash + watermark (encrypted) + 512-dim ResNet-18 embedding...');
   await sleep(400);
-  const chash=genHash(origFile),wm=genWM();
-  origEmb=detEmb(origFile.name||'demo',((origFile.size||2621440)^(_runSeed*7919+(Date.now()%997))),'original');
+
+  const chash = isReal ? activeArt.sha256 : genHash(origFile);
+  const wm = genWM();
+  origEmb = detEmb(origFile.name||'demo',((origFile.size||2621440)^(_runSeed*7919+(Date.now()%997))),'original');
   statR++;updStats();
-  const ct=classifyContent(origFile.name,'',scenario);
-  document.getElementById('dH').textContent=chash;
-  document.getElementById('dW').textContent=wm+' [AES-256]';
-  document.getElementById('dE').textContent='512-dim · ResNet-18 · L2-norm';
-  document.getElementById('dS').textContent='sec://vault/'+chash.slice(0,8);
+  const ct = classifyContent(origFile.name,'',scenario);
+  
+  document.getElementById('dH').textContent = chash;
+  document.getElementById('dH').title = isReal ? 'Cryptographic SHA-256 (Observed from bytes)' : 'Simulated Demo Content Hash';
+  document.getElementById('dW').textContent = isReal ? 'Observed / Direct Media' : (wm+' [AES-256]');
+  document.getElementById('dE').textContent = isReal ? `pHash: ${activeArt.perceptualHash} · 512-dim embedding` : '512-dim · ResNet-18 · L2-norm';
+  document.getElementById('dS').textContent = isReal ? `vault://${activeArt.id}` : ('sec://vault/'+chash.slice(0,8));
   // Storage design log
-  addQueueLog('Storage','ql-storage',`Embedding → VectorDB[512-dim] · Metadata → RelationalDB[${chash}] · Evidence → /evidence/${chash.slice(0,8)}/`);
-  document.getElementById('dCT').textContent=ct;
+  addQueueLog('Storage','ql-storage', isReal ? `Artifact [${activeArt.id}] → Vault · SHA-256: ${chash.slice(0,16)}...` : `Embedding → VectorDB[512-dim] · Metadata → RelationalDB[${chash}] · Evidence → /evidence/${chash.slice(0,8)}/`);
+  document.getElementById('dCT').textContent = ct + (isReal ? ` (${activeArt.mimeType})` : '');
   if(origDataURL){document.getElementById('dnaThumb').innerHTML=`<img src="${origDataURL}" alt="Content thumbnail">`;}
   const bars=document.getElementById('embBars');bars.innerHTML='';
   const sl2=origEmb.slice(0,28),mn=Math.min(...sl2),mx=Math.max(...sl2);
   sl2.forEach(v=>{const n=(v-mn)/(mx-mn||1);const b=document.createElement('div');b.className='eb';b.style.cssText=`height:${(3+n*19)|0}px;background:${n>.65?'var(--blue)':n>.35?'var(--green)':'var(--text3)'};flex:1`;bars.appendChild(b);});
   document.getElementById('dnaPill').className='sb-pill p-done';
-  addNode('origin','origin','ORIGIN',1.0);
-  addOverlay('origin','⊛ Origin node registered · DNA locked · Watermark encrypted');
-  addSys(`Content ID: ${chash} · Watermark: ${wm} · Type: ${ct} · Embedding: 512-dim normalized · Privacy-safe fingerprinting active`);
+  addNode('origin','origin', isReal ? 'OBSERVED ARTIFACT' : 'ORIGIN', 1.0);
+  addOverlay('origin', isReal ? '⊛ Ingested artifact anchored · Cryptographic SHA-256 verified' : '⊛ Origin node registered · DNA locked · Watermark encrypted');
+  addSys(isReal
+    ? `Artifact Anchored: ${chash.slice(0,16)}... · Format: ${activeArt.mimeType} · Perceptual Hash: ${activeArt.perceptualHash}`
+    : `Content ID: ${chash} · Watermark: ${wm} · Type: ${ct} · Embedding: 512-dim normalized · Privacy-safe fingerprinting active`);
   setSt('ps1','done');
 
   // ── LAYER 1B: Platform Scan ──
@@ -7815,8 +8030,7 @@ END EVERY RESPONSE WITH:
   console.log('[VeriMedia Assistant] Initialized · Powered by Gemini');
 })();
 </script>
-  <meta name="gemini-key" content="YOUR_GEMINI_API_KEY_HERE">
-<script src="gemini-patch.js"></script>
+<script src="gemini-integration.js"></script>
 
 </body>
 </html>

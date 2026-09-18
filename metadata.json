@@ -1,0 +1,8 @@
+{
+  "name": "VeriMedia AI",
+  "description": "Multimodal media provenance, integrity & propagation intelligence platform with evidence-first verification, cryptographic hashing, and automated forensic analysis.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

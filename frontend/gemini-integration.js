@@ -18,8 +18,8 @@
 
   // ── CONFIG ─────────────────────────────────────────────────────────
   // Change this to your Render backend URL once deployed.
-  // For local dev: 'http://localhost:3001'
-  const BACKEND_URL = (window.VERIMEDIA_BACKEND_URL || 'https://verimedia-ai-backend.onrender.com').replace(/\/$/, '');
+  // For local dev: 'http://localhost:3000'
+  const BACKEND_URL = typeof window.VERIMEDIA_BACKEND_URL === 'string' ? window.VERIMEDIA_BACKEND_URL.replace(/\/$/, '') : '';
 
   // ── ERROR SUPPRESSION ──────────────────────────────────────────────
   // Fix 3: "message channel closed" — this is a Chrome extension listener
@@ -164,6 +164,16 @@
           ${data.authenticity}
         </span>
       </div>
+
+      ${data._meta && data._meta.sha256 ? `
+      <div style="padding:5px 14px 4px;font-size:8.5px;font-family:monospace;display:flex;gap:6px;align-items:center;background:rgba(16,185,129,.05);border-bottom:1px solid rgba(16,185,129,.1)">
+        <span style="padding:1px 5px;border-radius:3px;background:rgba(16,185,129,.2);color:#10b981;font-weight:700">OBSERVED SHA-256</span>
+        <span style="color:rgba(203,213,225,.9);word-break:break-all">${escapeHtml(data._meta.sha256)}</span>
+      </div>` : (data._meta && data._meta.mode === 'DEMO_SCENARIO') ? `
+      <div style="padding:5px 14px 4px;font-size:8.5px;font-family:monospace;display:flex;gap:6px;align-items:center;background:rgba(245,158,11,.05);border-bottom:1px solid rgba(245,158,11,.1)">
+        <span style="padding:1px 5px;border-radius:3px;background:rgba(245,158,11,.2);color:#f59e0b;font-weight:700">DEMO SCENARIO</span>
+        <span style="color:rgba(245,158,11,.8)">Simulated demonstration — not real evidence</span>
+      </div>` : ''}
 
       <!-- Summary -->
       <div style="padding: 10px 14px 0; font-size:10px; color:rgb(203,213,225); line-height:1.55;">
@@ -351,7 +361,21 @@
     const ctEl        = document.querySelector('[data-content-type], .content-type-badge');
     const contentType = (ctEl && ctEl.textContent.trim()) || 'general';
 
-    return { matchScore, integrityScore, viralScore, decision, platform, contentType, flags: [] };
+    const artifact = window.CURRENT_ARTIFACT;
+    const isRealUpload = window.VERIMEDIA_MODE === 'REAL_INVESTIGATION' && artifact && artifact.sourceType !== 'demo';
+
+    return {
+      matchScore,
+      integrityScore,
+      viralScore,
+      decision,
+      platform,
+      contentType,
+      flags: [],
+      artifactId: artifact ? artifact.id : null,
+      isRealUpload: !!isRealUpload,
+      sha256: artifact ? artifact.sha256 : null
+    };
   }
 
   function onNewResult() {

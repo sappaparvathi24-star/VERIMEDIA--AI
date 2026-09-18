@@ -111,13 +111,13 @@ export function HeroOverlay() {
             🚀 Launch Platform
           </button>
           <a
-            href="http://localhost:8000/docs"
+            href="/api/health"
             target="_blank"
             rel="noreferrer"
             className="vm-btn vm-btn-ghost"
             style={{ padding: '12px 24px', fontSize: 14 }}
           >
-            📖 API Docs
+            🔍 System Status
           </a>
         </div>
 
