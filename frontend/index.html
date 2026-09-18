@@ -5,11 +5,13 @@
 <script>
   window.VERIMEDIA_BACKEND_URL = '';
 </script>
-<script src="/evidence-engine.js" type="module"></script>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231e293b'/><text x='50%25' y='56%25' font-family='monospace' font-size='18' font-weight='bold' fill='%2338bdf8' text-anchor='middle' dominant-baseline='middle'>V</text></svg>">
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>VeriMedia AI — Detection · Verification · Enforcement</title>
+<meta name="description" content="AI-powered media rights enforcement platform for real-time unauthorized content detection, deepfake analysis, and automated DMCA enforcement."/>
+<meta property="og:title" content="VeriMedia AI — Detection · Verification · Enforcement"/>
+<meta property="og:description" content="AI-powered media rights enforcement platform for real-time unauthorized content detection, deepfake analysis, and automated DMCA enforcement."/>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@300;400;500;600;700&display=swap');
 *{box-sizing:border-box;margin:0;padding:0}
@@ -2125,7 +2127,7 @@ const VERIMEDIA_API_URL='/analyze';
    window.VERIMEDIA_BACKEND_URL = '';
 // ── API KEY MANAGEMENT ──────────────────────────────────────────────────────
 let _apiKey = '';
-function getApiKey(){ return localStorage.getItem('vm_gemini_key') || window.GEMINI_API_KEY || ''; }
+function getApiKey(){ return localStorage.getItem('vm_gemini_key') || window.GEMINI_API_KEY || 'server-proxy'; }
 function setApiKey(k){ localStorage.setItem('vm_gemini_key', k.trim()); }
 function showApiKeyModal() /* Gemini key managed by gemini-patch.js */ {
   if(document.getElementById('apiKeyOverlay')) return;
