@@ -1,6 +1,6 @@
 {
   "name": "VeriMedia AI",
-  "description": "Multimodal media provenance, integrity & propagation intelligence platform with evidence-first verification, cryptographic hashing, and automated forensic analysis.",
+  "description": "AI-powered media rights enforcement platform for real-time unauthorized content detection, deepfake analysis, and automated DMCA enforcement.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

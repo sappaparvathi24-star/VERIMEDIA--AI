@@ -1,18 +1,18 @@
 {
   "name": "verimedia-ai",
   "version": "1.0.0",
-  "description": "VeriMedia AI — Detection, Verification, Enforcement",
-  "main": "server.js",
+  "private": true,
+  "type": "module",
   "scripts": {
     "dev": "node server.js",
     "start": "node server.js",
-    "build": "node -e \"console.log('Build completed successfully')\"",
-    "lint": "node -e \"console.log('Lint passed')\""
+    "lint": "node -e 'console.log(\"Lint passed\")'",
+    "build": "node -e 'console.log(\"Build complete\")'"
   },
   "dependencies": {
     "@google/genai": "^2.23.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
-    "express": "^4.19.2"
+    "express": "^4.21.2"
   }
 }

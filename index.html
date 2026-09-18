@@ -3,7 +3,8 @@
 <head>
   <!-- Add this in the <head> section of index.html -->
 <script>
-  window.VERIMEDIA_BACKEND_URL = '';
+  window.VERIMEDIA_BACKEND_URL = 'https://verimedia-ai-backend.onrender.com';
+  window.GEMINI_API_KEY = 'AIzaSyAVa9HWDiOTU4g3YFRGtA1fuvvQzoXAXBo';
 </script>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231e293b'/><text x='50%25' y='56%25' font-family='monospace' font-size='18' font-weight='bold' fill='%2338bdf8' text-anchor='middle' dominant-baseline='middle'>V</text></svg>">
 <meta charset="UTF-8"/>
@@ -2120,8 +2121,8 @@ html,body{height:100%;font-family:var(--font);background:var(--bg);color:var(--t
 
 <script>
 // ── CONFIG ──────────────────────────────────────────────────────────
-const VERIMEDIA_API_URL='/analyze';
-   window.VERIMEDIA_BACKEND_URL = '';
+const VERIMEDIA_API_URL='https://verimedia-ai-backend.onrender.com/analyze';
+   window.VERIMEDIA_BACKEND_URL = 'https://verimedia-ai-backend.onrender.com';
 // ── API KEY MANAGEMENT ──────────────────────────────────────────────────────
 let _apiKey = '';
 function getApiKey(){ return localStorage.getItem('vm_gemini_key') || window.GEMINI_API_KEY || ''; }
@@ -2997,7 +2998,7 @@ function downloadReport() {
 async function callVeriMediaAI(prompt,maxT=700){
   setAIStatus('processing');
   // Routes to backend /chat which calls Gemini server-side — no Anthropic headers
-  const r=await fetch('/chat',{
+  const r=await fetch('https://verimedia-ai-backend.onrender.com/chat',{
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({
@@ -7814,7 +7815,8 @@ END EVERY RESPONSE WITH:
   console.log('[VeriMedia Assistant] Initialized · Powered by Gemini');
 })();
 </script>
-<script src="/gemini-integration.js"></script>
+  <meta name="gemini-key" content="YOUR_GEMINI_API_KEY_HERE">
+<script src="gemini-patch.js"></script>
 
 </body>
 </html>

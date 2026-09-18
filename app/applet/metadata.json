@@ -1,0 +1,8 @@
+{
+  "name": "VeriMedia AI",
+  "description": "Multi-modal AI provenance, synthetic detection, origin tracking, forensic analysis, and automated DMCA enforcement platform.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
