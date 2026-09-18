@@ -36,3 +36,46 @@ export const updateCase = (caseId: string, status: CaseStatus, notes?: string) =
 // ── Health ────────────────────────────────────────────────────────────────
 export const getHealth = (): Promise<HealthStatus> =>
   api.get<HealthStatus>('/health').then(r => r.data)
+
+// ── Phase E Investigations API ────────────────────────────────────────────
+export const fetchInvestigations = (params?: Record<string, any>) =>
+  axios.get('/api/investigations', { params }).then(r => r.data)
+
+export const fetchInvestigation = (id: string) =>
+  axios.get(`/api/investigations/${id}`).then(r => r.data)
+
+export const createInvestigationApi = (data: {
+  title: string
+  description?: string
+  priority?: string
+  tags?: string[]
+  createdBy?: string
+  mode?: string
+}) => axios.post('/api/investigations', data).then(r => r.data)
+
+export const updateInvestigationApi = (id: string, updates: Record<string, any>) =>
+  axios.patch(`/api/investigations/${id}`, updates).then(r => r.data)
+
+export const attachArtifactToInvestigationApi = (id: string, payload: any) =>
+  axios.post(`/api/investigations/${id}/artifacts`, payload).then(r => r.data)
+
+export const fetchInvestigationArtifacts = (id: string) =>
+  axios.get(`/api/investigations/${id}/artifacts`).then(r => r.data)
+
+export const fetchInvestigationFindings = (id: string) =>
+  axios.get(`/api/investigations/${id}/findings`).then(r => r.data)
+
+export const fetchInvestigationEvidence = (id: string) =>
+  axios.get(`/api/investigations/${id}/evidence`).then(r => r.data)
+
+export const fetchInvestigationTimeline = (id: string) =>
+  axios.get(`/api/investigations/${id}/timeline`).then(r => r.data)
+
+export const addInvestigationNoteApi = (id: string, text: string, authorId?: string) =>
+  axios.post(`/api/investigations/${id}/notes`, { text, authorId }).then(r => r.data)
+
+export const fetchInvestigationNotes = (id: string) =>
+  axios.get(`/api/investigations/${id}/notes`).then(r => r.data)
+
+export const fetchFindingTraceability = (findingId: string) =>
+  axios.get(`/api/findings/${findingId}/traceability`).then(r => r.data)

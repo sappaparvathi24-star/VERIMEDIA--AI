@@ -4,6 +4,7 @@ import https from 'https';
 import { createMediaArtifact, createInvestigation } from './models.js';
 import { processForensicSignalsToEvidence } from './evidenceEngine.js';
 import { runForensicInvestigationPipeline } from './forensics.js';
+import { recordTimelineEvent, investigationsStore, globalArtifactsStore } from './investigations.js';
 
 export function detectMagicMime(buffer, claimedMime = '') {
   if (!buffer || !Buffer.isBuffer(buffer)) return claimedMime || 'application/octet-stream';
@@ -106,6 +107,8 @@ export function ingestMediaBuffer({
     sourceUrl
   });
 
+  globalArtifactsStore.set(artifact.id, artifact);
+
   const forensicPkg = processForensicSignalsToEvidence({
     artifact,
     rawSignals: {
@@ -128,7 +131,9 @@ export function ingestMediaBuffer({
   const allRuns = [...forensicPkg.runs, ...deepForensicPkg.runs];
 
   const investigation = createInvestigation({
+    title: `Investigation: ${filename}`,
     artifactId: artifact.id,
+    artifactIds: [artifact.id],
     mode: 'REAL_INVESTIGATION',
     status: 'COMPLETED',
     findings: allFindings,
@@ -136,6 +141,39 @@ export function ingestMediaBuffer({
     observations: allObservations,
     analysisRuns: allRuns,
     uncertainty: []
+  });
+
+  investigationsStore.set(investigation.id, investigation);
+
+  recordTimelineEvent({
+    investigationId: investigation.id,
+    type: 'INVESTIGATION_CREATED',
+    actor: 'System Ingestion Engine',
+    description: `Investigation '${investigation.title}' created.`,
+    metadata: { mode: 'REAL_INVESTIGATION' }
+  });
+
+  recordTimelineEvent({
+    investigationId: investigation.id,
+    type: 'ARTIFACT_ADDED',
+    actor: 'System Ingestion Engine',
+    description: `Media artifact '${artifact.filename}' attached to investigation (SHA-256: ${artifact.sha256.slice(0, 12)}...).`,
+    metadata: { artifactId: artifact.id, filename: artifact.filename, mimeType: artifact.mimeType }
+  });
+
+  recordTimelineEvent({
+    investigationId: investigation.id,
+    type: 'ANALYSIS_STARTED',
+    actor: 'Forensic Engine',
+    description: `Deep media forensics pipeline execution initiated for ${artifact.filename}.`
+  });
+
+  recordTimelineEvent({
+    investigationId: investigation.id,
+    type: 'ANALYSIS_COMPLETED',
+    actor: 'Forensic Engine',
+    description: `Forensic pipeline completed. ${allObservations.length} observations, ${allEvidence.length} evidence items, ${allFindings.length} findings produced.`,
+    metadata: { observationsCount: allObservations.length, evidenceCount: allEvidence.length, findingsCount: allFindings.length }
   });
 
   return {

@@ -94,6 +94,7 @@ export const methodsStore = new Map();
 STANDARD_METHODS.forEach(m => methodsStore.set(m.id, m));
 getAllMethods().forEach(m => methodsStore.set(m.id, m));
 
+export const artifactsStore = new Map();
 export const analysisRunsStore = new Map();
 export const observationsStore = new Map();
 export const evidenceStore = new Map();
@@ -370,17 +371,28 @@ export function buildTraceabilityChain(findingId, artifactsStore) {
     });
   }
 
+  const allObs = supportingEvidence.flatMap(e => e.observations || []);
+  const allRuns = [];
+  supportingEvidence.forEach(e => {
+    if (e.analysisRun && !allRuns.some(r => r.id === e.analysisRun.id)) {
+      allRuns.push(e.analysisRun);
+    }
+  });
+
   return {
     finding,
     artifact: artifact || { id: finding.artifactId },
     supportingEvidence,
+    evidence: supportingEvidence,
+    observations: allObs,
+    analysisRuns: allRuns,
     traceabilitySummary: {
       findingId: finding.id,
       category: finding.category,
       epistemicStatus: finding.epistemicStatus,
       confidence: finding.confidence,
       evidenceCount: supportingEvidence.length,
-      observationsCount: supportingEvidence.reduce((acc, e) => acc + (e.observations ? e.observations.length : 0), 0)
+      observationsCount: allObs.length
     }
   };
 }

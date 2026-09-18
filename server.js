@@ -45,8 +45,23 @@ import {
   observationsStore,
   evidenceStore,
   findingsStore,
-  analysisRunsStore
+  analysisRunsStore,
+  artifactsStore
 } from './server/evidence.js';
+
+import {
+  createNewInvestigation,
+  getInvestigation,
+  listInvestigations,
+  updateInvestigation,
+  addArtifactToInvestigation,
+  addNoteToInvestigation,
+  getNotesForInvestigation,
+  getTimelineEventsForInvestigation,
+  getInvestigationPackage,
+  recordTimelineEvent,
+  investigationsStore
+} from './server/investigations.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -54,10 +69,6 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = config.PORT;
 const GEMINI_MODEL = config.GEMINI_MODEL;
-
-// ── In-Memory Datastores ──────────────────────────────────────────────
-const artifactsStore = new Map();
-const investigationsStore = new Map();
 
 // Lazy initialize Gemini client
 let genAI = null;
@@ -295,10 +306,12 @@ app.post('/api/demo/scenario', (req, res) => {
     isDemo: true
   });
 
-  const demoInvestigation = createInvestigation({
+  const demoInvestigation = createNewInvestigation({
+    title: `Demo Scenario: ${scenario}`,
     artifactId: demoArtifact.id,
+    artifactIds: [demoArtifact.id],
     mode: 'DEMO_SCENARIO',
-    status: 'COMPLETED',
+    status: 'OPEN',
     findings: evidencePkg.findings,
     evidence: evidencePkg.evidence,
     observations: evidencePkg.observations,
@@ -306,7 +319,21 @@ app.post('/api/demo/scenario', (req, res) => {
     uncertainty: ['This scenario was synthetically generated for demonstration.']
   });
 
-  investigationsStore.set(demoInvestigation.id, demoInvestigation);
+  recordTimelineEvent({
+    investigationId: demoInvestigation.id,
+    type: 'ARTIFACT_ADDED',
+    actor: 'Demo Simulation System',
+    description: `Synthetic artifact attached for scenario '${scenario}'.`,
+    metadata: { isDemo: true }
+  });
+
+  recordTimelineEvent({
+    investigationId: demoInvestigation.id,
+    type: 'ANALYSIS_COMPLETED',
+    actor: 'Demo Simulation Engine',
+    description: `Synthetic evidence generation completed.`,
+    metadata: { isDemo: true }
+  });
 
   return res.json({
     success: true,
@@ -322,7 +349,169 @@ app.post('/api/demo/scenario', (req, res) => {
   });
 });
 
-// ── Retrieve Artifact & Investigation by ID ───────────────────────────
+// ── Phase E Investigation API Endpoints ───────────────────────────────
+
+// POST /api/investigations — Create investigation
+app.post(['/api/investigations', '/api/v1/investigations'], (req, res) => {
+  try {
+    const { title, description, priority, tags, createdBy, mode, artifactIds } = req.body;
+    const inv = createNewInvestigation({
+      title: title || 'New Investigation',
+      description: description || '',
+      priority: priority || 'MEDIUM',
+      tags: Array.isArray(tags) ? tags : [],
+      createdBy: createdBy || 'Analyst',
+      mode: mode || 'REAL_INVESTIGATION',
+      artifactIds: Array.isArray(artifactIds) ? artifactIds : []
+    });
+
+    if (Array.isArray(artifactIds)) {
+      artifactIds.forEach(artId => {
+        const art = artifactsStore.get(artId);
+        if (art) {
+          addArtifactToInvestigation(inv.id, art, inv.createdBy, artifactsStore);
+        }
+      });
+    }
+
+    res.status(201).json({ success: true, investigation: inv });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// GET /api/investigations — List & search investigations
+app.get(['/api/investigations', '/api/v1/investigations'], (req, res) => {
+  const { title, status, tag, priority, mode, q } = req.query;
+  const list = listInvestigations({ title, status, tag, priority, mode, q });
+  res.json(list);
+});
+
+// GET /api/investigations/:id — Full investigation details & package
+app.get(['/api/investigations/:id', '/api/v1/investigations/:id'], (req, res) => {
+  const pkg = getInvestigationPackage(req.params.id, artifactsStore);
+  if (!pkg) {
+    return res.status(404).json({ error: 'Investigation not found' });
+  }
+  res.json({ success: true, ...pkg.investigation, package: pkg });
+});
+
+// PATCH /api/investigations/:id — Update investigation state
+app.patch(['/api/investigations/:id', '/api/v1/investigations/:id'], (req, res) => {
+  const updated = updateInvestigation(req.params.id, req.body, req.body.actor || 'Analyst');
+  if (!updated) {
+    return res.status(404).json({ error: 'Investigation not found' });
+  }
+  res.json({ success: true, investigation: updated });
+});
+
+// POST /api/investigations/:id/artifacts — Attach artifact
+app.post(['/api/investigations/:id/artifacts', '/api/v1/investigations/:id/artifacts'], async (req, res) => {
+  try {
+    const invId = req.params.id;
+    const inv = getInvestigation(invId);
+    if (!inv) return res.status(404).json({ error: 'Investigation not found' });
+
+    let artifact = null;
+    if (req.body.artifactId) {
+      artifact = artifactsStore.get(req.body.artifactId);
+      if (!artifact) return res.status(404).json({ error: 'Artifact not found' });
+    } else if (req.body.fileData || req.body.url || req.body.data) {
+      const { fileData, data, filename = 'added_media', mimeType = '', url = '' } = req.body;
+      const rawData = fileData || data;
+      let buffer, sourceType = 'upload', sourceUrl = '';
+      if (url) {
+        sourceType = 'url';
+        sourceUrl = url;
+        const fetched = await fetchPublicMediaBuffer(url);
+        buffer = fetched.buffer;
+      } else if (rawData) {
+        let base64 = rawData.includes(',') ? rawData.split(',')[1] : rawData;
+        buffer = Buffer.from(base64, 'base64');
+      }
+      if (!buffer) return res.status(400).json({ error: 'Invalid media buffer' });
+
+      const ing = ingestMediaBuffer({
+        buffer,
+        filename,
+        claimedMime: mimeType,
+        sourceType,
+        sourceUrl
+      });
+      artifact = ing.artifact;
+      artifactsStore.set(artifact.id, artifact);
+    } else {
+      return res.status(400).json({ error: 'Provide `artifactId` or media payload.' });
+    }
+
+    addArtifactToInvestigation(invId, artifact, req.body.actor || 'Analyst', artifactsStore);
+    res.json({ success: true, artifact, investigation: getInvestigation(invId) });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// GET /api/investigations/:id/artifacts
+app.get(['/api/investigations/:id/artifacts', '/api/v1/investigations/:id/artifacts'], (req, res) => {
+  const inv = getInvestigation(req.params.id);
+  if (!inv) return res.status(404).json({ error: 'Investigation not found' });
+
+  const artifacts = (inv.artifactIds || []).map(id => artifactsStore.get(id)).filter(Boolean);
+  res.json(artifacts);
+});
+
+// GET /api/investigations/:id/findings
+app.get(['/api/investigations/:id/findings', '/api/v1/investigations/:id/findings'], (req, res) => {
+  const pkg = getInvestigationPackage(req.params.id, artifactsStore);
+  if (!pkg) return res.status(404).json({ error: 'Investigation not found' });
+  res.json({ findings: pkg.findings, count: pkg.findings.length });
+});
+
+// GET /api/investigations/:id/evidence
+app.get(['/api/investigations/:id/evidence', '/api/v1/investigations/:id/evidence'], (req, res) => {
+  const pkg = getInvestigationPackage(req.params.id, artifactsStore);
+  if (!pkg) return res.status(404).json({ error: 'Investigation not found' });
+  res.json({
+    evidence: pkg.evidence,
+    observations: pkg.observations,
+    findings: pkg.findings,
+    whatWeKnow: pkg.whatWeKnow,
+    whatRemainsUnknown: pkg.whatRemainsUnknown,
+    conflictingEvidence: pkg.conflictingEvidence
+  });
+});
+
+// GET /api/investigations/:id/timeline & activity
+app.get(['/api/investigations/:id/timeline', '/api/investigations/:id/activity', '/api/v1/investigations/:id/timeline'], (req, res) => {
+  const inv = getInvestigation(req.params.id);
+  if (!inv) return res.status(404).json({ error: 'Investigation not found' });
+  const timeline = getTimelineEventsForInvestigation(req.params.id);
+  res.json(timeline);
+});
+
+// POST /api/investigations/:id/notes
+app.post(['/api/investigations/:id/notes', '/api/v1/investigations/:id/notes'], (req, res) => {
+  try {
+    const { text, authorId = 'Analyst' } = req.body;
+    if (!text || typeof text !== 'string' || !text.trim()) {
+      return res.status(400).json({ error: 'Note text cannot be empty.' });
+    }
+    const note = addNoteToInvestigation(req.params.id, text.trim(), authorId);
+    res.status(201).json({ success: true, note });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// GET /api/investigations/:id/notes
+app.get(['/api/investigations/:id/notes', '/api/v1/investigations/:id/notes'], (req, res) => {
+  const inv = getInvestigation(req.params.id);
+  if (!inv) return res.status(404).json({ error: 'Investigation not found' });
+  const notes = getNotesForInvestigation(req.params.id);
+  res.json(notes);
+});
+
+// ── Retrieve Artifact by ID ───────────────────────────
 function getArtifactHandler(req, res) {
   const artifact = artifactsStore.get(req.params.id);
   if (!artifact) {
@@ -332,14 +521,6 @@ function getArtifactHandler(req, res) {
 }
 app.get('/api/media/artifact/:id', getArtifactHandler);
 app.get('/api/artifact/:id', getArtifactHandler);
-
-app.get('/api/investigations/:id', (req, res) => {
-  const investigation = investigationsStore.get(req.params.id);
-  if (!investigation) {
-    return res.status(404).json({ error: 'Investigation not found' });
-  }
-  return res.json(investigation);
-});
 
 // ── POST /chat & /api/chat ────────────────────────────────────────────
 function buildForensicChatReply(userMessage = '') {

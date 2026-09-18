@@ -164,26 +164,126 @@ export function createAnalysisMethod({
 
 export function createInvestigation({
   id = generateId('inv'),
-  artifactId,
+  title = '',
+  description = '',
+  status = 'OPEN',
+  createdAt = new Date().toISOString(),
+  updatedAt = new Date().toISOString(),
+  createdBy = 'Analyst',
+  artifactIds = [],
+  findingIds = [],
+  priority = 'MEDIUM',
+  tags = [],
+  metadata = {},
+  artifactId = null,
   mode = 'REAL_INVESTIGATION',
-  status = 'COMPLETED',
   findings = [],
   evidence = [],
   observations = [],
   analysisRuns = [],
-  uncertainty = [],
-  createdAt = new Date().toISOString()
+  uncertainty = []
 } = {}) {
+  const normArtifactIds = Array.isArray(artifactIds) ? [...artifactIds] : [];
+  if (artifactId && !normArtifactIds.includes(artifactId)) {
+    normArtifactIds.push(artifactId);
+  }
+
+  const normFindingIds = Array.isArray(findingIds) ? [...findingIds] : [];
+  if (Array.isArray(findings)) {
+    findings.forEach(f => {
+      const fid = typeof f === 'string' ? f : f?.id;
+      if (fid && !normFindingIds.includes(fid)) {
+        normFindingIds.push(fid);
+      }
+    });
+  }
+
+  const finalTitle = title || (artifactId ? `Investigation ${artifactId.slice(0, 10)}` : `Investigation ${id.slice(0, 10)}`);
+  const validStatuses = ['OPEN', 'IN_REVIEW', 'RESOLVED', 'ARCHIVED', 'COMPLETED'];
+  const finalStatus = validStatuses.includes(status) ? status : 'OPEN';
+
   return {
     id,
-    artifactId,
-    mode,
-    status,
+    title: finalTitle,
+    description,
+    status: finalStatus,
+    createdAt,
+    updatedAt,
+    createdBy,
+    artifactIds: normArtifactIds,
+    findingIds: normFindingIds,
+    priority,
+    tags,
+    metadata: {
+      mode: mode || (metadata && metadata.mode) || 'REAL_INVESTIGATION',
+      ...metadata
+    },
+    artifactId: artifactId || normArtifactIds[0] || null,
+    mode: mode || (metadata && metadata.mode) || 'REAL_INVESTIGATION',
     findings,
     evidence,
     observations,
     analysisRuns,
-    uncertainty,
+    uncertainty
+  };
+}
+
+export function createTimelineEvent({
+  id = generateId('evt'),
+  investigationId,
+  type = 'INVESTIGATION_CREATED',
+  timestamp = new Date().toISOString(),
+  actor = 'System',
+  description = '',
+  metadata = {}
+} = {}) {
+  return {
+    id,
+    investigationId,
+    type,
+    timestamp,
+    actor,
+    description,
+    metadata
+  };
+}
+
+export function createNote({
+  id = generateId('nte'),
+  investigationId,
+  authorId = 'Analyst',
+  text = '',
+  createdAt = new Date().toISOString(),
+  updatedAt = new Date().toISOString()
+} = {}) {
+  return {
+    id,
+    investigationId,
+    authorId,
+    text,
+    createdAt,
+    updatedAt
+  };
+}
+
+export function createArtifactRelationship({
+  id = generateId('rel'),
+  investigationId,
+  sourceArtifactId,
+  targetArtifactId,
+  type = 'UNKNOWN',
+  evidenceIds = [],
+  description = '',
+  createdAt = new Date().toISOString()
+} = {}) {
+  return {
+    id,
+    investigationId,
+    sourceArtifactId,
+    targetArtifactId,
+    type,
+    evidenceIds,
+    description,
     createdAt
   };
 }
