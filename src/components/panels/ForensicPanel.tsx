@@ -56,15 +56,16 @@ interface EvidenceTreeFinding {
   }>
 }
 
-export function ForensicPanel() {
-  const { currentResult } = useStore()
+export function ForensicPanel({ artifactId, customResult }: { artifactId?: string; customResult?: any } = {}) {
+  const { currentResult: storeResult } = useStore()
+  const currentResult = customResult || storeResult
   const [evidenceTree, setEvidenceTree] = useState<{ findings: EvidenceTreeFinding[] } | null>(null)
   const [selectedCategory, setSelectedCategory] = useState<string>('All')
 
   useEffect(() => {
-    if (!currentResult) return
-    const artifactId = (currentResult as any).artifact_id || (currentResult as any).artifactId || currentResult.job_id
-    fetch(`/api/investigations/${artifactId}/evidence`)
+    const targetId = artifactId || (currentResult ? ((currentResult as any).artifact_id || (currentResult as any).artifactId || currentResult.job_id) : null)
+    if (!targetId) return
+    fetch(`/api/investigations/${targetId}/evidence`)
       .then(res => res.ok ? res.json() : null)
       .then(data => {
         if (data && data.findings) {
@@ -72,7 +73,7 @@ export function ForensicPanel() {
         }
       })
       .catch(() => {})
-  }, [currentResult])
+  }, [artifactId, currentResult])
 
   if (!currentResult) {
     return (

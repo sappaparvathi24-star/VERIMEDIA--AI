@@ -40,17 +40,17 @@ export function HeroOverlay() {
               fontSize: 20,
             }}>🛡️</div>
             <div>
-              <h1 style={{ fontSize: 26, fontWeight: 800, color: '#00d4ff', letterSpacing: '-0.02em' }}>
+              <h1 style={{ fontSize: 26, fontWeight: 800, color: '#38bdf8', letterSpacing: '-0.02em' }}>
                 VeriMedia AI
               </h1>
               <p style={{ fontSize: 11, color: '#8899aa', fontFamily: 'monospace', letterSpacing: '0.15em' }}>
-                DETECTION · VERIFICATION · ENFORCEMENT · v23
+                MEDIA PROVENANCE, INTEGRITY & INVESTIGATION
               </p>
             </div>
           </div>
-          <p style={{ fontSize: 14, color: '#cbd5e1', maxWidth: 560, margin: '0 auto', lineHeight: 1.6 }}>
-            AI-powered media intelligence platform. Detect unauthorized content, analyze deepfakes,
-            and automate DMCA enforcement across social platforms in real time.
+          <p style={{ fontSize: 14, color: '#cbd5e1', maxWidth: 580, margin: '0 auto', lineHeight: 1.6 }}>
+            Forensic investigation workspace for media provenance and identity verification.
+            Correlate physical, signal, and container observations into grounded evidentiary findings.
           </p>
         </div>
 
