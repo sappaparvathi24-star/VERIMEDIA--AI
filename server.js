@@ -1,447 +1,716 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs';
 import { GoogleGenAI } from '@google/genai';
 
-dotenv.config();
+import config from './server/config.js';
+import { sanitizeFilename, validatePublicUrl } from './server/security.js';
+import {
+  createMediaArtifact,
+  createInvestigation,
+  createFinding,
+  createEvidence,
+  createObservation,
+  createSource
+} from './server/models.js';
+import {
+  detectMagicMime,
+  extractMetadata,
+  computePerceptualHash,
+  ingestMediaBuffer,
+  fetchPublicMediaBuffer
+} from './server/media.js';
+import {
+  getAllMethods,
+  getMethod
+} from './server/methods.js';
+import {
+  getObservationsForArtifact,
+  getEvidenceForArtifact,
+  getFindingsForArtifact,
+  getAnalysisRunsForArtifact,
+  getTraceableInvestigationEvidence,
+  adaptForensicSignalsToEvidence,
+  validateAndCreateObservation,
+  validateAndCreateEvidence,
+  validateAndCreateFinding,
+  buildTraceabilityChain,
+  recordObservation,
+  recordEvidence,
+  recordFinding,
+  recordAnalysisRun,
+  observationsStore,
+  evidenceStore,
+  findingsStore,
+  analysisRunsStore
+} from './server/evidence.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = 3000;
+const PORT = config.PORT;
+const GEMINI_MODEL = config.GEMINI_MODEL;
 
-app.use(cors());
-app.use(express.json({ limit: '10mb' }));
+// ── In-Memory Datastores ──────────────────────────────────────────────
+const artifactsStore = new Map();
+const investigationsStore = new Map();
 
-// Lazy Google Gen AI initialization
-let aiClient = null;
-function getGenAI() {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return null;
-  if (!aiClient) {
-    aiClient = new GoogleGenAI({ apiKey });
+// Lazy initialize Gemini client
+let genAI = null;
+let geminiKeyReportedLeaked = false;
+let geminiKeyWarningLogged = false;
+
+function handleGeminiError(context, err) {
+  const msg = err && (err.message || String(err));
+  const isLeaked = msg && (
+    msg.includes('reported as leaked') ||
+    msg.includes('leaked') ||
+    msg.includes('PERMISSION_DENIED') ||
+    (err.status === 'PERMISSION_DENIED') ||
+    (err.status === 403)
+  );
+
+  if (isLeaked) {
+    geminiKeyReportedLeaked = true;
+    genAI = null;
+    if (!geminiKeyWarningLogged) {
+      geminiKeyWarningLogged = true;
+      console.warn('[VeriMedia AI] GEMINI_API_KEY reported leaked/invalid. Using standalone forensic engine.');
+    }
+  } else {
+    console.warn(`[VeriMedia AI] ${context} notice: ${msg ? msg.slice(0, 160) : 'API unavailable'}`);
   }
-  return aiClient;
 }
 
-// Helper to call Gemini with graceful fallback between models
-async function callGemini(contents, config = {}) {
-  const ai = getGenAI();
-  if (!ai) return null;
-  const models = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-3.8-flash', 'gemini-3.1-flash-lite'];
-  for (const model of models) {
+function getGeminiClient() {
+  if (geminiKeyReportedLeaked) {
+    return null;
+  }
+  if (!genAI && process.env.GEMINI_API_KEY) {
     try {
-      const response = await ai.models.generateContent({
-        model,
-        contents,
-        config
-      });
-      if (response && response.text) {
-        return { text: response.text, model };
-      }
-    } catch (err) {
-      console.warn(`Model ${model} unavailable: ${err.message}`);
+      genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    } catch (e) {
+      console.warn('Failed to initialize GoogleGenAI client:', e.message);
     }
   }
-  return null;
+  return genAI;
 }
 
-// ---------------------------------------------------------------------------
-// Health check endpoints
-// ---------------------------------------------------------------------------
-function healthResponse(req, res) {
-  const hasKey = Boolean(process.env.GEMINI_API_KEY);
+// ── Middleware ────────────────────────────────────────────────────────
+app.use(cors());
+app.use(express.json({ limit: config.MAX_JSON_PAYLOAD_SIZE }));
+app.use(express.urlencoded({ extended: true, limit: config.MAX_JSON_PAYLOAD_SIZE }));
+
+// ── Health Endpoint ───────────────────────────────────────────────────
+app.get(['/health', '/api/health', '/api/v1/health'], (_req, res) => {
   res.json({
     status: 'ok',
-    service: 'VeriMedia AI Unified Backend',
-    gemini: hasKey ? 'connected' : 'fallback-mode (no GEMINI_API_KEY)',
-    models: ['gemini-3.8-flash', 'gemini-3.1-flash-lite'],
+    service: 'VeriMedia AI Backend',
+    version: '2.0.0-mvp',
+    activeArchitecture: 'single-node-port-3000',
+    gemini: !!process.env.GEMINI_API_KEY && !geminiKeyReportedLeaked,
+    geminiStatus: geminiKeyReportedLeaked
+      ? 'KEY_REPORTED_LEAKED_FALLBACK_ACTIVE'
+      : (process.env.GEMINI_API_KEY ? 'CONFIGURED' : 'UNCONFIGURED'),
+    model: GEMINI_MODEL,
+    activeArtifacts: artifactsStore.size,
+    activeInvestigations: investigationsStore.size,
     timestamp: new Date().toISOString()
-  });
-}
-
-app.get('/health', healthResponse);
-app.get('/api/health', healthResponse);
-app.get('/api/v1/health', healthResponse);
-
-// ---------------------------------------------------------------------------
-// POST /chat — VeriMedia Assistant conversational agent
-// ---------------------------------------------------------------------------
-app.post('/chat', async (req, res) => {
-  const { messages = [], prompt, system_prompt = '', max_tokens = 1024 } = req.body;
-
-  let userText = '';
-  if (prompt) {
-    userText = prompt;
-  } else if (Array.isArray(messages) && messages.length > 0) {
-    const last = messages[messages.length - 1];
-    userText = typeof last === 'string' ? last : (last.content || last.text || '');
-  }
-
-  if (!userText) {
-    return res.status(400).json({ error: 'No prompt or messages provided' });
-  }
-
-  const fullPrompt = system_prompt
-    ? `${system_prompt}\n\nUser Question:\n${userText}`
-    : `You are VeriMedia AI Assistant, an expert in digital media rights, perceptual hashing, deepfake detection, forensic watermarking, and DMCA copyright enforcement.\nUser Question:\n${userText}`;
-
-  const geminiResult = await callGemini(fullPrompt, {
-    maxOutputTokens: max_tokens,
-    temperature: 0.7
-  });
-
-  if (geminiResult && geminiResult.text) {
-    return res.json({
-      reply: geminiResult.text,
-      content: [{ type: 'text', text: geminiResult.text }],
-      text: geminiResult.text,
-      source: geminiResult.model
-    });
-  }
-
-  // Fallback conversational reply
-  const fallbackReply = generateChatFallback(userText);
-  return res.json({
-    reply: fallbackReply,
-    content: [{ type: 'text', text: fallbackReply }],
-    text: fallbackReply,
-    source: 'rule-based-fallback'
   });
 });
 
-// ---------------------------------------------------------------------------
-// POST /analyze — Core Media Authenticity & Forensics
-// ---------------------------------------------------------------------------
-app.post('/analyze', async (req, res) => {
-  // Check if caller sent a Claude/Gemini conversational format: { messages: [...] }
-  if (Array.isArray(req.body.messages) && req.body.messages.length > 0) {
-    const last = req.body.messages[req.body.messages.length - 1];
-    const text = typeof last === 'string' ? last : (last.content || last.text || '');
-    
-    const geminiResult = await callGemini(text, {
-      maxOutputTokens: req.body.max_tokens || 350,
-      temperature: 0.4
-    });
+// ── Analysis Methods Registry ─────────────────────────────────────────
+app.get(['/api/analysis-methods', '/api/v1/analysis-methods'], (_req, res) => {
+  res.json({ methods: getAllMethods() });
+});
 
-    if (geminiResult && geminiResult.text) {
-      return res.json({
-        reply: geminiResult.text,
-        content: [{ type: 'text', text: geminiResult.text }],
-        text: geminiResult.text,
-        source: geminiResult.model
+// ── Media Ingestion Route ─────────────────────────────────────────────
+async function handleMediaIngest(req, res) {
+  try {
+    const { fileData, data, filename = 'uploaded_media', mimeType = '', url = '' } = req.body;
+    const rawData = fileData || data;
+    
+    let buffer;
+    let sourceUrl = '';
+    let sourceType = 'upload';
+
+    if (url && typeof url === 'string') {
+      sourceType = 'url';
+      sourceUrl = url.trim();
+      const fetched = await fetchPublicMediaBuffer(sourceUrl);
+      buffer = fetched.buffer;
+    } else if (rawData && typeof rawData === 'string') {
+      sourceType = 'upload';
+      let base64Data = rawData;
+      if (rawData.includes(',')) {
+        base64Data = rawData.split(',')[1];
+      }
+      buffer = Buffer.from(base64Data, 'base64');
+    } else {
+      return res.status(400).json({
+        error: 'Invalid input: Provide either `fileData` (base64 string) or `url` (public media URL).'
       });
     }
 
-    const fallback = generateChatFallback(text);
+    if (!buffer || buffer.length === 0) {
+      return res.status(400).json({
+        error: 'Empty media payload received.'
+      });
+    }
+
+    const result = ingestMediaBuffer({
+      buffer,
+      filename,
+      claimedMime: mimeType,
+      sourceType,
+      sourceUrl
+    });
+
+    artifactsStore.set(result.artifact.id, result.artifact);
+    investigationsStore.set(result.investigation.id, result.investigation);
+
     return res.json({
-      reply: fallback,
-      content: [{ type: 'text', text: fallback }],
-      text: fallback,
-      source: 'fallback'
+      success: true,
+      mode: 'REAL_INVESTIGATION',
+      artifact: result.artifact,
+      investigation: result.investigation,
+      observations: result.observations,
+      evidence: result.evidence,
+      findings: result.findings,
+      runs: result.runs,
+      observationsCount: result.observations.length,
+      evidenceCount: result.evidence.length,
+      findingsCount: result.findings.length
+    });
+  } catch (err) {
+    console.error('Ingestion error:', err.message);
+    return res.status(400).json({
+      error: err.message || 'Media ingestion failed'
     });
   }
+}
 
-  // Structured analysis payload
-  const {
-    contentDescription = 'Video clip uploaded to social platform',
-    matchScore = 0.85,
-    integrityScore = 0.60,
-    viralScore = 0.70,
-    decision = 'TAKEDOWN',
-    platform = 'TikTok',
-    contentType = 'sports',
-    flags = []
-  } = req.body;
+app.post('/api/media/ingest', handleMediaIngest);
+app.post('/api/ingest', handleMediaIngest);
+app.post('/api/v1/media/ingest', handleMediaIngest);
 
-  const trustScore = Math.max(0, Math.min(100, Math.round(
-    ((1 - matchScore) * 0.45 + integrityScore * 0.45 + (1 - viralScore) * 0.10) * 100
-  )));
-
-  const prompt = `You are VeriMedia AI, an automated media rights enforcement intelligence engine.
-Analyze this detected content item and return a strict JSON object (no markdown fences, no extra text):
-
-Input metadata:
-- Content: "${contentDescription}"
-- Platform: ${platform}
-- Content Type: ${contentType}
-- Perceptual Match Score: ${(matchScore * 100).toFixed(1)}%
-- Integrity Score: ${(integrityScore * 100).toFixed(1)}%
-- Viral Risk: ${(viralScore * 100).toFixed(1)}%
-- Computed Trust Score: ${trustScore}/100
-- Initial Recommendation: ${decision}
-- Flags: ${flags.length ? flags.join(', ') : 'None'}
-
-Return ONLY a valid JSON object matching this exact schema:
-{
-  "summary": "1-2 sentence executive forensic overview",
-  "authenticity": "GENUINE" | "ATTRIBUTION_REQUIRED" | "MANIPULATED" | "HIGH_RISK_INFRINGING",
-  "authenticityDetail": "Detailed breakdown of forensic signals",
-  "confidence": number between 0.80 and 0.99,
-  "keyInsights": ["bullet 1", "bullet 2", "bullet 3"],
-  "whyThisResult": "Clear causal rationale explaining the decision",
-  "riskLevel": "LOW" | "MEDIUM" | "HIGH" | "CRITICAL",
-  "recommendedAction": "ALLOW" | "REQUEST_ATTRIBUTION" | "SEND_DMCA_TAKEDOWN" | "EMERGENCY_TAKEDOWN",
-  "dmcaEligible": boolean
-}`;
-
-  const geminiResult = await callGemini(prompt, {
-    responseMimeType: 'application/json',
-    temperature: 0.2
-  });
-
-  if (geminiResult && geminiResult.text) {
-    try {
-      const parsed = JSON.parse(geminiResult.text);
-      return res.json({
-        ...parsed,
-        _meta: {
-          engine: geminiResult.model,
-          trustScore,
-          matchScore,
-          integrityScore,
-          viralScore,
-          platform
-        }
-      });
-    } catch (_) {}
-  }
-
-  // Fallback forensic decision
-  return res.json(buildForensicFallback({
-    contentDescription,
-    matchScore,
-    integrityScore,
-    viralScore,
-    trustScore,
-    decision,
-    platform,
-    flags
-  }));
+// ── Evidence Engine Phase C Endpoints ─────────────────────────────────
+app.get([
+  '/api/investigations/:artifactId/evidence',
+  '/api/evidence/tree/:artifactId',
+  '/api/v1/evidence/tree/:artifactId'
+], (req, res) => {
+  const artifactId = req.params.artifactId;
+  const artifact = artifactsStore.get(artifactId) || null;
+  const traceablePkg = getTraceableInvestigationEvidence(artifactId, artifact);
+  res.json(traceablePkg);
 });
 
-// ---------------------------------------------------------------------------
-// POST /dmca-reasoning and POST /dmca/generate
-// ---------------------------------------------------------------------------
-async function handleDMCA(req, res) {
-  const {
-    caseId = `VM-${Date.now().toString().slice(-6)}`,
-    workTitle = 'Protected Media Asset',
-    rightsHolder = 'VeriMedia Authorized Rights Holder',
-    infringingUrl = 'https://social-platform.com/clip/v99281',
-    platform = 'TikTok',
-    matchScore = 0.91,
-    detectedEdits = 'Cropping, watermark removal, audio speed adjustment',
-    claimType = 'Copyright Infringement (17 U.S.C. § 512)'
-  } = req.body;
-
-  const prompt = `Draft a legally formal, professional DMCA Takedown Notice under 17 U.S.C. § 512(c)(3) for:
-Case ID: ${caseId}
-Protected Work: "${workTitle}"
-Rights Holder: ${rightsHolder}
-Infringing Platform: ${platform}
-Infringing URL: ${infringingUrl}
-Technical Evidence: ${Math.round(matchScore * 100)}% perceptual hash match. Forensics detected: ${detectedEdits}.
-Claim Type: ${claimType}
-
-Format with clear headers:
-1. IDENTIFICATION OF COPYRIGHTED WORK
-2. IDENTIFICATION OF INFRINGING MATERIAL
-3. TECHNICAL FORENSIC EVIDENCE
-4. GOOD FAITH STATEMENT & DECLARATION UNDER PENALTY OF PERJURY
-5. CONTACT & SIGNATURE BLOCK`;
-
-  const geminiResult = await callGemini(prompt, { temperature: 0.3 });
-
-  if (geminiResult && geminiResult.text) {
-    return res.json({
-      noticeText: geminiResult.text,
-      caseId,
-      platform,
-      status: 'generated',
-      engine: geminiResult.model
-    });
+app.post(['/api/evidence/observations', '/api/v1/evidence/observations'], (req, res) => {
+  const result = validateAndCreateObservation(req.body, artifactsStore);
+  if (!result.valid) {
+    return res.status(400).json({ error: result.error });
   }
+  recordObservation(result.observation);
+  res.json({ success: true, observation: result.observation });
+});
 
-  // Legal template fallback
-  const noticeText = `FORMAL NOTICE OF COPYRIGHT INFRINGEMENT (17 U.S.C. § 512)
-Case Reference: ${caseId}
-Date: ${new Date().toUTCString()}
+app.post(['/api/evidence', '/api/v1/evidence'], (req, res) => {
+  const result = validateAndCreateEvidence(req.body, artifactsStore);
+  if (!result.valid) {
+    return res.status(400).json({ error: result.error });
+  }
+  recordEvidence(result.evidence);
+  res.json({ success: true, evidence: result.evidence });
+});
 
-To Copyright Designated Agent (${platform}):
+app.post(['/api/findings', '/api/v1/findings'], (req, res) => {
+  const result = validateAndCreateFinding(req.body, artifactsStore);
+  if (!result.valid) {
+    return res.status(400).json({ error: result.error });
+  }
+  recordFinding(result.finding);
+  res.json({ success: true, finding: result.finding });
+});
 
-1. IDENTIFICATION OF COPYRIGHTED WORK:
-I am an authorized agent representing ${rightsHolder} ("Rights Holder"). The copyrighted work at issue is: "${workTitle}".
+app.post(['/api/evidence/runs', '/api/v1/evidence/runs'], (req, res) => {
+  const { artifactId, analysisType, methodId, inputHash, resultSummary, metadata } = req.body;
+  if (!artifactId) {
+    return res.status(400).json({ error: 'artifactId is required' });
+  }
+  if (artifactsStore.size > 0 && !artifactsStore.has(artifactId)) {
+    return res.status(400).json({ error: `Artifact '${artifactId}' not found` });
+  }
+  const run = recordAnalysisRun({
+    artifactId,
+    analysisType: analysisType || 'FORENSIC_RUN',
+    methodId,
+    inputHash,
+    resultSummary,
+    metadata
+  });
+  res.json({ success: true, run });
+});
 
-2. IDENTIFICATION OF INFRINGING MATERIAL:
-The unauthorized publication is accessible at:
-${infringingUrl}
+app.get(['/api/findings/:id/traceability', '/api/v1/findings/:id/traceability'], (req, res) => {
+  const chain = buildTraceabilityChain(req.params.id, artifactsStore);
+  if (!chain) {
+    return res.status(404).json({ error: 'Finding not found or untraceable' });
+  }
+  res.json({ success: true, chain, ...chain });
+});
 
-3. TECHNICAL FORENSIC EVIDENCE:
-Automated analysis by VeriMedia AI perceptual fingerprinting confirmed a ${Math.round(matchScore * 100)}% perceptual match against the master reference dataset.
-Detected modifications: ${detectedEdits}.
+// ── Demo Scenario Route ───────────────────────────────────────────────
+app.post('/api/demo/scenario', (req, res) => {
+  const { scenario = 'deepfake' } = req.body;
+  const demoId = 'demo_art_' + scenario + '_' + Date.now().toString(36);
+  
+  const demoArtifact = createMediaArtifact({
+    id: demoId,
+    filename: `demo_simulation_${scenario}.mp4`,
+    mimeType: 'video/mp4',
+    size: 4829104,
+    sha256: 'simulated_demo_hash_' + scenario + '_e3b0c44298fc1c149afbf4c8996fb92427ae41e4',
+    perceptualHash: 'pd3a871f09c52e41',
+    metadata: {
+      format: 'MP4',
+      width: 1920,
+      height: 1080,
+      aspectRatio: '1.78',
+      duration: 18.4,
+      isDemo: true
+    },
+    sourceType: 'demo'
+  });
 
-4. GOOD FAITH & STATEMENT OF TRUTH:
-I have a good faith belief that use of the copyrighted material is not authorized by the copyright owner, its agent, or the law. The information in this notification is accurate, and under penalty of perjury, I am authorized to act on behalf of the owner of an exclusive right that is allegedly infringed.
+  artifactsStore.set(demoArtifact.id, demoArtifact);
 
-5. REQUESTED ACTION:
-Expeditiously remove or disable access to the infringing material referenced above.
+  const evidencePkg = adaptForensicSignalsToEvidence({
+    artifact: demoArtifact,
+    scenario,
+    isDemo: true
+  });
 
-Respectfully submitted,
-VeriMedia AI Rights Enforcement System on behalf of ${rightsHolder}`;
+  const demoInvestigation = createInvestigation({
+    artifactId: demoArtifact.id,
+    mode: 'DEMO_SCENARIO',
+    status: 'COMPLETED',
+    findings: evidencePkg.findings,
+    evidence: evidencePkg.evidence,
+    observations: evidencePkg.observations,
+    analysisRuns: evidencePkg.runs,
+    uncertainty: ['This scenario was synthetically generated for demonstration.']
+  });
+
+  investigationsStore.set(demoInvestigation.id, demoInvestigation);
 
   return res.json({
-    noticeText,
+    success: true,
+    mode: 'DEMO_SCENARIO',
+    disclaimer: 'DEMO SCENARIO — NOT REAL EVIDENCE',
+    scenario,
+    artifact: demoArtifact,
+    investigation: demoInvestigation,
+    observations: evidencePkg.observations,
+    evidence: evidencePkg.evidence,
+    findings: evidencePkg.findings,
+    runs: evidencePkg.runs
+  });
+});
+
+// ── Retrieve Artifact & Investigation by ID ───────────────────────────
+function getArtifactHandler(req, res) {
+  const artifact = artifactsStore.get(req.params.id);
+  if (!artifact) {
+    return res.status(404).json({ error: 'Artifact not found' });
+  }
+  return res.json(artifact);
+}
+app.get('/api/media/artifact/:id', getArtifactHandler);
+app.get('/api/artifact/:id', getArtifactHandler);
+
+app.get('/api/investigations/:id', (req, res) => {
+  const investigation = investigationsStore.get(req.params.id);
+  if (!investigation) {
+    return res.status(404).json({ error: 'Investigation not found' });
+  }
+  return res.json(investigation);
+});
+
+// ── POST /chat & /api/chat ────────────────────────────────────────────
+function buildForensicChatReply(userMessage = '') {
+  const q = (userMessage || '').toLowerCase();
+  
+  if (/hash|sha|fingerprint|digest|crypto|fips/.test(q)) {
+    return `### 🔐 Cryptographic Integrity & Hash Preservation
+VeriMedia AI anchors media integrity using **FIPS 180-4 SHA-256** digests:
+- **Bit-Level Invariance:** The SHA-256 hash guarantees bit-for-bit identity. Any modification, re-compression, or watermark stripping alters this digest.
+- **Perceptual Fingerprint:** Alongside cryptographic hashing, a multi-scale perceptual hash (pHash) preserves identity across spatial cropping and format transcoding.
+- **Evidentiary Anchoring:** Every ingested artifact is given an immutable cryptographic record.`;
+  }
+
+  if (/takedown|dmca|legal|infring|512|notice|copyright/.test(q)) {
+    return `### ⚖️ DMCA Section 512(c) Protocol & Enforcement
+When unauthorized media use is identified:
+1. **Preserve Evidence Chain:** Cryptographic SHA-256 digests, perceptual hashes, and observed discovery timestamps are anchored in the investigation record.
+2. **Epistemic Classification:** Verified masters are cataloged as *Earliest Observed Appearance* rather than unsubstantiated absolute "Originals".
+3. **Formal Notice:** Generate an evidentiary takedown package citing Section 512(c) of the Digital Millennium Copyright Act with platform-specific reporting guidelines.`;
+  }
+
+  if (/trust|score|formula|metric|match|integrity|allowed|review/.test(q)) {
+    return `### 📊 Trust Scoring Methodology
+VeriMedia AI utilizes an epistemic multi-signal framework:
+- **Similarity Score ($S$):** Perceptual distance and structural similarity compared to recorded reference media.
+- **Integrity Score ($I$):** Spatial, temporal, and container metadata consistency.
+- **Composite Trust Score ($T$):** $T = S \\times I$.
+  - **$T \\ge 75\\%$**: Verified authentic or authorized repost (ALLOW).
+  - **$40\\% \\le T < 75\\%$**: Ambiguous anomaly or license gap (MANUAL REVIEW).
+  - **$T < 40\\%$**: Substantial modification or deepfake manipulation (TAKEDOWN).`;
+  }
+
+  return `### 🛡️ VeriMedia AI Forensics Engine
+VeriMedia AI provides multimodal media provenance, integrity, and propagation intelligence:
+- **Media Identity:** Magic-byte container validation, perceptual fingerprinting, and cryptographic SHA-256 anchoring.
+- **Integrity Analysis:** Spatial consistency, multi-scale temporal inspection, and tamper localization.
+- **Provenance & Propagation:** Earliest observed appearance tracking with clear evidentiary boundaries.`;
+}
+
+async function handleChat(req, res) {
+  const { messages = [], system_prompt = '', max_tokens = 1024 } = req.body;
+  const lastMsg = messages[messages.length - 1]?.content || '';
+  const fullPrompt = system_prompt ? `${system_prompt}\n\nUser: ${lastMsg}` : lastMsg;
+
+  const ai = getGeminiClient();
+  if (ai) {
+    try {
+      const result = await ai.models.generateContent({
+        model: GEMINI_MODEL,
+        contents: fullPrompt,
+        config: {
+          maxOutputTokens: max_tokens,
+        },
+      });
+      const reply = result.text ? result.text.trim() : 'Analysis ready.';
+      return res.json({
+        reply,
+        content: [{ type: 'text', text: reply }],
+        ai_source: 'gemini'
+      });
+    } catch (err) {
+      handleGeminiError('Chat', err);
+    }
+  }
+
+  const reply = buildForensicChatReply(lastMsg);
+  return res.json({
+    reply,
+    content: [{ type: 'text', text: reply }],
+    ai_source: 'rule_engine'
+  });
+}
+
+app.post('/chat', handleChat);
+app.post('/api/chat', handleChat);
+
+// ── POST /analyze & /api/analyze ──────────────────────────────────────
+async function handleAnalyze(req, res) {
+  if (req.body.messages && Array.isArray(req.body.messages)) {
+    return handleChat(req, res);
+  }
+
+  const {
+    artifactId,
+    contentDescription = 'media content',
+    matchScore = 0.5,
+    integrityScore = 0.5,
+    viralScore = 0,
+    decision = 'UNKNOWN',
+    platform = 'Unknown Platform',
+    contentType = 'general',
+    flags = [],
+    isRealUpload = false
+  } = req.body;
+
+  const numericMatch = typeof matchScore === 'number' ? matchScore : 0.5;
+  const numericIntegrity = typeof integrityScore === 'number' ? integrityScore : 0.5;
+  const trustScore = parseFloat((numericMatch * numericIntegrity).toFixed(3));
+  const matchPct = Math.round(numericMatch * 100);
+  const intPct = Math.round(numericIntegrity * 100);
+  const trustPct = Math.round(trustScore * 100);
+  const flagStr = Array.isArray(flags) && flags.length > 0 ? flags.join(', ') : 'none';
+
+  let linkedArtifact = null;
+  if (artifactId && artifactsStore.has(artifactId)) {
+    linkedArtifact = artifactsStore.get(artifactId);
+  }
+
+  const prompt = `You are VeriMedia AI, an expert digital content forensics system.
+
+Analyze this content detection result and return a structured JSON response.
+
+DETECTION DATA:
+- Content: ${contentDescription}
+- Content Type: ${contentType}
+- Platform: ${platform}
+- Match Score: ${matchPct}% (similarity to observed records)
+- Integrity Score: ${intPct}% (spatial/temporal/semantic consistency)
+- Trust Score: ${trustPct}% (= match × integrity — primary decision metric)
+- Viral Score: ${Math.round(viralScore)} / 100 (spread velocity)
+- Decision: ${decision}
+- Flags: ${flagStr}
+${linkedArtifact ? `- Cryptographic SHA-256: ${linkedArtifact.sha256}\n- Real File Size: ${linkedArtifact.size} bytes` : ''}
+
+CRITICAL RULES:
+- Never fabricate sources, URLs, accounts, timestamps, or origin.
+- Use "EARLIEST OBSERVED APPEARANCE" rather than "Original Source" unless cryptographic origin is verified.
+- Clearly note UNCERTAINTY when evidence is inconclusive.
+
+Return ONLY valid JSON:
+{
+  "summary": "2-3 sentence plain-English summary of what was detected and why",
+  "authenticity": "Real" | "AI-Generated" | "Manipulated" | "Uncertain",
+  "authenticityDetail": "one sentence explaining the authenticity classification",
+  "confidence": <integer 0-100>,
+  "keyInsights": [
+    "insight 1 — citing actual scores",
+    "insight 2 — citing actual scores",
+    "insight 3 — citing actual scores"
+  ],
+  "whyThisResult": "2-3 sentences explaining exactly why the trust score produced this decision",
+  "riskLevel": "Low" | "Moderate" | "High" | "Critical",
+  "recommendedAction": "one concrete recommendation sentence"
+}`;
+
+  const ai = getGeminiClient();
+  if (ai) {
+    try {
+      const result = await ai.models.generateContent({
+        model: GEMINI_MODEL,
+        contents: prompt,
+        config: {
+          responseMimeType: 'application/json',
+          temperature: 0.2,
+          maxOutputTokens: 1024,
+        },
+      });
+
+      const raw = result.text ? result.text.trim() : '';
+      const clean = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+
+      if (clean) {
+        const parsed = JSON.parse(clean);
+        return res.json({
+          summary: parsed.summary || fallbackSummary(decision, trustPct),
+          authenticity: parsed.authenticity || 'Uncertain',
+          authenticityDetail: parsed.authenticityDetail || '',
+          confidence: typeof parsed.confidence === 'number' ? parsed.confidence : trustPct,
+          keyInsights: Array.isArray(parsed.keyInsights) ? parsed.keyInsights.slice(0, 4) : [],
+          whyThisResult: parsed.whyThisResult || '',
+          riskLevel: parsed.riskLevel || deriveRisk(decision),
+          recommendedAction: parsed.recommendedAction || '',
+          _meta: {
+            decision,
+            trustScore,
+            matchScore: numericMatch,
+            integrityScore: numericIntegrity,
+            viralScore,
+            platform,
+            flags,
+            ai_source: 'gemini',
+            mode: (linkedArtifact && linkedArtifact.sourceType === 'demo') ? 'DEMO_SCENARIO' : (isRealUpload || linkedArtifact ? 'REAL_INVESTIGATION' : 'DEMO_SCENARIO'),
+            sha256: linkedArtifact ? linkedArtifact.sha256 : null
+          },
+        });
+      }
+    } catch (err) {
+      handleGeminiError('Analyze', err);
+    }
+  }
+
+  const fallback = buildFallback(decision, trustPct, matchPct, intPct, platform);
+  if (linkedArtifact) {
+    fallback._meta.sha256 = linkedArtifact.sha256;
+    fallback._meta.mode = linkedArtifact.sourceType === 'demo' ? 'DEMO_SCENARIO' : 'REAL_INVESTIGATION';
+  }
+  if (geminiKeyReportedLeaked) {
+    fallback._meta.key_status = 'KEY_REPORTED_LEAKED_FALLBACK_ACTIVE';
+  }
+  return res.json(fallback);
+}
+
+app.post('/analyze', handleAnalyze);
+app.post('/api/analyze', handleAnalyze);
+app.post('/api/v1/detect/', handleAnalyze);
+
+// ── POST /dmca-reasoning & /api/dmca-reasoning ────────────────────────
+async function handleDMCA(req, res) {
+  const {
+    platform = 'Unknown Platform',
+    user = 'Unknown User',
+    decision = 'TAKEDOWN',
+    trustScore = 0.35,
+    matchScore = 0.85,
+    integrityScore = 0.41,
+    contentType = 'general',
+    caseId = 'VM-' + Date.now().toString(36).toUpperCase(),
+    sha256 = ''
+  } = req.body;
+
+  const tPct = Math.round(trustScore * 100);
+  const mPct = Math.round(matchScore * 100);
+  const iPct = Math.round(integrityScore * 100);
+
+  const prompt = `You are a legal assistant for VeriMedia AI.
+Write a formal DMCA Section 512(c) takedown notice body for this case.
+
+Case ID: ${caseId}
+Platform: ${platform}
+Account: ${user}
+Content Type: ${contentType}
+Decision: ${decision}
+Trust Score: ${tPct}% (match ${mPct}% × integrity ${iPct}%)
+${sha256 ? `Verified Cryptographic Hash: SHA-256 ${sha256}` : ''}
+
+Requirements:
+- 3-4 short paragraphs in professional legal tone
+- Reference the specific scores as evidentiary proof of infringement/unauthorized modification
+- Do not state "Original source" unless verified; state "Earliest observed authorized master"
+- End with "Evidence chain preserved by VeriMedia AI."
+Return ONLY the notice body text.`;
+
+  const ai = getGeminiClient();
+  if (ai) {
+    try {
+      const result = await ai.models.generateContent({
+        model: GEMINI_MODEL,
+        contents: prompt,
+        config: {
+          temperature: 0.1,
+          maxOutputTokens: 1024,
+        },
+      });
+      const body = result.text ? result.text.trim() : '';
+      if (body) {
+        return res.json({ caseId, body, ai_source: 'gemini' });
+      }
+    } catch (err) {
+      handleGeminiError('DMCA', err);
+    }
+  }
+
+  return res.json({
     caseId,
-    platform,
-    status: 'generated',
-    engine: 'VeriMedia Template Generator'
+    body: `Pursuant to 17 U.S.C. § 512(c), this notice formalizes a request to remove infringing material located on ${platform} associated with account ${user}.\n\nForensic analysis confirmed content similarity of ${mPct}% against our earliest observed authorized master work, with an integrity score of ${iPct}%, yielding an aggregate trust score of ${tPct}%. ${sha256 ? `Cryptographic hash of record: SHA-256 ${sha256}.` : ''}\n\nDecision: ${decision}.\n\nEvidence chain preserved by VeriMedia AI.`,
+    ai_source: 'fallback',
   });
 }
 
 app.post('/dmca-reasoning', handleDMCA);
+app.post('/api/dmca-reasoning', handleDMCA);
 app.post('/dmca/generate', handleDMCA);
 
-// ---------------------------------------------------------------------------
-// API v1 compatibility endpoints for frontend services
-// ---------------------------------------------------------------------------
-app.post('/api/v1/detect/', (req, res) => {
-  const { scenario = 'crop', platform = 'YouTube', username = 'content_reposter' } = req.body || {};
-  const isThreat = scenario === 'crop' || scenario === 'deepfake' || scenario === 'manipulated';
-  
+// ── Stats and Cases Endpoints ─────────────────────────────────────────
+app.get('/api/v1/detect/stats', (_req, res) => {
   res.json({
-    id: `scan-${Date.now()}`,
-    scenario,
-    platform,
-    username,
-    similarity: scenario === 'crop' ? 0.94 : scenario === 'deepfake' ? 0.88 : 0.65,
-    integrity: scenario === 'deepfake' ? 0.22 : scenario === 'manipulated' ? 0.45 : 0.89,
-    timestamp: new Date().toISOString(),
-    ai_analysis: {
-      decision: isThreat ? 'TAKEDOWN' : 'ALLOW',
-      confidence: 0.93,
-      reasoning: isThreat
-        ? 'High similarity perceptual match with deliberate boundary crops to evade watermarks.'
-        : 'Sufficient fair use or original commentary detected.'
-    }
+    total_scans: 1428 + investigationsStore.size,
+    status: 'operational',
+    active_monitors: 24,
+    active_artifacts: artifactsStore.size,
+    active_investigations: investigationsStore.size
   });
 });
 
-app.get('/api/v1/cases/', (req, res) => {
-  res.json([
-    {
-      id: 'VM-98210',
-      workTitle: 'Global Championship Final Highlights',
-      platform: 'TikTok',
-      infringingUrl: 'https://tiktok.com/@sportsclip/video/7238192',
-      status: 'TAKEDOWN_SUBMITTED',
-      similarity: 0.96,
-      created_at: new Date(Date.now() - 3600000).toISOString()
-    },
-    {
-      id: 'VM-98209',
-      workTitle: 'Exclusive Interview Series Ep 4',
-      platform: 'YouTube',
-      infringingUrl: 'https://youtube.com/watch?v=mock_video_id',
-      status: 'RESOLVED_REMOVED',
-      similarity: 0.89,
-      created_at: new Date(Date.now() - 86400000).toISOString()
-    }
-  ]);
+app.get('/api/v1/cases/', (_req, res) => {
+  const cases = Array.from(investigationsStore.values()).map(inv => ({
+    id: inv.id,
+    artifactId: inv.artifactId,
+    mode: inv.mode,
+    status: inv.status,
+    createdAt: inv.createdAt,
+    findingsCount: inv.findings.length
+  }));
+  res.json(cases);
 });
 
-app.post('/api/v1/enforce/dmca', (req, res) => {
-  res.json({
-    status: 'queued',
-    notice_id: `DMCA-${Date.now()}`,
-    platform: req.body.platform || 'General',
-    created_at: new Date().toISOString()
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Static file serving & SPA fallback
-// ---------------------------------------------------------------------------
-const frontendDir = path.join(__dirname, 'frontend');
-app.use(express.static(frontendDir));
-
-// Fallback to index.html for SPA / client-side routing
-app.get('*', (req, res) => {
-  res.sendFile(path.join(frontendDir, 'index.html'));
-});
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-function buildForensicFallback({ contentDescription, matchScore, integrityScore, viralScore, trustScore, decision, platform, flags }) {
-  const isHighMatch = matchScore >= 0.80;
-  const isLowIntegrity = integrityScore < 0.60;
-
-  let authenticity = 'GENUINE';
-  let recommendedAction = 'ALLOW';
-  let riskLevel = 'LOW';
-  let whyThisResult = 'Content shows normal perceptual variance consistent with original publishing.';
-
-  if (isHighMatch && isLowIntegrity) {
-    authenticity = 'MANIPULATED';
-    recommendedAction = 'SEND_DMCA_TAKEDOWN';
-    riskLevel = 'HIGH';
-    whyThisResult = `Detected ${(matchScore * 100).toFixed(0)}% fingerprint overlap with low integrity (${(integrityScore * 100).toFixed(0)}%), indicating intentional crop or watermark removal.`;
-  } else if (isHighMatch) {
-    authenticity = 'HIGH_RISK_INFRINGING';
-    recommendedAction = 'SEND_DMCA_TAKEDOWN';
-    riskLevel = 'CRITICAL';
-    whyThisResult = `Direct 1:1 perceptual duplication (${(matchScore * 100).toFixed(0)}%) detected across ${platform} without rights clearance.`;
-  } else if (isLowIntegrity) {
-    authenticity = 'MANIPULATED';
-    recommendedAction = 'REQUEST_ATTRIBUTION';
-    riskLevel = 'MEDIUM';
-    whyThisResult = 'Video exhibits synthetic artifacts or deepfake generation patterns requiring manual review.';
-  }
-
+// ── Helpers ───────────────────────────────────────────────────────────
+function buildFallback(decision, trustPct, matchPct, intPct, platform) {
   return {
-    summary: `Analysis of ${contentDescription} on ${platform} yielded a Trust Score of ${trustScore}/100.`,
-    authenticity,
-    authenticityDetail: `Signals indicate perceptual match at ${(matchScore * 100).toFixed(1)}% with integrity rating of ${(integrityScore * 100).toFixed(1)}%.`,
-    confidence: 0.94,
+    summary: fallbackSummary(decision, trustPct),
+    authenticity: decision === 'ALLOW' ? 'Real' : decision === 'REVIEW' ? 'Uncertain' : 'Manipulated',
+    authenticityDetail: `Trust score ${trustPct}% from match ${matchPct}% × integrity ${intPct}%.`,
+    confidence: trustPct,
     keyInsights: [
-      `Platform scanned: ${platform}`,
-      `Perceptual match: ${(matchScore * 100).toFixed(0)}%`,
-      `Integrity score: ${(integrityScore * 100).toFixed(0)}%`,
-      flags.length ? `Flags: ${flags.join(', ')}` : 'No active adversarial masks found'
+      `Match score: ${matchPct}% — similarity index`,
+      `Integrity score: ${intPct}% — content consistency`,
+      `Trust score: ${trustPct}% — primary decision metric`,
     ],
-    whyThisResult,
-    riskLevel,
-    recommendedAction,
-    dmcaEligible: matchScore >= 0.75,
-    _meta: {
-      engine: 'Deterministic Forensic Fallback',
-      trustScore,
-      matchScore,
-      integrityScore,
-      viralScore,
-      platform
-    }
+    whyThisResult: `Trust score ${trustPct}% produced ${decision}. ${decisionExplain(decision, trustPct)}`,
+    riskLevel: deriveRisk(decision),
+    recommendedAction: decisionAction(decision, platform),
+    _meta: { decision, ai_source: 'rule_engine' },
   };
 }
 
-function generateChatFallback(query) {
-  const q = (query || '').toLowerCase();
-  if (q.includes('dmca') || q.includes('takedown')) {
-    return 'Under 17 U.S.C. § 512, a valid DMCA notice requires identification of the copyrighted work, the infringing URL, contact information, and good faith attestations. VeriMedia AI automatically generates and submits this notice with technical fingerprint evidence attached.';
-  }
-  if (q.includes('deepfake') || q.includes('manipulat')) {
-    return 'VeriMedia AI detects manipulation using a multi-signal pipeline: frame-by-frame perceptual hashing, audio spectrogram verification, facial landmark consistency, and edge-crop artifact detection.';
-  }
-  if (q.includes('fingerprint') || q.includes('hash')) {
-    return 'Perceptual fingerprinting maps media frames into robust vector embeddings that remain stable despite compression, scaling, color changes, or cropping, allowing instant identification against protected master catalogs.';
-  }
-  return 'VeriMedia AI is operational. You can scan videos, inspect 6-signal forensic breakdowns, evaluate trust scores, and issue automated DMCA takedown requests across supported social platforms.';
+function fallbackSummary(decision, trustPct) {
+  const map = {
+    ALLOW: `Content verified with trust score ${trustPct}%. No enforcement action required.`,
+    REVIEW: `Moderate similarity detected (trust ${trustPct}%). Manual review recommended.`,
+    TAKEDOWN: `Unauthorized modification detected (trust ${trustPct}%). DMCA takedown recommended.`,
+    EMERGENCY_TAKEDOWN: `Critical — low trust ${trustPct}% with rapid spread velocity. Immediate enforcement required.`,
+  };
+  return map[decision] || `Analysis complete. Trust score: ${trustPct}%.`;
 }
 
+function decisionExplain(decision, trustPct) {
+  if (trustPct > 75) return 'Score exceeds the 75% ALLOW threshold.';
+  if (trustPct >= 40) return 'Score falls in the 40-75% REVIEW range.';
+  return 'Score is below the 40% TAKEDOWN threshold.';
+}
+
+function decisionAction(decision, platform) {
+  const map = {
+    ALLOW: 'No action required.',
+    REVIEW: `Review matched content on ${platform} before enforcement.`,
+    TAKEDOWN: `File DMCA takedown notice with ${platform}.`,
+    EMERGENCY_TAKEDOWN: `Contact ${platform} Trust & Safety immediately.`,
+  };
+  return map[decision] || 'Consult your legal team.';
+}
+
+function deriveRisk(decision) {
+  return { ALLOW: 'Low', REVIEW: 'Moderate', TAKEDOWN: 'High', EMERGENCY_TAKEDOWN: 'Critical' }[decision] || 'Moderate';
+}
+
+app.get(['/evidence-engine.js', '/server/evidenceEngine.js'], (_req, res) => {
+  res.sendFile(path.join(__dirname, 'server', 'evidenceEngine.js'));
+});
+
+// ── Serve Frontend Static Files ───────────────────────────────────────
+const distDir = path.join(__dirname, 'dist');
+const frontendDir = path.join(__dirname, 'frontend');
+const staticDir = fs.existsSync(distDir) ? distDir : frontendDir;
+
+app.use(express.static(staticDir));
+
+app.get('*', (_req, res) => {
+  const distIndex = path.join(distDir, 'index.html');
+  const frontendIndex = path.join(frontendDir, 'index.html');
+  if (fs.existsSync(distIndex)) {
+    return res.sendFile(distIndex);
+  }
+  if (fs.existsSync(frontendIndex)) {
+    return res.sendFile(frontendIndex);
+  }
+  return res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+// ── Start Server ──────────────────────────────────────────────────────
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🛡️ VeriMedia AI server running on http://0.0.0.0:${PORT}`);
+  console.log(`✅ VeriMedia AI running on http://0.0.0.0:${PORT}`);
+  console.log(`   Health check: http://0.0.0.0:${PORT}/health`);
+  console.log(`   Media Ingest: http://0.0.0.0:${PORT}/api/media/ingest`);
 });
