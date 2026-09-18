@@ -1417,11 +1417,13 @@ app.get('/api/reports/:id', (req, res) => {
 // Static file serving & SPA fallback
 // ---------------------------------------------------------------------------
 const frontendDir = path.join(__dirname, 'frontend');
+app.use(express.static(__dirname));
 app.use(express.static(frontendDir));
 
 // Fallback to index.html for SPA / client-side routing
 app.get('*', (req, res) => {
-  res.sendFile(path.join(frontendDir, 'index.html'));
+  const rootIndex = path.join(__dirname, 'index.html');
+  res.sendFile(rootIndex);
 });
 
 // ---------------------------------------------------------------------------

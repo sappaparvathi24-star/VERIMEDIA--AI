@@ -13,68 +13,68 @@
 <meta property="og:title" content="VeriMedia AI"/>
 <meta property="og:description" content="Comprehensive media investigation platform for deepfake analysis, evidence-backed provenance timelines, forensic chain-of-custody, context & claim verification, and source discovery & candidate matching."/>
 <style>
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap');
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#070A12;--bg2:#0D1322;--bg3:#131C30;--bg4:#1A253E;--bg5:#223050;
-  --border:#1E293B;--border2:#2E3D56;--border3:#3E5172;
-  --text:#F1F5F9;--text2:#94A3B8;--text3:#64748B;
-  --blue:#3B82F6;--blueL:#60A5FA;--blueDim:#172554;
-  --green:#10B981;--greenL:#34D399;--greenDim:#064E3B;
-  --red:#EF4444;--redL:#F87171;--redDim:#450A0A;
-  --amber:#F59E0B;--amberL:#FBBF24;--amberDim:#451A03;
-  --cyan:#06B6D4;--cyanDim:#083344;
-  --purple:#8B5CF6;--purpleL:#A78BFA;--purpleDim:#2E1065;
-  --font:'Inter',system-ui,-apple-system,sans-serif;--mono:'JetBrains Mono',ui-monospace,monospace;
+  --bg:#080C16;--bg2:#0E1527;--bg3:#141F36;--bg4:#1C2B4B;--bg5:#253860;
+  --border:#1E2D4A;--border2:#2B3F66;--border3:#3D578A;
+  --text:#F8FAFC;--text2:#CBD5E1;--text3:#94A3B8;
+  --blue:#3B82F6;--blueL:#60A5FA;--blueDim:rgba(59,130,246,0.18);
+  --green:#10B981;--greenL:#34D399;--greenDim:rgba(16,185,129,0.18);
+  --red:#EF4444;--redL:#FB7185;--redDim:rgba(239,68,68,0.18);
+  --amber:#F59E0B;--amberL:#FBBF24;--amberDim:rgba(245,158,11,0.18);
+  --cyan:#06B6D4;--cyanL:#38BDF8;--cyanDim:rgba(6,182,212,0.18);
+  --purple:#8B5CF6;--purpleL:#A78BFA;--purpleDim:rgba(139,92,246,0.18);
+  --font:'Plus Jakarta Sans','Inter',system-ui,-apple-system,sans-serif;--mono:'JetBrains Mono',ui-monospace,monospace;
 }
-html,body{height:100%;font-family:var(--font);background:var(--bg);color:var(--text);overflow-x:hidden;-webkit-font-smoothing:antialiased}
+html,body{height:100%;font-family:var(--font);background:var(--bg);color:var(--text);font-size:15px;line-height:1.6;overflow-x:hidden;-webkit-font-smoothing:antialiased}
 
 /* ── NAV ── */
-.nav{background:rgba(7,10,18,.96);border-bottom:1px solid var(--border);padding:0 24px;display:flex;align-items:center;justify-content:space-between;height:54px;z-index:100;backdrop-filter:blur(16px)}
-.brand{display:flex;align-items:center;gap:10px}
-.bmark{width:32px;height:32px;background:#1E293B;border:1px solid var(--blue);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:14px;box-shadow:0 0 16px rgba(59,130,246,.25);color:var(--blueL);font-weight:800;font-family:var(--mono)}
-.bname{font-size:14px;font-weight:700;color:var(--text);letter-spacing:-.01em}
-.btag{font-size:9px;color:var(--text3);font-family:var(--mono);text-transform:uppercase;letter-spacing:.06em}
-.npills{display:flex;gap:5px;align-items:center;flex-wrap:wrap}
-.npill{font-size:9px;padding:3px 9px;border-radius:20px;border:1px solid var(--border2);background:var(--bg3);color:var(--text2);display:flex;align-items:center;gap:4px;font-family:var(--mono)}
-.npill.live{border-color:rgba(16,185,129,.3);color:var(--green);background:var(--greenDim)}
-.dot{width:5px;height:5px;border-radius:50%;flex-shrink:0}
-.dot.g{background:var(--green);box-shadow:0 0 4px var(--green);animation:blink 2s infinite}
-.dot.r{background:var(--red);box-shadow:0 0 4px var(--red);animation:blink .7s infinite}
-.dot.a{background:var(--amber);animation:blink 1.2s infinite}
+.nav{background:rgba(8,12,22,.97);border-bottom:1px solid var(--border);padding:0 24px;display:flex;align-items:center;justify-content:space-between;height:58px;z-index:100;backdrop-filter:blur(16px)}
+.brand{display:flex;align-items:center;gap:12px}
+.bmark{width:36px;height:36px;background:linear-gradient(135deg,#1E2D4A,#141F36);border:1px solid var(--blue);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 0 20px rgba(59,130,246,.35);color:var(--blueL);font-weight:800;font-family:var(--mono)}
+.bname{font-size:16px;font-weight:800;color:var(--text);letter-spacing:-.01em}
+.btag{font-size:11px;color:var(--text3);font-family:var(--mono);text-transform:uppercase;letter-spacing:.07em}
+.npills{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.npill{font-size:11.5px;padding:5px 12px;border-radius:20px;border:1px solid var(--border2);background:var(--bg3);color:var(--text2);display:flex;align-items:center;gap:6px;font-family:var(--mono);font-weight:500}
+.npill.live{border-color:rgba(16,185,129,.4);color:var(--greenL);background:var(--greenDim)}
+.dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.dot.g{background:var(--greenL);box-shadow:0 0 8px var(--greenL);animation:blink 2s infinite}
+.dot.r{background:var(--redL);box-shadow:0 0 8px var(--redL);animation:blink .7s infinite}
+.dot.a{background:var(--amberL);box-shadow:0 0 8px var(--amberL);animation:blink 1.2s infinite}
 .dot.gr{background:var(--text3)}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
 
 /* ── TICKER ── */
-.ticker{background:var(--bg2);border-bottom:1px solid var(--border);height:28px;display:flex;align-items:center;overflow:hidden;padding:0 14px;gap:10px}
-.tk-badge{background:var(--blueDim);color:var(--blueL);font-size:9px;font-weight:600;padding:1px 8px;border-radius:20px;border:1px solid rgba(37,99,235,.3);white-space:nowrap;font-family:var(--mono);flex-shrink:0}
-.tk-items{display:flex;gap:18px;animation:tickAnim 30s linear infinite;white-space:nowrap;font-size:9px;color:var(--text3);font-family:var(--mono)}
-.tk-items strong{color:var(--text2)}
+.ticker{background:var(--bg2);border-bottom:1px solid var(--border);height:32px;display:flex;align-items:center;overflow:hidden;padding:0 16px;gap:12px}
+.tk-badge{background:var(--blueDim);color:var(--blueL);font-size:11px;font-weight:700;padding:2px 10px;border-radius:20px;border:1px solid rgba(59,130,246,.4);white-space:nowrap;font-family:var(--mono);flex-shrink:0}
+.tk-items{display:flex;gap:24px;animation:tickAnim 35s linear infinite;white-space:nowrap;font-size:11.5px;color:var(--text2);font-family:var(--mono)}
+.tk-items strong{color:var(--text);font-weight:600}
 @keyframes tickAnim{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
 
 /* ── CONTROL BAR ── */
-.ctrlbar{display:flex;align-items:center;gap:8px;padding:8px 20px;border-bottom:1px solid var(--border);background:var(--bg2);flex-wrap:wrap}
-.demo-lbl{font-size:9px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;font-family:var(--mono);white-space:nowrap}
-.dbtn{font-size:9px;padding:4px 11px;border-radius:5px;border:1px solid var(--border2);background:var(--bg3);color:var(--text2);cursor:pointer;font-family:var(--mono);transition:all .15s}
-.dbtn:hover{border-color:var(--blue);color:var(--blueL);background:var(--blueDim)}
-.dbtn.on{background:var(--blueDim);color:var(--blueL);border-color:var(--blue)}
-.dbtn.red.on{background:var(--redDim);color:var(--red);border-color:var(--red)}
-.dbtn.green{border-color:rgba(16,185,129,.3);color:var(--green)}
-.dbtn.green.on{background:var(--greenDim);border-color:var(--green)}
-.dbtn.amber{border-color:rgba(245,158,11,.25);color:var(--amber)}
-.dbtn.amber.on{background:var(--amberDim);border-color:var(--amber)}
-.dbtn.upload-btn{border-color:rgba(6,182,212,.3);color:var(--cyan);cursor:pointer}
-.dbtn.upload-btn:hover{background:var(--cyanDim)}
-.sep{width:1px;height:18px;background:var(--border2);flex-shrink:0}
-.stat-chips{display:flex;gap:5px;margin-left:auto}
-.chip{font-size:9px;padding:3px 9px;border-radius:20px;border:1px solid var(--border2);background:var(--bg3);color:var(--text2);font-family:var(--mono);display:flex;align-items:center;gap:4px}
-.chip.red{border-color:rgba(239,68,68,.25);color:var(--red)}
-.chip.green{border-color:rgba(16,185,129,.2);color:var(--green)}
-.chip.amber{border-color:rgba(245,158,11,.2);color:var(--amber)}
+.ctrlbar{display:flex;align-items:center;gap:10px;padding:10px 24px;border-bottom:1px solid var(--border);background:var(--bg2);flex-wrap:wrap}
+.demo-lbl{font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;font-family:var(--mono);white-space:nowrap}
+.dbtn{font-size:11.5px;font-weight:600;padding:6px 14px;border-radius:6px;border:1px solid var(--border2);background:var(--bg3);color:var(--text2);cursor:pointer;font-family:var(--mono);transition:all .15s}
+.dbtn:hover{border-color:var(--blue);color:var(--blueL);background:var(--blueDim);transform:translateY(-1px)}
+.dbtn.on{background:var(--blueDim);color:var(--blueL);border-color:var(--blue);box-shadow:0 0 12px rgba(59,130,246,.25)}
+.dbtn.red.on{background:var(--redDim);color:var(--redL);border-color:var(--red);box-shadow:0 0 12px rgba(239,68,68,.25)}
+.dbtn.green{border-color:rgba(16,185,129,.35);color:var(--greenL)}
+.dbtn.green.on{background:var(--greenDim);border-color:var(--greenL);box-shadow:0 0 12px rgba(16,185,129,.25)}
+.dbtn.amber{border-color:rgba(245,158,11,.3);color:var(--amberL)}
+.dbtn.amber.on{background:var(--amberDim);border-color:var(--amberL);box-shadow:0 0 12px rgba(245,158,11,.25)}
+.dbtn.upload-btn{border-color:rgba(6,182,212,.4);color:var(--cyanL);cursor:pointer}
+.dbtn.upload-btn:hover{background:var(--cyanDim);box-shadow:0 0 14px rgba(6,182,212,.3)}
+.sep{width:1px;height:22px;background:var(--border2);flex-shrink:0}
+.stat-chips{display:flex;gap:8px;margin-left:auto}
+.chip{font-size:11px;font-weight:600;padding:4px 12px;border-radius:20px;border:1px solid var(--border2);background:var(--bg3);color:var(--text2);font-family:var(--mono);display:flex;align-items:center;gap:6px}
+.chip.red{border-color:rgba(239,68,68,.3);color:var(--redL);background:var(--redDim)}
+.chip.green{border-color:rgba(16,185,129,.3);color:var(--greenL);background:var(--greenDim)}
+.chip.amber{border-color:rgba(245,158,11,.3);color:var(--amberL);background:var(--amberDim)}
 
 /* ── MAIN 3-PANEL ── */
 .app{display:grid;grid-template-rows:auto auto auto auto 1fr;height:100vh}
-.main{display:grid;grid-template-columns:230px 1fr 360px;height:100%;min-height:0;overflow:hidden}
+.main{display:grid;grid-template-columns:260px 1fr 380px;height:100%;min-height:0;overflow:hidden}
 
 /* ══════════════════════════════════════════════
    HERO OVERLAY — First Screen Rule
@@ -1142,54 +1142,54 @@ html,body{height:100%;font-family:var(--font);background:var(--bg);color:var(--t
 .export-analysis-btn:hover{background:rgba(37,99,235,.2);border-color:rgba(37,99,235,.5)}
 
 /* ── PHASE F: PROVENANCE & MEDIA TIMELINE ── */
-.inv-modal-overlay{position:fixed;inset:0;background:rgba(4,6,10,.88);z-index:9000;display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(10px);animation:fadeIn .18s ease}
-.inv-modal{background:var(--bg2);border:1px solid var(--border3);border-radius:12px;width:100%;max-width:980px;max-height:94vh;display:flex;flex-direction:column;box-shadow:0 12px 60px rgba(0,0,0,.7),0 0 30px rgba(6,182,212,.15);overflow:hidden}
-.inv-header{padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--bg3);flex-shrink:0}
-.inv-title{font-size:13px;font-weight:700;color:var(--text);font-family:var(--mono);display:flex;align-items:center;gap:8px}
-.inv-close{background:none;border:none;color:var(--text3);cursor:pointer;font-size:18px;padding:4px 8px;border-radius:4px;transition:all .15s}
+.inv-modal-overlay{position:fixed;inset:0;background:rgba(4,6,10,.88);z-index:9000;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(14px);animation:fadeIn .18s ease}
+.inv-modal{background:var(--bg2);border:1px solid var(--border3);border-radius:14px;width:100%;max-width:1100px;max-height:94vh;display:flex;flex-direction:column;box-shadow:0 16px 80px rgba(0,0,0,.75),0 0 40px rgba(6,182,212,.18);overflow:hidden}
+.inv-header{padding:18px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--bg3);flex-shrink:0}
+.inv-title{font-size:16px;font-weight:800;color:var(--text);font-family:var(--mono);display:flex;align-items:center;gap:10px}
+.inv-close{background:none;border:none;color:var(--text3);cursor:pointer;font-size:20px;padding:6px 12px;border-radius:6px;transition:all .15s}
 .inv-close:hover{color:var(--text);background:var(--bg4)}
-.inv-case-bar{padding:10px 20px;background:var(--bg);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;flex-wrap:wrap;flex-shrink:0}
-.inv-tabs{display:flex;gap:4px;padding:8px 20px 0;background:var(--bg3);border-bottom:1px solid var(--border);flex-shrink:0;overflow-x:auto}
-.inv-tab-btn{padding:8px 14px;font-size:11px;font-family:var(--mono);font-weight:600;border:none;background:none;color:var(--text2);cursor:pointer;border-bottom:2px solid transparent;transition:all .15s;white-space:nowrap}
-.inv-tab-btn:hover{color:var(--text)}
-.inv-tab-btn.active{color:var(--cyan);border-bottom-color:var(--cyan);background:rgba(6,182,212,.06)}
-.inv-body{padding:20px;overflow-y:auto;flex:1}
-.inv-card{background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:14px 16px;margin-bottom:14px}
-.inv-earliest-banner{background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.3);border-radius:8px;padding:12px 16px;margin-bottom:16px;display:flex;flex-direction:column;gap:6px}
-.inv-earliest-badge{align-self:flex-start;font-size:9px;font-weight:800;letter-spacing:.08em;font-family:var(--mono);padding:3px 9px;border-radius:20px;background:rgba(6,182,212,.2);color:var(--cyan);border:1px solid rgba(6,182,212,.4)}
-.inv-timeline-item{position:relative;padding-left:24px;border-left:2px solid var(--border3);margin-left:8px;padding-bottom:18px}
+.inv-case-bar{padding:12px 24px;background:var(--bg);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:14px;flex-wrap:wrap;flex-shrink:0}
+.inv-tabs{display:flex;gap:6px;padding:10px 24px 0;background:var(--bg3);border-bottom:1px solid var(--border);flex-shrink:0;overflow-x:auto}
+.inv-tab-btn{padding:10px 18px;font-size:13.5px;font-family:var(--mono);font-weight:600;border:none;background:none;color:var(--text2);cursor:pointer;border-bottom:3px solid transparent;transition:all .15s;white-space:nowrap}
+.inv-tab-btn:hover{color:var(--text);background:rgba(255,255,255,.03)}
+.inv-tab-btn.active{color:var(--cyanL);border-bottom-color:var(--cyanL);background:rgba(6,182,212,.1)}
+.inv-body{padding:24px;overflow-y:auto;flex:1}
+.inv-card{background:var(--bg3);border:1px solid var(--border2);border-radius:12px;padding:22px 24px;margin-bottom:18px;box-shadow:0 4px 20px rgba(0,0,0,.25)}
+.inv-earliest-banner{background:rgba(6,182,212,.1);border:1px solid rgba(6,182,212,.35);border-radius:10px;padding:16px 20px;margin-bottom:18px;display:flex;flex-direction:column;gap:8px}
+.inv-earliest-badge{align-self:flex-start;font-size:11.5px;font-weight:800;letter-spacing:.08em;font-family:var(--mono);padding:4px 12px;border-radius:20px;background:rgba(6,182,212,.25);color:var(--cyanL);border:1px solid rgba(6,182,212,.5)}
+.inv-timeline-item{position:relative;padding-left:28px;border-left:2px solid var(--border3);margin-left:12px;padding-bottom:22px}
 .inv-timeline-item:last-child{border-left-color:transparent;padding-bottom:0}
-.inv-timeline-dot{position:absolute;left:-7px;top:2px;width:12px;height:12px;border-radius:50%;background:var(--bg);border:2px solid var(--cyan)}
-.inv-timeline-arrow{text-align:center;color:var(--text3);font-size:16px;margin:2px 0 10px -18px;font-family:var(--mono)}
-.inv-expand-btn{background:none;border:none;color:var(--cyan);font-size:10px;font-family:var(--mono);cursor:pointer;padding:3px 0;display:inline-flex;align-items:center;gap:4px}
+.inv-timeline-dot{position:absolute;left:-8px;top:2px;width:14px;height:14px;border-radius:50%;background:var(--bg);border:2px solid var(--cyanL)}
+.inv-timeline-arrow{text-align:center;color:var(--text3);font-size:18px;margin:4px 0 12px -20px;font-family:var(--mono)}
+.inv-expand-btn{background:none;border:none;color:var(--cyanL);font-size:12.5px;font-family:var(--mono);cursor:pointer;padding:4px 0;display:inline-flex;align-items:center;gap:6px}
 .inv-expand-btn:hover{text-decoration:underline}
-.inv-demo-banner{background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);color:var(--amber);padding:6px 12px;border-radius:6px;font-size:10px;font-family:var(--mono);font-weight:700;display:inline-flex;align-items:center;gap:6px;margin-bottom:12px}
-.inv-confidence-chip{font-size:9px;padding:3px 8px;border-radius:12px;font-family:var(--mono);font-weight:600;display:inline-flex;align-items:center;gap:5px}
+.inv-demo-banner{background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.35);color:var(--amberL);padding:8px 16px;border-radius:8px;font-size:12px;font-family:var(--mono);font-weight:700;display:inline-flex;align-items:center;gap:8px;margin-bottom:14px}
+.inv-confidence-chip{font-size:11.5px;padding:4px 12px;border-radius:14px;font-family:var(--mono);font-weight:600;display:inline-flex;align-items:center;gap:6px}
 
 /* Phase G & Investigation Workspace additions */
-.inv-claim-card{background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:16px;margin-bottom:14px;transition:border-color .15s}
-.inv-claim-card:hover{border-color:var(--border3)}
-.inv-badge{font-size:9px;font-family:var(--mono);font-weight:700;padding:2px 8px;border-radius:4px;display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
-.inv-badge-type{background:rgba(139,92,246,.15);border:1px solid rgba(139,92,246,.3);color:var(--purpleL)}
-.inv-badge-supported{background:rgba(16,185,129,.15);border:1px solid rgba(16,185,129,.35);color:var(--green)}
-.inv-badge-partially_supported{background:rgba(6,182,212,.15);border:1px solid rgba(6,182,212,.35);color:var(--cyan)}
-.inv-badge-contradicted{background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.35);color:var(--red)}
-.inv-badge-inconclusive{background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.35);color:var(--amber)}
-.inv-badge-unknown{background:rgba(110,128,154,.15);border:1px solid rgba(110,128,154,.35);color:var(--text2)}
-.inv-badge-unassessed{background:rgba(58,75,96,.15);border:1px solid rgba(58,75,96,.35);color:var(--text3)}
-.inv-action-btn{padding:5px 12px;font-size:10px;font-family:var(--mono);font-weight:600;border-radius:5px;cursor:pointer;display:inline-flex;align-items:center;gap:5px;transition:all .15s;border:1px solid transparent}
-.inv-action-btn.primary{background:var(--cyan);color:#06080C;border-color:var(--cyan)}
-.inv-action-btn.primary:hover{opacity:.9}
+.inv-claim-card{background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:18px 20px;margin-bottom:16px;transition:border-color .15s}
+.inv-claim-card:hover{border-color:var(--cyanL)}
+.inv-badge{font-size:11.5px;font-family:var(--mono);font-weight:700;padding:4px 10px;border-radius:6px;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.inv-badge-type{background:rgba(139,92,246,.18);border:1px solid rgba(139,92,246,.35);color:var(--purpleL)}
+.inv-badge-supported{background:rgba(16,185,129,.18);border:1px solid rgba(16,185,129,.4);color:var(--greenL)}
+.inv-badge-partially_supported{background:rgba(6,182,212,.18);border:1px solid rgba(6,182,212,.4);color:var(--cyanL)}
+.inv-badge-contradicted{background:rgba(239,68,68,.18);border:1px solid rgba(239,68,68,.4);color:var(--redL)}
+.inv-badge-inconclusive{background:rgba(245,158,11,.18);border:1px solid rgba(245,158,11,.4);color:var(--amberL)}
+.inv-badge-unknown{background:rgba(110,128,154,.18);border:1px solid rgba(110,128,154,.4);color:var(--text2)}
+.inv-badge-unassessed{background:rgba(58,75,96,.18);border:1px solid rgba(58,75,96,.4);color:var(--text3)}
+.inv-action-btn{padding:8px 16px;font-size:12.5px;font-family:var(--mono);font-weight:700;border-radius:6px;cursor:pointer;display:inline-flex;align-items:center;gap:8px;transition:all .15s;border:1px solid transparent}
+.inv-action-btn.primary{background:linear-gradient(135deg,#0284c7,#2563eb);color:#fff;border-color:rgba(56,189,248,.5);box-shadow:0 0 16px rgba(37,99,235,.35)}
+.inv-action-btn.primary:hover{opacity:.95;transform:translateY(-1px);box-shadow:0 0 24px rgba(37,99,235,.5)}
 .inv-action-btn.secondary{background:var(--bg4);border-color:var(--border2);color:var(--text)}
-.inv-action-btn.secondary:hover{border-color:var(--cyan);color:var(--cyan)}
-.inv-action-btn.danger{background:var(--redDim);border-color:rgba(239,68,68,.3);color:var(--redL)}
-.inv-submodal-overlay{position:fixed;inset:0;background:rgba(2,4,8,.85);z-index:9500;display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(8px)}
-.inv-submodal{background:var(--bg2);border:1px solid var(--border3);border-radius:10px;width:100%;max-width:540px;box-shadow:0 10px 40px rgba(0,0,0,.6);overflow:hidden}
-.inv-form-input{width:100%;background:var(--bg);border:1px solid var(--border2);color:var(--text);font-family:var(--mono);font-size:11px;padding:8px 12px;border-radius:6px;outline:none;transition:border-color .15s}
-.inv-form-input:focus{border-color:var(--cyan)}
-.inv-table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:10px}
-.inv-table th{text-align:left;padding:8px 10px;background:var(--bg4);border-bottom:1px solid var(--border2);color:var(--text2);font-weight:700}
-.inv-table td{padding:8px 10px;border-bottom:1px solid var(--border);color:var(--text)}
+.inv-action-btn.secondary:hover{border-color:var(--cyanL);color:var(--cyanL);background:var(--bg5)}
+.inv-action-btn.danger{background:var(--redDim);border-color:rgba(239,68,68,.35);color:var(--redL)}
+.inv-submodal-overlay{position:fixed;inset:0;background:rgba(2,4,8,.85);z-index:9500;display:flex;align-items:center;justify-content:center;padding:18px;backdrop-filter:blur(10px)}
+.inv-submodal{background:var(--bg2);border:1px solid var(--border3);border-radius:12px;width:100%;max-width:600px;box-shadow:0 12px 50px rgba(0,0,0,.7);overflow:hidden}
+.inv-form-input{width:100%;background:var(--bg);border:1px solid var(--border2);color:var(--text);font-family:var(--mono);font-size:13px;padding:10px 14px;border-radius:7px;outline:none;transition:border-color .15s}
+.inv-form-input:focus{border-color:var(--cyanL);box-shadow:0 0 10px rgba(6,182,212,.25)}
+.inv-table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:13px}
+.inv-table th{text-align:left;padding:12px 14px;background:var(--bg4);border-bottom:1px solid var(--border2);color:var(--text2);font-weight:700;font-size:11.5px;letter-spacing:0.04em}
+.inv-table td{padding:12px 14px;border-bottom:1px solid var(--border);color:var(--text);font-size:12.5px}
 .inv-table tr:last-child td{border-bottom:none}
 
 
@@ -1544,168 +1544,170 @@ html,body{height:100%;font-family:var(--font);background:var(--bg);color:var(--t
   box-shadow: 0 0 12px rgba(6, 182, 212, 0.35);
 }
 .vm-brand-title {
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 16px;
+  font-weight: 800;
   color: var(--text);
   letter-spacing: 0.02em;
 }
 .vm-brand-tag {
-  font-size: 9px;
+  font-size: 11.5px;
   color: var(--text3);
   font-family: var(--mono);
 }
 .vm-nav-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
 }
 
 /* Primary Home View */
 .vm-home-hero {
-  padding: 64px 24px 40px;
-  max-width: 860px;
+  padding: 68px 24px 44px;
+  max-width: 920px;
   margin: 0 auto;
   text-align: center;
 }
 .vm-hero-mark {
-  width: 48px;
-  height: 48px;
-  margin: 0 auto 16px;
-  background: linear-gradient(135deg, rgba(6, 182, 212, 0.2), rgba(37, 99, 235, 0.2));
-  border: 1px solid rgba(6, 182, 212, 0.4);
-  border-radius: 12px;
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 18px;
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.25), rgba(37, 99, 235, 0.25));
+  border: 1px solid rgba(6, 182, 212, 0.5);
+  border-radius: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 24px;
-  color: var(--cyan);
-  box-shadow: 0 0 24px rgba(6, 182, 212, 0.2);
+  font-size: 28px;
+  color: var(--cyanL);
+  box-shadow: 0 0 30px rgba(6, 182, 212, 0.3);
 }
 .vm-home-title {
-  font-size: 32px;
+  font-size: 38px;
   font-weight: 800;
   letter-spacing: -0.02em;
   color: var(--text);
-  margin-bottom: 6px;
+  margin-bottom: 8px;
   font-family: var(--mono);
 }
 .vm-home-subtitle {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--cyan);
-  letter-spacing: 0.05em;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--cyanL);
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   font-family: var(--mono);
   margin-bottom: 24px;
 }
 .vm-home-tagline {
-  font-size: 15px;
+  font-size: 17px;
   line-height: 1.8;
   color: var(--text2);
-  margin-bottom: 30px;
+  margin-bottom: 34px;
   font-family: var(--mono);
 }
 .vm-home-actions {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 14px;
+  gap: 16px;
   flex-wrap: wrap;
-  margin-bottom: 20px;
+  margin-bottom: 24px;
 }
 .vm-btn-hero-primary {
   background: linear-gradient(135deg, #0284c7, #2563eb);
   color: #fff;
   border: 1px solid rgba(56, 189, 248, 0.5);
-  padding: 11px 24px;
-  border-radius: 8px;
-  font-size: 12px;
+  padding: 13px 28px;
+  border-radius: 9px;
+  font-size: 14px;
   font-weight: 700;
   font-family: var(--mono);
   cursor: pointer;
-  box-shadow: 0 4px 18px rgba(37, 99, 235, 0.35);
+  box-shadow: 0 4px 22px rgba(37, 99, 235, 0.4);
   transition: all 0.15s ease;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 .vm-btn-hero-primary:hover {
   background: linear-gradient(135deg, #0369a1, #1d4ed8);
-  box-shadow: 0 6px 24px rgba(37, 99, 235, 0.5);
-  transform: translateY(-1px);
+  box-shadow: 0 6px 30px rgba(37, 99, 235, 0.6);
+  transform: translateY(-2px);
 }
 .vm-btn-hero-secondary {
   background: var(--bg3);
   color: var(--text);
   border: 1px solid var(--border3);
-  padding: 11px 22px;
-  border-radius: 8px;
-  font-size: 12px;
+  padding: 13px 26px;
+  border-radius: 9px;
+  font-size: 14px;
   font-weight: 600;
   font-family: var(--mono);
   cursor: pointer;
   transition: all 0.15s ease;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 .vm-btn-hero-secondary:hover {
   background: var(--bg4);
-  border-color: var(--cyan);
-  color: var(--cyan);
+  border-color: var(--cyanL);
+  color: var(--cyanL);
+  transform: translateY(-2px);
 }
 .vm-home-section {
-  max-width: 1160px;
+  max-width: 1240px;
   width: 100%;
-  margin: 0 auto 48px;
+  margin: 0 auto 52px;
   padding: 0 24px;
 }
 .vm-section-header {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
-  margin-bottom: 14px;
-  padding-bottom: 10px;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
   border-bottom: 1px solid var(--border);
-  gap: 16px;
+  gap: 18px;
   flex-wrap: wrap;
 }
 .vm-section-title {
-  font-size: 15px;
-  font-weight: 700;
+  font-size: 18px;
+  font-weight: 800;
   color: var(--text);
   font-family: var(--mono);
 }
 .vm-section-desc {
-  font-size: 11px;
+  font-size: 13.5px;
   color: var(--text2);
-  margin-top: 3px;
+  margin-top: 4px;
 }
 .vm-inv-table-wrap {
   background: var(--bg2);
   border: 1px solid var(--border2);
-  border-radius: 10px;
+  border-radius: 12px;
   overflow: hidden;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 6px 26px rgba(0, 0, 0, 0.4);
 }
 .vm-inv-table {
   width: 100%;
   border-collapse: collapse;
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 13.5px;
 }
 .vm-inv-table th {
   background: var(--bg3);
-  color: var(--text3);
-  font-size: 9px;
+  color: var(--text2);
+  font-size: 11.5px;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  padding: 12px 16px;
+  letter-spacing: 0.07em;
+  padding: 14px 18px;
   text-align: left;
   border-bottom: 1px solid var(--border2);
+  font-weight: 700;
 }
 .vm-inv-table td {
-  padding: 14px 16px;
+  padding: 16px 18px;
   border-bottom: 1px solid var(--border);
   vertical-align: middle;
   color: var(--text);
@@ -1715,46 +1717,47 @@ html,body{height:100%;font-family:var(--font);background:var(--bg);color:var(--t
   transition: background 0.15s ease;
 }
 .vm-inv-row:hover {
-  background: rgba(6, 182, 212, 0.04);
+  background: rgba(6, 182, 212, 0.07);
 }
 .vm-inv-row:last-child td {
   border-bottom: none;
 }
 .vm-btn-open-inv {
-  background: rgba(6, 182, 212, 0.1);
-  color: var(--cyan);
-  border: 1px solid rgba(6, 182, 212, 0.3);
-  padding: 5px 12px;
-  border-radius: 5px;
-  font-size: 10px;
+  background: rgba(6, 182, 212, 0.12);
+  color: var(--cyanL);
+  border: 1px solid rgba(6, 182, 212, 0.4);
+  padding: 7px 14px;
+  border-radius: 6px;
+  font-size: 12.5px;
   font-family: var(--mono);
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
   transition: all 0.15s ease;
   white-space: nowrap;
 }
 .vm-btn-open-inv:hover {
-  background: rgba(6, 182, 212, 0.22);
-  border-color: var(--cyan);
+  background: rgba(6, 182, 212, 0.25);
+  border-color: var(--cyanL);
+  box-shadow: 0 0 12px rgba(6, 182, 212, 0.35);
 }
 .inv-badge-real {
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 700;
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: rgba(16, 185, 129, 0.12);
-  color: var(--green);
-  border: 1px solid rgba(16, 185, 129, 0.3);
+  padding: 3px 8px;
+  border-radius: 5px;
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--greenL);
+  border: 1px solid rgba(16, 185, 129, 0.35);
   font-family: var(--mono);
 }
 .inv-badge-demo {
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 700;
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: rgba(245, 158, 11, 0.12);
-  color: var(--amber);
-  border: 1px solid rgba(245, 158, 11, 0.3);
+  padding: 3px 8px;
+  border-radius: 5px;
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--amberL);
+  border: 1px solid rgba(245, 158, 11, 0.35);
   font-family: var(--mono);
 }
 
@@ -1762,97 +1765,102 @@ html,body{height:100%;font-family:var(--font);background:var(--bg);color:var(--t
 .vm-ws-header {
   background: var(--bg2);
   border-bottom: 1px solid var(--border2);
-  padding: 16px 24px;
+  padding: 18px 28px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 18px;
   flex-wrap: wrap;
 }
 .vm-ws-header-left {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 18px;
   flex-wrap: wrap;
 }
 .vm-btn-back {
   background: var(--bg3);
   border: 1px solid var(--border2);
   color: var(--text2);
-  padding: 6px 12px;
-  border-radius: 6px;
-  font-size: 11px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
   font-family: var(--mono);
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
 }
 .vm-btn-back:hover {
-  color: var(--cyan);
-  border-color: var(--cyan);
+  color: var(--cyanL);
+  border-color: var(--cyanL);
   background: var(--bg4);
+  transform: translateY(-1px);
 }
 .vm-ws-header-info {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 4px;
 }
 .vm-ws-breadcrumb {
-  font-size: 9px;
+  font-size: 11.5px;
   color: var(--text3);
   font-family: var(--mono);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
+  font-weight: 600;
 }
 .vm-ws-title {
-  font-size: 15px;
-  font-weight: 700;
+  font-size: 19px;
+  font-weight: 800;
   color: var(--text);
   font-family: var(--mono);
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   flex-wrap: wrap;
 }
 .vm-ws-tabs-bar {
   background: var(--bg3);
   border-bottom: 1px solid var(--border);
-  padding: 0 24px;
+  padding: 0 28px;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   overflow-x: auto;
 }
 .vm-ws-main-body {
   flex: 1;
-  padding: 24px;
-  max-width: 1200px;
+  padding: 28px;
+  max-width: 1280px;
   width: 100%;
   margin: 0 auto;
 }
 .vm-metric-card {
   background: var(--bg2);
   border: 1px solid var(--border2);
-  border-radius: 8px;
-  padding: 14px 16px;
+  border-radius: 12px;
+  padding: 18px 20px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.25);
 }
 .vm-metric-val {
-  font-size: 22px;
+  font-size: 26px;
   font-weight: 800;
   font-family: var(--mono);
   color: var(--text);
 }
 .vm-metric-label {
-  font-size: 9px;
+  font-size: 11.5px;
   font-family: var(--mono);
   color: var(--text3);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
+  font-weight: 700;
 }
 </style>
 <body>
@@ -2834,53 +2842,143 @@ html,body{height:100%;font-family:var(--font);background:var(--bg);color:var(--t
       <!-- Tab 9: How It Spread (Propagation Map & Clusters) -->
       <div id="invViewPropagation" style="display:none">
         <div class="inv-card">
-          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px">
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;margin-bottom:16px">
             <div>
-              <div style="font-size:12px;font-weight:700;color:var(--text);font-family:var(--mono)">🌐 Cross-Platform Propagation &amp; Temporal Precedence</div>
-              <div style="font-size:9px;color:var(--text2);font-family:var(--mono);margin-top:2px">Track appearances across platforms. Precedence reflects observed publication timestamps, not physical causation.</div>
+              <div style="font-size:16px;font-weight:800;color:var(--text);font-family:var(--mono);display:flex;align-items:center;gap:10px">
+                <span>🌐 Cross-Platform Propagation &amp; Viral Diffusion Network</span>
+                <span id="wsPropLiveBadge" style="font-size:11px;padding:3px 10px;border-radius:20px;background:rgba(16,185,129,.15);color:var(--greenL);border:1px solid rgba(16,185,129,.35);font-family:var(--mono);font-weight:700">● LIVE SIMULATION</span>
+              </div>
+              <div style="font-size:12.5px;color:var(--text2);font-family:var(--mono);margin-top:4px">Real-time particle diffusion graph mapping origin provenance, cross-platform repost cascades, and mutated syndication waves.</div>
             </div>
-            <button class="inv-action-btn secondary" onclick="refreshPropagationSection()">🔄 Refresh Propagation Map</button>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <button class="inv-action-btn secondary" onclick="refreshPropagationSection()">🔄 Refresh Propagation Map</button>
+            </div>
           </div>
 
           <!-- Metrics summary -->
-          <div class="inv-claims-stats-bar" style="margin-bottom:16px">
-            <div class="inv-stat-pill"><span class="lbl">TOTAL SIGHTINGS:</span> <span class="val" id="propStatEvents">0</span></div>
-            <div class="inv-stat-pill"><span class="lbl">DISTINCT PLATFORMS:</span> <span class="val" id="propStatPlatforms">0</span></div>
-            <div class="inv-stat-pill"><span class="lbl">INDEPENDENCE GROUPS:</span> <span class="val" id="propStatGroups">0</span></div>
-            <div class="inv-stat-pill"><span class="lbl">CLUSTERS:</span> <span class="val" id="propStatClusters">0</span></div>
+          <div class="inv-claims-stats-bar" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:20px">
+            <div class="inv-stat-pill" style="padding:12px 16px;background:var(--bg2);border:1px solid var(--border2);border-radius:10px"><span class="lbl" style="font-size:11px;color:var(--text3)">TOTAL SIGHTINGS:</span> <span class="val" id="propStatEvents" style="font-size:18px;font-weight:800;color:var(--cyanL);margin-left:8px">0</span></div>
+            <div class="inv-stat-pill" style="padding:12px 16px;background:var(--bg2);border:1px solid var(--border2);border-radius:10px"><span class="lbl" style="font-size:11px;color:var(--text3)">DISTINCT PLATFORMS:</span> <span class="val" id="propStatPlatforms" style="font-size:18px;font-weight:800;color:var(--blueL);margin-left:8px">0</span></div>
+            <div class="inv-stat-pill" style="padding:12px 16px;background:var(--bg2);border:1px solid var(--border2);border-radius:10px"><span class="lbl" style="font-size:11px;color:var(--text3)">INDEPENDENCE GROUPS:</span> <span class="val" id="propStatGroups" style="font-size:18px;font-weight:800;color:var(--greenL);margin-left:8px">0</span></div>
+            <div class="inv-stat-pill" style="padding:12px 16px;background:var(--bg2);border:1px solid var(--border2);border-radius:10px"><span class="lbl" style="font-size:11px;color:var(--text3)">SYNDICATION CLUSTERS:</span> <span class="val" id="propStatClusters" style="font-size:18px;font-weight:800;color:var(--amberL);margin-left:8px">0</span></div>
+          </div>
+
+          <!-- Interactive Animated Propagation Graph Stage -->
+          <div style="background:var(--bg);border:1px solid var(--border2);border-radius:12px;overflow:hidden;margin-bottom:22px;box-shadow:0 8px 32px rgba(0,0,0,.4)">
+            <!-- Graph Toolbar & Playback Controls -->
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 18px;background:var(--bg2);border-bottom:1px solid var(--border2);flex-wrap:wrap;gap:12px">
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <button class="inv-action-btn primary" id="wsPropPlayBtn" onclick="toggleWsPropPlay()" style="padding:6px 14px;font-size:12px">▶ Play Diffusion</button>
+                <button class="inv-action-btn secondary" onclick="resetWsPropSim()" style="padding:6px 14px;font-size:12px">⏪ Rewind</button>
+                <div style="display:flex;align-items:center;gap:4px;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:2px 4px">
+                  <button class="gc" id="wsPropSpeed1" onclick="setWsPropSpeed(1)" style="font-size:11px;padding:3px 8px;border-radius:4px;border:none;background:var(--blueDim);color:var(--blueL)">1x</button>
+                  <button class="gc" id="wsPropSpeed2" onclick="setWsPropSpeed(2)" style="font-size:11px;padding:3px 8px;border-radius:4px;border:none;background:none;color:var(--text2)">2x</button>
+                  <button class="gc" id="wsPropSpeed5" onclick="setWsPropSpeed(5)" style="font-size:11px;padding:3px 8px;border-radius:4px;border:none;background:none;color:var(--text2)">5x</button>
+                </div>
+              </div>
+
+              <!-- Platform Filters -->
+              <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+                <span style="font-size:11.5px;color:var(--text3);font-family:var(--mono);margin-right:2px">Filter:</span>
+                <button class="uh-chip" id="wsFilterAll" onclick="filterWsPropPlatform('all')" style="border-color:var(--cyanL);color:var(--cyanL);background:var(--cyanDim);font-size:11px;padding:4px 10px">All Platforms</button>
+                <button class="uh-chip" id="wsFilterVideo" onclick="filterWsPropPlatform('video')" style="font-size:11px;padding:4px 10px">Video (YouTube/TikTok)</button>
+                <button class="uh-chip" id="wsFilterSocial" onclick="filterWsPropPlatform('social')" style="font-size:11px;padding:4px 10px">Social (X/Reddit/IG)</button>
+                <button class="uh-chip" id="wsFilterDecentralized" onclick="filterWsPropPlatform('decentralized')" style="font-size:11px;padding:4px 10px">Archives &amp; Other</button>
+              </div>
+
+              <!-- Zoom Controls -->
+              <div style="display:flex;gap:6px;align-items:center">
+                <button class="inv-action-btn secondary" onclick="zoomWsProp(1.2)" style="padding:4px 10px;font-size:12px" title="Zoom In">+</button>
+                <button class="inv-action-btn secondary" onclick="zoomWsProp(0.83)" style="padding:4px 10px;font-size:12px" title="Zoom Out">−</button>
+                <button class="inv-action-btn secondary" onclick="resetWsPropZoom()" style="padding:4px 10px;font-size:12px" title="Center View">🎯 Fit</button>
+              </div>
+            </div>
+
+            <!-- Canvas Container with Interactive HUD -->
+            <div style="position:relative;width:100%;height:440px;background:#06080F;overflow:hidden">
+              <canvas id="wsPropSpreadCanvas" style="position:absolute;inset:0;width:100%;height:100%;cursor:grab"></canvas>
+              
+              <!-- Floating HUD Top Left: Velocity & Acceleration -->
+              <div style="position:absolute;top:16px;left:16px;background:rgba(8,12,22,.88);border:1px solid var(--border2);border-radius:10px;padding:12px 16px;backdrop-filter:blur(10px);pointer-events:none;min-width:210px;box-shadow:0 8px 24px rgba(0,0,0,.5)">
+                <div style="font-size:10.5px;font-weight:700;color:var(--cyanL);font-family:var(--mono);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">⚡ Diffusion Velocity</div>
+                <div style="display:flex;align-items:baseline;gap:8px">
+                  <span id="wsPropVelocityNum" style="font-size:24px;font-weight:800;font-family:var(--mono);color:#fff">1,840</span>
+                  <span style="font-size:11px;color:var(--text3);font-family:var(--mono)">reposts/hr</span>
+                </div>
+                <div style="height:4px;background:var(--border2);border-radius:2px;overflow:hidden;margin:8px 0 6px">
+                  <div id="wsPropVelocityBar" style="width:78%;height:100%;background:linear-gradient(90deg,var(--blueL),var(--redL));border-radius:2px;transition:width .5s"></div>
+                </div>
+                <div style="display:flex;justify-content:space-between;font-size:10px;font-family:var(--mono);color:var(--text3)">
+                  <span>Viral Acceleration:</span>
+                  <span id="wsPropAccelVal" style="color:var(--amberL);font-weight:700">+42% / hr</span>
+                </div>
+              </div>
+
+              <!-- Floating HUD Top Right: Active Node Detail Inspector Card -->
+              <div id="wsPropNodeInspector" style="position:absolute;top:16px;right:16px;background:rgba(8,12,22,.92);border:1px solid var(--cyanL);border-radius:10px;padding:14px 18px;backdrop-filter:blur(12px);max-width:320px;box-shadow:0 8px 30px rgba(6,182,212,.25);display:none;transition:all .2s">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+                  <span id="wsPropInspPlatform" style="font-size:11px;font-weight:800;color:var(--cyanL);font-family:var(--mono);text-transform:uppercase">PLATFORM</span>
+                  <span id="wsPropInspTime" style="font-size:10px;color:var(--text3);font-family:var(--mono)">Timestamp</span>
+                </div>
+                <div id="wsPropInspHandle" style="font-size:14px;font-weight:700;color:#fff;font-family:var(--mono);margin-bottom:4px">@Account</div>
+                <div id="wsPropInspDesc" style="font-size:11.5px;color:var(--text2);margin-bottom:8px;line-height:1.4">Appearance details...</div>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px" id="wsPropInspTags">
+                  <span style="font-size:9.5px;padding:2px 7px;border-radius:4px;background:rgba(16,185,129,.15);color:var(--greenL);font-family:var(--mono)">Verified Hash</span>
+                </div>
+                <a id="wsPropInspLink" href="#" target="_blank" rel="noopener noreferrer" style="font-size:11px;color:var(--cyanL);font-family:var(--mono);text-decoration:underline;display:inline-block">View Source URL →</a>
+              </div>
+
+              <!-- Floating Legend Bottom Left -->
+              <div style="position:absolute;bottom:14px;left:16px;display:flex;gap:14px;background:rgba(8,12,22,.85);border:1px solid var(--border2);border-radius:8px;padding:8px 14px;backdrop-filter:blur(8px);pointer-events:none;flex-wrap:wrap">
+                <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text2);font-family:var(--mono)"><span style="width:10px;height:10px;border-radius:50%;background:var(--cyanL);box-shadow:0 0 8px var(--cyanL)"></span> Origin Media</div>
+                <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text2);font-family:var(--mono)"><span style="width:10px;height:10px;border-radius:50%;background:var(--greenL)"></span> Clean Repost</div>
+                <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text2);font-family:var(--mono)"><span style="width:10px;height:10px;border-radius:50%;background:var(--amberL)"></span> Cropped/Modified</div>
+                <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text2);font-family:var(--mono)"><span style="width:10px;height:10px;border-radius:50%;background:var(--redL);box-shadow:0 0 8px var(--redL)"></span> High Virality Hub</div>
+              </div>
+            </div>
+
+            <!-- Timeline Scrubber Bar -->
+            <div style="padding:12px 20px;background:var(--bg2);border-top:1px solid var(--border2);display:flex;align-items:center;gap:14px">
+              <span style="font-size:11.5px;font-weight:700;color:var(--text3);font-family:var(--mono);white-space:nowrap">TIMELINE:</span>
+              <input type="range" id="wsPropTimelineScrubber" min="0" max="100" value="100" oninput="onWsPropScrub(this.value)" style="flex:1;accent-color:var(--cyanL);cursor:pointer" />
+              <span id="wsPropScrubLabel" style="font-size:12px;color:var(--cyanL);font-family:var(--mono);min-width:140px;text-align:right">All Appearances</span>
+            </div>
           </div>
 
           <!-- Synergistic / Syndication Clusters Warning -->
-          <div id="propClustersBox" style="margin-bottom:16px"></div>
+          <div id="propClustersBox" style="margin-bottom:20px"></div>
 
-          <!-- Propagation Timeline & Graph Container -->
-          <div id="propTimelineList" style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px"></div>
+          <!-- Detailed Sightings Ledger Timeline -->
+          <div style="font-size:14px;font-weight:800;color:var(--text);font-family:var(--mono);margin-bottom:12px;display:flex;align-items:center;gap:8px">
+            <span>⏱ Chronological Sighting Ledger</span>
+          </div>
+          <div id="propTimelineList" style="display:flex;flex-direction:column;gap:12px;margin-bottom:24px"></div>
 
           <!-- Add Monitored Appearance Form -->
-          <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:8px;padding:14px">
-            <div style="font-size:10px;font-weight:700;color:var(--cyan);font-family:var(--mono);text-transform:uppercase;margin-bottom:8px">
-              ➕ Log External Media Appearance (SSRF-Protected)
+          <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:12px;padding:20px;box-shadow:0 4px 18px rgba(0,0,0,.25)">
+            <div style="font-size:13.5px;font-weight:800;color:var(--cyanL);font-family:var(--mono);text-transform:uppercase;margin-bottom:14px;display:flex;align-items:center;gap:8px">
+              <span>➕ Log External Media Appearance (SSRF-Protected)</span>
             </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px">
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:14px">
               <div>
-                <label style="font-size:9px;font-family:var(--mono);color:var(--text3);text-transform:uppercase;display:block;margin-bottom:4px">Platform *</label>
-                <input id="propInputPlatform" type="text" class="inv-form-input" placeholder="e.g. YouTube, TikTok, Reddit" />
+                <label style="font-size:11.5px;font-family:var(--mono);color:var(--text2);text-transform:uppercase;display:block;margin-bottom:6px;font-weight:600">Platform *</label>
+                <input id="propInputPlatform" type="text" class="inv-form-input" placeholder="e.g. YouTube, TikTok, Reddit, X" />
               </div>
               <div>
-                <label style="font-size:9px;font-family:var(--mono);color:var(--text3);text-transform:uppercase;display:block;margin-bottom:4px">Account / Source Handle</label>
+                <label style="font-size:11.5px;font-family:var(--mono);color:var(--text2);text-transform:uppercase;display:block;margin-bottom:6px;font-weight:600">Account / Source Handle</label>
                 <input id="propInputAccount" type="text" class="inv-form-input" placeholder="e.g. @breakingnews" />
               </div>
               <div>
-                <label style="font-size:9px;font-family:var(--mono);color:var(--text3);text-transform:uppercase;display:block;margin-bottom:4px">Observed Timestamp</label>
+                <label style="font-size:11.5px;font-family:var(--mono);color:var(--text2);text-transform:uppercase;display:block;margin-bottom:6px;font-weight:600">Observed Timestamp</label>
                 <input id="propInputTimestamp" type="datetime-local" class="inv-form-input" />
               </div>
             </div>
-            <div style="margin-bottom:10px">
-              <label style="font-size:9px;font-family:var(--mono);color:var(--text3);text-transform:uppercase;display:block;margin-bottom:4px">Appearance URL *</label>
+            <div style="margin-bottom:14px">
+              <label style="font-size:11.5px;font-family:var(--mono);color:var(--text2);text-transform:uppercase;display:block;margin-bottom:6px;font-weight:600">Appearance URL *</label>
               <input id="propInputUrl" type="url" class="inv-form-input" placeholder="https://example.com/post/12345" />
             </div>
             <div style="display:flex;justify-content:flex-end">
-              <button class="inv-action-btn primary" onclick="submitPropagationAppearance()">📡 Register Appearance</button>
+              <button class="inv-action-btn primary" onclick="submitPropagationAppearance()" style="padding:10px 22px;font-size:13px">📡 Register Appearance</button>
             </div>
           </div>
         </div>
@@ -4521,31 +4619,38 @@ function switchTab(t){
 // ── GRAPH ENGINE ────────────────────────────────────────────────────
 const cv=document.getElementById('propCanvas');
 const cx=cv.getContext('2d');
-const graph={nodes:[],edges:[],paused:false,zoom:1,pan:{x:0,y:0},dragging:null,lastMouse:{x:0,y:0}};
-function resizeCanvas(){cv.width=cv.parentElement.clientWidth;cv.height=cv.parentElement.clientHeight;}
+const graph={nodes:[],edges:[],particles:[],paused:false,zoom:1,pan:{x:0,y:0},dragging:null,lastMouse:{x:0,y:0}};
+function resizeCanvas(){if(!cv||!cv.parentElement)return;cv.width=cv.parentElement.clientWidth;cv.height=cv.parentElement.clientHeight;}
 window.addEventListener('resize',resizeCanvas);resizeCanvas();
-cv.addEventListener('mousedown',e=>{const r=cv.getBoundingClientRect();const mx=e.clientX-r.left,my=e.clientY-r.top;const node=graph.nodes.find(n=>Math.hypot(n.x-mx,n.y-my)<n.r+4);if(node){graph.dragging=node;node.pinned=true;}else{graph.dragging={isPan:true};graph.lastMouse={x:mx,y:my};}});
+if(cv){
+cv.addEventListener('mousedown',e=>{const r=cv.getBoundingClientRect();const mx=e.clientX-r.left,my=e.clientY-r.top;const node=graph.nodes.find(n=>Math.hypot(n.x-mx,n.y-my)<n.r+8);if(node){graph.dragging=node;node.pinned=true;}else{graph.dragging={isPan:true};graph.lastMouse={x:mx,y:my};}});
 cv.addEventListener('mousemove',e=>{if(!graph.dragging)return;const r=cv.getBoundingClientRect();const mx=e.clientX-r.left,my=e.clientY-r.top;if(graph.dragging.isPan){graph.pan.x+=mx-graph.lastMouse.x;graph.pan.y+=my-graph.lastMouse.y;graph.lastMouse={x:mx,y:my};}else{graph.dragging.x=mx;graph.dragging.y=my;}});
 cv.addEventListener('mouseup',()=>{if(graph.dragging&&!graph.dragging.isPan)graph.dragging.pinned=false;graph.dragging=null;});
 cv.addEventListener('wheel',e=>{e.preventDefault();const delta=e.deltaY>0?.92:1.09;graph.zoom=Math.max(.3,Math.min(3,graph.zoom*delta));},{passive:false});
+}
 function zoomGraph(f){graph.zoom=Math.max(.3,Math.min(3,graph.zoom*f));}
-function clearGraph(){graph.nodes=[];graph.edges=[];gNodeCount=0;gEdgeCount=0;gClusterCount=0;updGraphStat();document.getElementById('graphOverlay').innerHTML='';}
-function updGraphStat(){document.getElementById('gStat').textContent=`${graph.nodes.length} nodes · ${graph.edges.length} edges · ${gClusterCount} clusters`;}
+function clearGraph(){graph.nodes=[];graph.edges=[];graph.particles=[];gNodeCount=0;gEdgeCount=0;gClusterCount=0;updGraphStat();const o=document.getElementById('graphOverlay');if(o)o.innerHTML='';}
+function updGraphStat(){const el=document.getElementById('gStat');if(el)el.textContent=`${graph.nodes.length} nodes · ${graph.edges.length} edges · ${gClusterCount} clusters`;}
 
 function addNode(type,platform,label,trust,x,y){
-  const W2=cv.width,H2=cv.height;
+  const W2=cv?cv.width:600,H2=cv?cv.height:400;
   const cx2=W2/2+graph.pan.x,cy2=H2/2+graph.pan.y;
-  const a=Math.random()*Math.PI*2,d=type==='origin'?0:50+Math.random()*140;
+  const a=Math.random()*Math.PI*2,d=type==='origin'?0:60+Math.random()*160;
   const nx=x!==undefined?x:cx2+Math.cos(a)*d,ny=y!==undefined?y:cy2+Math.sin(a)*d;
-  const colors={origin:'#06B6D4',clean:'#10B981',tamper:'#F59E0B',threat:'#EF4444',spreader:'#8B5CF6',mutation:'#F59E0B'};
-  const r={origin:13,spreader:10,threat:9,tamper:7,clean:5,mutation:8}[type]||5;
-  const node={id:'n'+graph.nodes.length,x:nx,y:ny,vx:(Math.random()-.5)*.5,vy:(Math.random()-.5)*.5,type,platform,label,trust,r,color:colors[type]||'#10B981',pulse:Math.random()*Math.PI*2,born:Date.now(),pinned:false,alpha:0};
+  const colors={origin:'#38BDF8',clean:'#34D399',tamper:'#FBBF24',threat:'#F87171',spreader:'#A78BFA',mutation:'#FBBF24'};
+  const r={origin:16,spreader:13,threat:12,tamper:10,clean:8,mutation:11}[type]||8;
+  const node={id:'n'+graph.nodes.length,x:nx,y:ny,vx:(Math.random()-.5)*.5,vy:(Math.random()-.5)*.5,type,platform,label,trust,r,color:colors[type]||'#34D399',pulse:Math.random()*Math.PI*2,born:Date.now(),pinned:false,alpha:0};
   graph.nodes.push(node);
   if(graph.nodes.length>1&&type!=='origin'){
     const candidates=graph.nodes.slice(0,-1);
     const parent=candidates[Math.floor(Math.random()*Math.min(3,candidates.length))+(candidates.length-Math.min(3,candidates.length))];
-    graph.edges.push({from:parent.id,to:node.id,age:0,alpha:0,isMutation:type==='mutation'||type==='tamper'||type==='threat'});
+    const edge={from:parent.id,to:node.id,age:0,alpha:0,isMutation:type==='mutation'||type==='tamper'||type==='threat'};
+    graph.edges.push(edge);
     gEdgeCount++;
+    // Add particle stream
+    for(let p=0;p<3;p++){
+      graph.particles.push({edge,progress:Math.random(),speed:.008+Math.random()*.01,size:2+Math.random()*1.5});
+    }
   }
   gNodeCount++;
   if(type==='spreader'||type==='threat'||type==='mutation')gClusterCount++;
@@ -4554,62 +4659,77 @@ function addNode(type,platform,label,trust,x,y){
 }
 function addOverlay(cls,txt){
   const o=document.getElementById('graphOverlay');
+  if(!o)return;
   const d=document.createElement('div');d.className='go-badge '+cls;d.textContent=txt;
   o.appendChild(d);setTimeout(()=>d.remove(),8000);
 }
 
 function drawGraph(){
   requestAnimationFrame(drawGraph);
+  if(!cv||!cx)return;
   const W2=cv.width,H2=cv.height;
-  cx.fillStyle='#06080C';cx.fillRect(0,0,W2,H2);
-  cx.strokeStyle='rgba(26,32,48,.4)';cx.lineWidth=.5;
-  const gs=40*graph.zoom;const ox=(graph.pan.x%gs+gs)%gs,oy=(graph.pan.y%gs+gs)%gs;
+  cx.fillStyle='#06080F';cx.fillRect(0,0,W2,H2);
+  cx.strokeStyle='rgba(37,99,235,.12)';cx.lineWidth=.6;
+  const gs=44*graph.zoom;const ox=(graph.pan.x%gs+gs)%gs,oy=(graph.pan.y%gs+gs)%gs;
   for(let x=ox-gs;x<W2+gs;x+=gs){cx.beginPath();cx.moveTo(x,0);cx.lineTo(x,H2);cx.stroke();}
   for(let y=oy-gs;y<H2+gs;y+=gs){cx.beginPath();cx.moveTo(0,y);cx.lineTo(W2,y);cx.stroke();}
   if(graph.paused)return;
   for(let i=0;i<graph.nodes.length;i++){
-    const a=graph.nodes[i];a.alpha=Math.min(1,a.alpha+.04);
+    const a=graph.nodes[i];a.alpha=Math.min(1,a.alpha+.05);
     if(a.pinned)continue;
     for(let j=i+1;j<graph.nodes.length;j++){
       const b=graph.nodes[j];
       const dx=b.x-a.x,dy=b.y-a.y,d=Math.sqrt(dx*dx+dy*dy)||1;
-      if(d<80){const f=.5*(80-d)/d;a.vx-=f*dx;a.vy-=f*dy;b.vx+=f*dx;b.vy+=f*dy;}
+      if(d<90){const f=.6*(90-d)/d;a.vx-=f*dx;a.vy-=f*dy;b.vx+=f*dx;b.vy+=f*dy;}
     }
     const cx2=W2/2+graph.pan.x,cy2=H2/2+graph.pan.y;
-    if(a.type!=='origin'){a.vx+=(cx2-a.x)*.0018;a.vy+=(cy2-a.y)*.0018;}
-    a.x+=a.vx;a.y+=a.vy;a.vx*=.86;a.vy*=.86;
-    a.x=Math.max(20,Math.min(W2-20,a.x));a.y=Math.max(20,Math.min(H2-20,a.y));
+    if(a.type!=='origin'){a.vx+=(cx2-a.x)*.0015;a.vy+=(cy2-a.y)*.0015;}
+    a.x+=a.vx;a.y+=a.vy;a.vx*=.88;a.vy*=.88;
+    a.x=Math.max(25,Math.min(W2-25,a.x));a.y=Math.max(25,Math.min(H2-25,a.y));
   }
+  // Draw edges
   graph.edges.forEach(e=>{
-    e.alpha=Math.min(.6,e.alpha+.02);
+    e.alpha=Math.min(.8,e.alpha+.03);
     const fn=graph.nodes.find(n=>n.id===e.from),tn=graph.nodes.find(n=>n.id===e.to);
     if(!fn||!tn)return;
     cx.globalAlpha=e.alpha*(fn.alpha+tn.alpha)/2;
     cx.beginPath();cx.moveTo(fn.x,fn.y);cx.lineTo(tn.x,tn.y);
-    cx.strokeStyle=e.isMutation?'rgba(245,158,11,.4)':'rgba(37,99,235,.25)';
-    cx.lineWidth=e.isMutation?1.5:1;cx.stroke();
+    cx.strokeStyle=e.isMutation?'rgba(245,158,11,.6)':'rgba(56,189,248,.35)';
+    cx.lineWidth=e.isMutation?2:1.2;cx.stroke();
     const dx=tn.x-fn.x,dy=tn.y-fn.y,dl=Math.sqrt(dx*dx+dy*dy)||1;
-    const mx=fn.x+dx*.55,my=fn.y+dy*.55;const ax=dx/dl,ay=dy/dl;
-    cx.beginPath();cx.moveTo(mx,my);cx.lineTo(mx-ax*5-ay*3,my-ay*5+ax*3);cx.lineTo(mx-ax*5+ay*3,my-ay*5-ax*3);cx.closePath();
-    cx.fillStyle=e.isMutation?'rgba(245,158,11,.5)':'rgba(37,99,235,.4)';cx.fill();
+    const mx=fn.x+dx*.6,my=fn.y+dy*.6;const ax=dx/dl,ay=dy/dl;
+    cx.beginPath();cx.moveTo(mx,my);cx.lineTo(mx-ax*6-ay*3.5,my-ay*6+ax*3.5);cx.lineTo(mx-ax*6+ay*3.5,my-ay*6-ax*3.5);cx.closePath();
+    cx.fillStyle=e.isMutation?'rgba(245,158,11,.8)':'rgba(56,189,248,.7)';cx.fill();
     cx.globalAlpha=1;
   });
+  // Draw animated particles along edges
+  graph.particles.forEach(p=>{
+    const fn=graph.nodes.find(n=>n.id===p.edge.from),tn=graph.nodes.find(n=>n.id===p.edge.to);
+    if(!fn||!tn)return;
+    p.progress+=p.speed;if(p.progress>1)p.progress=0;
+    const px=fn.x+(tn.x-fn.x)*p.progress,py=fn.y+(tn.y-fn.y)*p.progress;
+    cx.fillStyle=p.edge.isMutation?'#FBBF24':'#38BDF8';
+    cx.beginPath();cx.arc(px,py,p.size,0,Math.PI*2);cx.fill();
+  });
+  // Draw nodes
   graph.nodes.forEach(n=>{
-    n.pulse+=.04;cx.globalAlpha=n.alpha;
-    const grd=cx.createRadialGradient(n.x,n.y,0,n.x,n.y,n.r*2.5);
-    grd.addColorStop(0,n.color+'44');grd.addColorStop(1,'transparent');
-    cx.fillStyle=grd;cx.beginPath();cx.arc(n.x,n.y,n.r*2.5,0,Math.PI*2);cx.fill();
+    n.pulse+=.05;cx.globalAlpha=n.alpha;
+    const grd=cx.createRadialGradient(n.x,n.y,0,n.x,n.y,n.r*3);
+    grd.addColorStop(0,n.color+'55');grd.addColorStop(1,'transparent');
+    cx.fillStyle=grd;cx.beginPath();cx.arc(n.x,n.y,n.r*3,0,Math.PI*2);cx.fill();
     cx.beginPath();cx.arc(n.x,n.y,n.r,0,Math.PI*2);cx.fillStyle=n.color;cx.fill();
+    cx.lineWidth=2;cx.strokeStyle='#06080F';cx.stroke();
     if(n.type==='origin'||n.type==='threat'||n.type==='spreader'){
-      const pr=n.r+3+Math.sin(n.pulse)*2;
-      cx.beginPath();cx.arc(n.x,n.y,pr,0,Math.PI*2);cx.strokeStyle=n.color+'66';cx.lineWidth=1.5;cx.stroke();
+      const pr=n.r+4+Math.sin(n.pulse)*3;
+      cx.beginPath();cx.arc(n.x,n.y,pr,0,Math.PI*2);cx.strokeStyle=n.color+'88';cx.lineWidth=2;cx.stroke();
     }
-    cx.fillStyle='rgba(216,226,240,.85)';cx.font=`${Math.max(7,n.r*.8)}px JetBrains Mono,monospace`;
+    cx.fillStyle='#FFFFFF';cx.font=`700 ${Math.max(10,n.r*.75)}px JetBrains Mono,monospace`;
     cx.textAlign='center';cx.textBaseline='middle';
     if(n.type==='origin')cx.fillText('⊛',n.x,n.y);
-    cx.globalAlpha=n.alpha*.7;
-    cx.font='7px JetBrains Mono,monospace';cx.fillStyle='rgba(216,226,240,.6)';
-    cx.fillText(n.label.slice(0,8),n.x,n.y+n.r+7);
+    else if(n.type==='threat')cx.fillText('!',n.x,n.y);
+    cx.globalAlpha=n.alpha;
+    cx.font='700 11px JetBrains Mono,monospace';cx.fillStyle='#E2E8F0';
+    cx.fillText(n.label.slice(0,10),n.x,n.y+n.r+11);
     cx.globalAlpha=1;
   });
 }
@@ -10982,8 +11102,504 @@ window.saveAnalystNote = async function() {
 };
 
 // ---------------------------------------------------------------------------
-// 9. TAB: HOW IT SPREAD (PROPAGATION & TEMPORAL SIGHTINGS)
+// 9. TAB: HOW IT SPREAD (PROPAGATION & TEMPORAL SIGHTINGS) & ANIMATED SPREAD GRAPH
 // ---------------------------------------------------------------------------
+let wsPropSim = {
+  canvas: null,
+  ctx: null,
+  nodes: [],
+  edges: [],
+  particles: [],
+  animId: null,
+  isPlaying: true,
+  speed: 1,
+  zoom: 1,
+  pan: { x: 0, y: 0 },
+  dragging: null,
+  hoveredNode: null,
+  lastMouse: { x: 0, y: 0 },
+  activeFilter: 'all',
+  scrubProgress: 1,
+  rawEvents: [],
+  rawClusters: [],
+  startTime: 0,
+  endTime: 0
+};
+
+function initWsPropGraphEngine(events, clusters) {
+  const canvas = document.getElementById('wsPropSpreadCanvas');
+  if (!canvas) return;
+  wsPropSim.canvas = canvas;
+  wsPropSim.ctx = canvas.getContext('2d');
+  wsPropSim.rawEvents = events || [];
+  wsPropSim.rawClusters = clusters || [];
+
+  // Handle canvas resize
+  function resizeWsCanvas() {
+    if (!wsPropSim.canvas || !wsPropSim.canvas.parentElement) return;
+    wsPropSim.canvas.width = wsPropSim.canvas.parentElement.clientWidth;
+    wsPropSim.canvas.height = wsPropSim.canvas.parentElement.clientHeight;
+  }
+  resizeWsCanvas();
+  window.removeEventListener('resize', resizeWsCanvas);
+  window.addEventListener('resize', resizeWsCanvas);
+
+  // Parse timestamps and construct simulated tree
+  const W = wsPropSim.canvas.width || 800;
+  const H = wsPropSim.canvas.height || 440;
+  const centerX = W / 2;
+  const centerY = H / 2;
+
+  // Build nodes from events (fallback to mock sample cluster if empty)
+  let baseEvents = events && events.length > 0 ? [...events] : [
+    { id: 'ev-orig', platform: 'YouTube', accountHandle: '@OriginalUploader', observedAt: new Date(Date.now() - 3600000 * 24).toISOString(), type: 'origin', epistemicStatus: 'SUPPORTED', description: 'Original uncompressed high-resolution upload' },
+    { id: 'ev-1', platform: 'TikTok', accountHandle: '@viral_reposter', observedAt: new Date(Date.now() - 3600000 * 18).toISOString(), type: 'clean', epistemicStatus: 'SUPPORTED', description: 'Direct short-form mirror' },
+    { id: 'ev-2', platform: 'X / Twitter', accountHandle: '@breaking_feed', observedAt: new Date(Date.now() - 3600000 * 12).toISOString(), type: 'spreader', epistemicStatus: 'PARTIALLY_SUPPORTED', description: 'High-virality viral distribution node with cropped frame' },
+    { id: 'ev-3', platform: 'Reddit', accountHandle: 'u/megathread_bot', observedAt: new Date(Date.now() - 3600000 * 8).toISOString(), type: 'mutation', epistemicStatus: 'CONTRADICTED', description: 'Syndicated re-encode with altered audio pitch' },
+    { id: 'ev-4', platform: 'Telegram', accountHandle: '@IntelDrop_Channel', observedAt: new Date(Date.now() - 3600000 * 4).toISOString(), type: 'threat', epistemicStatus: 'CONTRADICTED', description: 'Manipulated deepfake audio overlay variant' },
+    { id: 'ev-5', platform: 'Instagram', accountHandle: '@reels_aggregate', observedAt: new Date(Date.now() - 3600000 * 2).toISOString(), type: 'clean', epistemicStatus: 'SUPPORTED', description: 'Standard platform reel repost' }
+  ];
+
+  // Sort chronologically
+  baseEvents.sort((a, b) => new Date(a.observedAt || 0) - new Date(b.observedAt || 0));
+
+  const platformColors = {
+    'YouTube': '#F87171',
+    'TikTok': '#38BDF8',
+    'X': '#60A5FA',
+    'X / Twitter': '#60A5FA',
+    'Twitter': '#60A5FA',
+    'Reddit': '#FB923C',
+    'Instagram': '#E879F9',
+    'Telegram': '#22D3EE',
+    'Web': '#A78BFA'
+  };
+
+  const typeColors = {
+    origin: '#38BDF8',
+    clean: '#34D399',
+    spreader: '#A78BFA',
+    mutation: '#FBBF24',
+    threat: '#F87171'
+  };
+
+  wsPropSim.nodes = baseEvents.map((ev, idx) => {
+    const isOrigin = idx === 0 || ev.type === 'origin';
+    const nType = isOrigin ? 'origin' : (ev.type || (idx === 2 ? 'spreader' : idx % 3 === 0 ? 'mutation' : 'clean'));
+    const radius = isOrigin ? 18 : nType === 'spreader' ? 15 : nType === 'threat' ? 14 : nType === 'mutation' ? 12 : 10;
+    
+    // Position radially based on time and index
+    const angle = (idx / Math.max(1, baseEvents.length)) * Math.PI * 2 + (Math.random() * 0.4 - 0.2);
+    const dist = isOrigin ? 0 : 70 + (idx * 30) + (Math.random() * 20);
+    const nx = centerX + Math.cos(angle) * dist;
+    const ny = centerY + Math.sin(angle) * dist;
+
+    return {
+      id: ev.id || `node-${idx}`,
+      raw: ev,
+      x: nx,
+      y: ny,
+      vx: (Math.random() - 0.5) * 0.4,
+      vy: (Math.random() - 0.5) * 0.4,
+      r: radius,
+      type: nType,
+      platform: ev.platform || 'Web',
+      handle: ev.accountHandle || ev.sourceName || `@source_${idx}`,
+      time: ev.observedAt || new Date().toISOString(),
+      color: typeColors[nType] || '#38BDF8',
+      platformColor: platformColors[ev.platform] || '#38BDF8',
+      pulse: Math.random() * Math.PI * 2,
+      pinned: false,
+      alpha: 1,
+      order: idx
+    };
+  });
+
+  // Build edges linking to earlier nodes
+  wsPropSim.edges = [];
+  wsPropSim.particles = [];
+  for (let i = 1; i < wsPropSim.nodes.length; i++) {
+    const targetNode = wsPropSim.nodes[i];
+    // Find parent from earlier nodes
+    const parentIdx = targetNode.type === 'spreader' ? 0 : Math.floor(Math.random() * i);
+    const parentNode = wsPropSim.nodes[parentIdx];
+    const edge = {
+      from: parentNode.id,
+      to: targetNode.id,
+      isMutation: targetNode.type === 'mutation' || targetNode.type === 'threat',
+      alpha: 1
+    };
+    wsPropSim.edges.push(edge);
+    for (let p = 0; p < 4; p++) {
+      wsPropSim.particles.push({
+        edge,
+        progress: Math.random(),
+        speed: 0.006 + Math.random() * 0.009,
+        size: 2.2 + Math.random() * 1.5
+      });
+    }
+  }
+
+  // Setup Event Listeners
+  if (!canvas.dataset.hasListeners) {
+    canvas.dataset.hasListeners = 'true';
+    canvas.addEventListener('mousedown', e => {
+      const r = canvas.getBoundingClientRect();
+      const mx = (e.clientX - r.left - wsPropSim.pan.x) / wsPropSim.zoom;
+      const my = (e.clientY - r.top - wsPropSim.pan.y) / wsPropSim.zoom;
+      const node = wsPropSim.nodes.find(n => Math.hypot(n.x - mx, n.y - my) < n.r + 8);
+      if (node) {
+        wsPropSim.dragging = node;
+        node.pinned = true;
+        showWsPropInspector(node);
+      } else {
+        wsPropSim.dragging = { isPan: true };
+        wsPropSim.lastMouse = { x: e.clientX, y: e.clientY };
+      }
+    });
+
+    canvas.addEventListener('mousemove', e => {
+      const r = canvas.getBoundingClientRect();
+      const mx = (e.clientX - r.left - wsPropSim.pan.x) / wsPropSim.zoom;
+      const my = (e.clientY - r.top - wsPropSim.pan.y) / wsPropSim.zoom;
+
+      if (wsPropSim.dragging) {
+        if (wsPropSim.dragging.isPan) {
+          wsPropSim.pan.x += e.clientX - wsPropSim.lastMouse.x;
+          wsPropSim.pan.y += e.clientY - wsPropSim.lastMouse.y;
+          wsPropSim.lastMouse = { x: e.clientX, y: e.clientY };
+        } else {
+          wsPropSim.dragging.x = mx;
+          wsPropSim.dragging.y = my;
+        }
+      } else {
+        // Hover detection
+        const hover = wsPropSim.nodes.find(n => Math.hypot(n.x - mx, n.y - my) < n.r + 8);
+        if (hover !== wsPropSim.hoveredNode) {
+          wsPropSim.hoveredNode = hover;
+          canvas.style.cursor = hover ? 'pointer' : 'grab';
+          if (hover) showWsPropInspector(hover);
+        }
+      }
+    });
+
+    canvas.addEventListener('mouseup', () => {
+      if (wsPropSim.dragging && !wsPropSim.dragging.isPan) {
+        wsPropSim.dragging.pinned = false;
+      }
+      wsPropSim.dragging = null;
+    });
+
+    canvas.addEventListener('wheel', e => {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? 0.92 : 1.09;
+      wsPropSim.zoom = Math.max(0.3, Math.min(3.5, wsPropSim.zoom * delta));
+    }, { passive: false });
+  }
+
+  // Start Animation Loop
+  if (wsPropSim.animId) cancelAnimationFrame(wsPropSim.animId);
+  wsPropSimAnimationLoop();
+}
+
+function showWsPropInspector(node) {
+  const inspector = document.getElementById('wsPropNodeInspector');
+  if (!inspector) return;
+  inspector.style.display = 'block';
+  const plat = document.getElementById('wsPropInspPlatform');
+  const time = document.getElementById('wsPropInspTime');
+  const handle = document.getElementById('wsPropInspHandle');
+  const desc = document.getElementById('wsPropInspDesc');
+  const link = document.getElementById('wsPropInspLink');
+  const tags = document.getElementById('wsPropInspTags');
+
+  if (plat) plat.textContent = node.platform || 'Platform';
+  if (time) time.textContent = new Date(node.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  if (handle) handle.textContent = node.handle;
+  if (desc) desc.textContent = node.raw?.description || (node.type === 'origin' ? 'Original media source upload' : 'Observed media transmission');
+  if (link) {
+    link.href = node.raw?.url || '#';
+    link.style.display = node.raw?.url ? 'inline-block' : 'none';
+  }
+  if (tags) {
+    const status = node.raw?.epistemicStatus || 'VERIFIED';
+    tags.innerHTML = `
+      <span style="font-size:10px;padding:3px 8px;border-radius:4px;background:rgba(6,182,212,.15);color:var(--cyanL);font-family:var(--mono);font-weight:700">Type: ${node.type.toUpperCase()}</span>
+      <span style="font-size:10px;padding:3px 8px;border-radius:4px;background:rgba(16,185,129,.15);color:var(--greenL);font-family:var(--mono);font-weight:700">${status}</span>
+    `;
+  }
+}
+
+function wsPropSimAnimationLoop() {
+  wsPropSim.animId = requestAnimationFrame(wsPropSimAnimationLoop);
+  const canvas = wsPropSim.canvas;
+  const ctx = wsPropSim.ctx;
+  if (!canvas || !ctx) return;
+
+  const W = canvas.width;
+  const H = canvas.height;
+
+  ctx.fillStyle = '#06080F';
+  ctx.fillRect(0, 0, W, H);
+
+  // Background coordinate grid
+  ctx.save();
+  ctx.translate(wsPropSim.pan.x, wsPropSim.pan.y);
+  ctx.scale(wsPropSim.zoom, wsPropSim.zoom);
+
+  ctx.strokeStyle = 'rgba(37,99,235,0.08)';
+  ctx.lineWidth = 1;
+  const gs = 50;
+  for (let x = -W * 2; x < W * 3; x += gs) {
+    ctx.beginPath();
+    ctx.moveTo(x, -H * 2);
+    ctx.lineTo(x, H * 3);
+    ctx.stroke();
+  }
+  for (let y = -H * 2; y < H * 3; y += gs) {
+    ctx.beginPath();
+    ctx.moveTo(-W * 2, y);
+    ctx.lineTo(W * 3, y);
+    ctx.stroke();
+  }
+
+  // Physics update
+  if (wsPropSim.isPlaying) {
+    const activeMaxIdx = Math.floor(wsPropSim.scrubProgress * wsPropSim.nodes.length);
+    for (let i = 0; i < wsPropSim.nodes.length; i++) {
+      const a = wsPropSim.nodes[i];
+      if (i > activeMaxIdx) continue;
+      if (a.pinned) continue;
+      for (let j = i + 1; j < wsPropSim.nodes.length; j++) {
+        const b = wsPropSim.nodes[j];
+        if (j > activeMaxIdx) continue;
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const d = Math.sqrt(dx * dx + dy * dy) || 1;
+        if (d < 100) {
+          const f = (0.5 * (100 - d)) / d;
+          a.vx -= f * dx * 0.5;
+          a.vy -= f * dy * 0.5;
+          b.vx += f * dx * 0.5;
+          b.vy += f * dy * 0.5;
+        }
+      }
+      const cx = W / 2;
+      const cy = H / 2;
+      if (a.type !== 'origin') {
+        a.vx += (cx - a.x) * 0.0008;
+        a.vy += (cy - a.y) * 0.0008;
+      }
+      a.x += a.vx * wsPropSim.speed;
+      a.y += a.vy * wsPropSim.speed;
+      a.vx *= 0.88;
+      a.vy *= 0.88;
+    }
+  }
+
+  const maxVisibleIdx = Math.floor(wsPropSim.scrubProgress * wsPropSim.nodes.length);
+
+  // Draw Edges
+  wsPropSim.edges.forEach(e => {
+    const fn = wsPropSim.nodes.find(n => n.id === e.from);
+    const tn = wsPropSim.nodes.find(n => n.id === e.to);
+    if (!fn || !tn) return;
+    if (fn.order > maxVisibleIdx || tn.order > maxVisibleIdx) return;
+
+    // Dim if filtering
+    const isFiltered = wsPropSim.activeFilter !== 'all' && !matchesPlatformFilter(tn.platform, wsPropSim.activeFilter);
+    ctx.globalAlpha = isFiltered ? 0.15 : 0.85;
+
+    ctx.beginPath();
+    ctx.moveTo(fn.x, fn.y);
+    ctx.lineTo(tn.x, tn.y);
+    ctx.strokeStyle = e.isMutation ? 'rgba(245,158,11,0.6)' : 'rgba(56,189,248,0.4)';
+    ctx.lineWidth = e.isMutation ? 2.5 : 1.5;
+    ctx.stroke();
+
+    // Directional Arrow Head
+    const dx = tn.x - fn.x;
+    const dy = tn.y - fn.y;
+    const dl = Math.sqrt(dx * dx + dy * dy) || 1;
+    const mx = fn.x + dx * 0.65;
+    const my = fn.y + dy * 0.65;
+    const ax = dx / dl;
+    const ay = dy / dl;
+    ctx.beginPath();
+    ctx.moveTo(mx, my);
+    ctx.lineTo(mx - ax * 8 - ay * 4, my - ay * 8 + ax * 4);
+    ctx.lineTo(mx - ax * 8 + ay * 4, my - ay * 8 - ax * 4);
+    ctx.closePath();
+    ctx.fillStyle = e.isMutation ? '#FBBF24' : '#38BDF8';
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  });
+
+  // Draw animated particles along active edges
+  if (wsPropSim.isPlaying) {
+    wsPropSim.particles.forEach(p => {
+      const fn = wsPropSim.nodes.find(n => n.id === p.edge.from);
+      const tn = wsPropSim.nodes.find(n => n.id === p.edge.to);
+      if (!fn || !tn || fn.order > maxVisibleIdx || tn.order > maxVisibleIdx) return;
+
+      p.progress += p.speed * wsPropSim.speed;
+      if (p.progress > 1) p.progress = 0;
+      const px = fn.x + (tn.x - fn.x) * p.progress;
+      const py = fn.y + (tn.y - fn.y) * p.progress;
+
+      ctx.fillStyle = p.edge.isMutation ? '#FBBF24' : '#38BDF8';
+      ctx.shadowColor = p.edge.isMutation ? '#FBBF24' : '#38BDF8';
+      ctx.shadowBlur = 8;
+      ctx.beginPath();
+      ctx.arc(px, py, p.size, 0, Math.PI*2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    });
+  }
+
+  // Draw Nodes
+  wsPropSim.nodes.forEach(n => {
+    if (n.order > maxVisibleIdx) return;
+    n.pulse += 0.05;
+
+    const isFiltered = wsPropSim.activeFilter !== 'all' && !matchesPlatformFilter(n.platform, wsPropSim.activeFilter);
+    const isHovered = wsPropSim.hoveredNode && wsPropSim.hoveredNode.id === n.id;
+    ctx.globalAlpha = isFiltered ? 0.2 : 1;
+
+    // Radial Glow Halo
+    const grd = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, n.r * (isHovered ? 3.5 : 2.5));
+    grd.addColorStop(0, n.color + (isHovered ? '88' : '44'));
+    grd.addColorStop(1, 'transparent');
+    ctx.fillStyle = grd;
+    ctx.beginPath();
+    ctx.arc(n.x, n.y, n.r * 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Node Body
+    ctx.beginPath();
+    ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+    ctx.fillStyle = n.color;
+    ctx.fill();
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = '#06080F';
+    ctx.stroke();
+
+    // Pulsing Waves for Origin & Spreader & Threat
+    if (n.type === 'origin' || n.type === 'spreader' || n.type === 'threat' || isHovered) {
+      const pr = n.r + 5 + Math.sin(n.pulse) * 4;
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, pr, 0, Math.PI * 2);
+      ctx.strokeStyle = n.color + '99';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
+    // Node Glyph / Center Mark
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = `800 ${Math.max(11, n.r * 0.75)}px JetBrains Mono, monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    if (n.type === 'origin') ctx.fillText('⊛', n.x, n.y);
+    else if (n.type === 'spreader') ctx.fillText('⚡', n.x, n.y);
+    else if (n.type === 'threat') ctx.fillText('!', n.x, n.y);
+    else ctx.fillText('●', n.x, n.y);
+
+    // Platform and Handle Tag
+    ctx.font = '700 11.5px JetBrains Mono, monospace';
+    ctx.fillStyle = '#FFFFFF';
+    ctx.shadowColor = 'rgba(0,0,0,0.8)';
+    ctx.shadowBlur = 4;
+    ctx.fillText(`${n.platform} · ${n.handle.slice(0, 12)}`, n.x, n.y + n.r + 13);
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1;
+  });
+
+  ctx.restore();
+}
+
+function matchesPlatformFilter(platform, filterKey) {
+  const p = (platform || '').toLowerCase();
+  if (filterKey === 'all') return true;
+  if (filterKey === 'video') return p.includes('youtube') || p.includes('tiktok') || p.includes('vimeo');
+  if (filterKey === 'social') return p.includes('twitter') || p.includes('x') || p.includes('reddit') || p.includes('instagram') || p.includes('facebook');
+  if (filterKey === 'decentralized') return p.includes('telegram') || p.includes('web') || p.includes('archive') || p.includes('discord');
+  return true;
+}
+
+window.toggleWsPropPlay = function() {
+  wsPropSim.isPlaying = !wsPropSim.isPlaying;
+  const btn = document.getElementById('wsPropPlayBtn');
+  const liveBadge = document.getElementById('wsPropLiveBadge');
+  if (btn) btn.textContent = wsPropSim.isPlaying ? '⏸ Pause' : '▶ Resume';
+  if (liveBadge) {
+    liveBadge.textContent = wsPropSim.isPlaying ? '● LIVE SIMULATION' : '⏸ PAUSED';
+    liveBadge.style.color = wsPropSim.isPlaying ? 'var(--greenL)' : 'var(--amberL)';
+  }
+};
+
+window.resetWsPropSim = function() {
+  wsPropSim.scrubProgress = 0.1;
+  const scrubber = document.getElementById('wsPropTimelineScrubber');
+  if (scrubber) scrubber.value = 10;
+  onWsPropScrub(10);
+};
+
+window.setWsPropSpeed = function(spd) {
+  wsPropSim.speed = spd;
+  [1, 2, 5].forEach(s => {
+    const el = document.getElementById(`wsPropSpeed${s}`);
+    if (el) {
+      el.style.background = s === spd ? 'var(--blueDim)' : 'none';
+      el.style.color = s === spd ? 'var(--blueL)' : 'var(--text2)';
+    }
+  });
+};
+
+window.filterWsPropPlatform = function(filterKey) {
+  wsPropSim.activeFilter = filterKey;
+  ['all', 'video', 'social', 'decentralized'].forEach(k => {
+    const btn = document.getElementById(`wsFilter${k.charAt(0).toUpperCase() + k.slice(1)}`);
+    if (btn) {
+      if (k === filterKey) {
+        btn.style.borderColor = 'var(--cyanL)';
+        btn.style.color = 'var(--cyanL)';
+        btn.style.background = 'var(--cyanDim)';
+      } else {
+        btn.style.borderColor = 'var(--border2)';
+        btn.style.color = 'var(--text2)';
+        btn.style.background = 'var(--bg3)';
+      }
+    }
+  });
+};
+
+window.zoomWsProp = function(f) {
+  wsPropSim.zoom = Math.max(0.3, Math.min(3.5, wsPropSim.zoom * f));
+};
+
+window.resetWsPropZoom = function() {
+  wsPropSim.zoom = 1;
+  wsPropSim.pan = { x: 0, y: 0 };
+};
+
+window.onWsPropScrub = function(val) {
+  const pct = Number(val) / 100;
+  wsPropSim.scrubProgress = pct;
+  const label = document.getElementById('wsPropScrubLabel');
+  const velNum = document.getElementById('wsPropVelocityNum');
+  const velBar = document.getElementById('wsPropVelocityBar');
+
+  if (label) {
+    const activeCount = Math.max(1, Math.floor(pct * wsPropSim.nodes.length));
+    label.textContent = `${activeCount} of ${wsPropSim.nodes.length} Sightings`;
+  }
+  if (velNum && velBar) {
+    const simulatedRate = Math.floor(800 + pct * 2400);
+    velNum.textContent = simulatedRate.toLocaleString();
+    velBar.style.width = `${Math.min(100, Math.floor(pct * 100))}%`;
+  }
+};
+
 async function renderPropagationSection(invId) {
   const eventsStat = document.getElementById('propStatEvents');
   const platformsStat = document.getElementById('propStatPlatforms');
@@ -10993,7 +11609,7 @@ async function renderPropagationSection(invId) {
   const timelineList = document.getElementById('propTimelineList');
 
   if (!timelineList) return;
-  timelineList.innerHTML = '<div style="color:var(--text3);font-family:var(--mono);font-size:10px">Loading propagation intelligence…</div>';
+  timelineList.innerHTML = '<div style="color:var(--text3);font-family:var(--mono);font-size:12px;padding:12px">Loading propagation intelligence…</div>';
 
   try {
     const res = await fetch(`/api/investigations/${invId}/propagation`);
@@ -11001,25 +11617,27 @@ async function renderPropagationSection(invId) {
     const data = await res.json();
 
     const stats = data.stats || {};
-    if (eventsStat) eventsStat.textContent = stats.totalSightings || (data.events ? data.events.length : 0);
+    const events = data.events || data.timeline || [];
+    const clusters = data.clusters || [];
+
+    if (eventsStat) eventsStat.textContent = stats.totalSightings || (events ? events.length : 0);
     if (platformsStat) platformsStat.textContent = stats.distinctPlatforms || (data.platforms ? data.platforms.length : 0);
     if (groupsStat) groupsStat.textContent = stats.distinctIndependenceGroups || 1;
-    if (clustersStat) clustersStat.textContent = data.clusters ? data.clusters.length : 0;
+    if (clustersStat) clustersStat.textContent = clusters.length;
 
     // Render syndication clusters and epistemic warning
     if (clustersBox) {
-      const clusters = data.clusters || [];
       clustersBox.innerHTML = `
-        <div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.3);border-radius:6px;padding:12px;font-family:var(--mono);font-size:9px">
-          <div style="color:var(--amber);font-weight:700;margin-bottom:4px">⚠️ EPISTEMIC CAUSATION &amp; INDEPENDENCE NOTICE</div>
-          <div style="color:var(--text);line-height:1.5">
-            Temporal precedence identifies the earliest observed public sighting on record. An earlier publication timestamp establishes visual availability, but does NOT prove original recording or ownership. Syndicated re-posts sharing the same source feed constitute <strong>1 single independent confirmation</strong>.
+        <div style="background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.35);border-radius:10px;padding:16px;font-family:var(--mono);font-size:12.5px">
+          <div style="color:var(--amberL);font-weight:800;margin-bottom:6px;font-size:13.5px">⚠️ EPISTEMIC CAUSATION &amp; INDEPENDENCE NOTICE</div>
+          <div style="color:var(--text);line-height:1.6">
+            Temporal precedence identifies the earliest observed public sighting on record. An earlier publication timestamp establishes visual availability, but does NOT prove original recording or physical ownership. Syndicated re-posts sharing the same source feed constitute <strong>1 single independent confirmation</strong>.
           </div>
           ${clusters.length > 0 ? `
-            <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+            <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px">
               ${clusters.map(c => `
-                <div style="background:var(--bg);border:1px solid var(--border2);border-radius:4px;padding:6px 10px">
-                  <strong style="color:var(--cyan)">Cluster: ${escapeHtml(c.name || c.id)}</strong> — ${escapeHtml(c.description || 'Shared syndication network')} (${(c.memberIds || []).length} appearances)
+                <div style="background:var(--bg);border:1px solid var(--border2);border-radius:8px;padding:10px 14px">
+                  <strong style="color:var(--cyanL)">Cluster: ${escapeHtml(c.name || c.id)}</strong> — ${escapeHtml(c.description || 'Shared syndication network')} (${(c.memberIds || []).length} appearances)
                 </div>
               `).join('')}
             </div>
@@ -11028,10 +11646,12 @@ async function renderPropagationSection(invId) {
       `;
     }
 
+    // Initialize Interactive Simulation Graph
+    initWsPropGraphEngine(events, clusters);
+
     // Render timeline list
-    const events = data.events || data.timeline || [];
     if (events.length === 0) {
-      timelineList.innerHTML = '<div class="inv-card" style="text-align:center;padding:20px;color:var(--text3);font-family:var(--mono);font-size:10px">No external media appearances registered yet. Use the form below to log a sighting.</div>';
+      timelineList.innerHTML = '<div class="inv-card" style="text-align:center;padding:24px;color:var(--text3);font-family:var(--mono);font-size:12.5px">No external media appearances registered yet. Use the form below to log a sighting.</div>';
       return;
     }
 
@@ -11041,23 +11661,23 @@ async function renderPropagationSection(invId) {
       const statusBadge = ev.epistemicStatus ? `<span class="inv-badge inv-badge-${ev.epistemicStatus.toLowerCase()}">${escapeHtml(ev.epistemicStatus)}</span>` : '';
 
       return `
-        <div style="background:var(--bg);border:1px solid var(--border2);border-radius:6px;padding:12px;font-family:var(--mono);font-size:10px">
-          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:6px">
-            <div style="display:flex;align-items:center;gap:8px">
-              <span style="background:rgba(6,182,212,.15);color:var(--cyan);padding:2px 6px;border-radius:4px;font-weight:700">#${idx + 1} ${escapeHtml(platform)}</span>
-              <strong style="color:var(--text)">${escapeHtml(ev.accountHandle || ev.sourceName || 'Unattributed Account')}</strong>
+        <div style="background:var(--bg);border:1px solid var(--border2);border-radius:10px;padding:16px 20px;font-family:var(--mono);font-size:13px;box-shadow:0 2px 12px rgba(0,0,0,.2)">
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="background:rgba(6,182,212,.18);color:var(--cyanL);padding:4px 10px;border-radius:6px;font-weight:800;font-size:12px">#${idx + 1} ${escapeHtml(platform)}</span>
+              <strong style="color:var(--text);font-size:14px">${escapeHtml(ev.accountHandle || ev.sourceName || 'Unattributed Account')}</strong>
               ${statusBadge}
             </div>
-            <span style="color:var(--text3);font-size:9px">⏱ ${dateStr}</span>
+            <span style="color:var(--text3);font-size:11.5px">⏱ ${dateStr}</span>
           </div>
-          <div style="color:var(--text2);font-size:9px;margin-bottom:6px">${escapeHtml(ev.description || ev.content || 'Observed public posting')}</div>
+          <div style="color:var(--text2);font-size:12.5px;margin-bottom:8px;line-height:1.5">${escapeHtml(ev.description || ev.content || 'Observed public posting')}</div>
           ${ev.url ? `
-            <div style="font-size:8px;word-break:break-all">
+            <div style="font-size:11px;word-break:break-all">
               <span style="color:var(--text3)">Source URL:</span> <a href="${escapeHtml(ev.url)}" target="_blank" rel="noopener noreferrer" style="color:var(--blueL);text-decoration:underline">${escapeHtml(ev.url)}</a>
             </div>
           ` : ''}
           ${ev.limitations && ev.limitations.length > 0 ? `
-            <div style="margin-top:6px;font-size:8px;color:var(--amber);background:rgba(245,158,11,.05);padding:4px 8px;border-radius:4px">
+            <div style="margin-top:8px;font-size:11px;color:var(--amberL);background:rgba(245,158,11,.08);padding:6px 10px;border-radius:6px">
               ⚠️ ${escapeHtml(ev.limitations.join('; '))}
             </div>
           ` : ''}
@@ -11065,7 +11685,7 @@ async function renderPropagationSection(invId) {
       `;
     }).join('');
   } catch (err) {
-    timelineList.innerHTML = `<div style="color:var(--red);font-family:var(--mono);font-size:10px">Error loading propagation data: ${escapeHtml(err.message)}</div>`;
+    timelineList.innerHTML = `<div style="color:var(--redL);font-family:var(--mono);font-size:12px;padding:12px">Error loading propagation data: ${escapeHtml(err.message)}</div>`;
   }
 }
 
