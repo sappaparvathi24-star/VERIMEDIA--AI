@@ -1,6 +1,6 @@
 import { useStore } from '../store'
 import { Nav } from '../components/layout/Nav'
-import { ControlBar } from '../components/layout/controlBar'
+import { ControlBar } from '../components/layout/ControlBar'
 import { FeedPanel } from '../components/panels/FeedPanel'
 import { PropagationGraph } from '../components/panels/PropagationGraph'
 import { ForensicPanel } from '../components/panels/ForensicPanel'
