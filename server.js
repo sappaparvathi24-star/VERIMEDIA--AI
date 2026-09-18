@@ -1495,6 +1495,11 @@ function generateChatFallback(query) {
   return 'VeriMedia AI is operational. You can scan videos, inspect 6-signal forensic breakdowns, evaluate trust scores, and issue automated DMCA takedown requests across supported social platforms.';
 }
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🛡️ VeriMedia AI server running on http://0.0.0.0:${PORT}`);
-});
+if (!process.env.VERCEL && process.env.NODE_ENV !== 'test') {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🛡️ VeriMedia AI server running on http://0.0.0.0:${PORT}`);
+  });
+}
+
+export default app;
+export { app };
