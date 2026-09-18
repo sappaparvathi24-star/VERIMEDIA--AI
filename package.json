@@ -7,6 +7,7 @@
     "dev": "node server.js",
     "start": "node server.js",
     "lint": "node -e 'console.log(\"Lint passed\")'",
+    "test": "node test/test_phase_c.js && node test/test_phase_d.js && node test/test_phase_e.js && node test/test_phase_f.js && node test/test_phase_g.js && node test/test_phase_h.js && node test/test_phase_i.js && node test/test_phase_j.js && node test/test_phase_k.js && node test/test_phase_l.js && node test/test_phase_m.js",
     "build": "node -e 'console.log(\"Build complete\")'"
   },
   "dependencies": {

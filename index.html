@@ -8,10 +8,10 @@
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231e293b'/><text x='50%25' y='56%25' font-family='monospace' font-size='18' font-weight='bold' fill='%2338bdf8' text-anchor='middle' dominant-baseline='middle'>V</text></svg>">
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>VeriMedia AI — Detection · Verification · Enforcement</title>
-<meta name="description" content="AI-powered media rights enforcement platform for real-time unauthorized content detection, deepfake analysis, and automated DMCA enforcement."/>
-<meta property="og:title" content="VeriMedia AI — Detection · Verification · Enforcement"/>
-<meta property="og:description" content="AI-powered media rights enforcement platform for real-time unauthorized content detection, deepfake analysis, and automated DMCA enforcement."/>
+<title>VeriMedia AI</title>
+<meta name="description" content="Comprehensive media investigation platform for deepfake analysis, evidence-backed provenance timelines, forensic chain-of-custody, context & claim verification, and source discovery & candidate matching."/>
+<meta property="og:title" content="VeriMedia AI"/>
+<meta property="og:description" content="Comprehensive media investigation platform for deepfake analysis, evidence-backed provenance timelines, forensic chain-of-custody, context & claim verification, and source discovery & candidate matching."/>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@300;400;500;600;700&display=swap');
 *{box-sizing:border-box;margin:0;padding:0}
@@ -1141,6 +1141,31 @@ html,body{height:100%;font-family:var(--font);background:var(--bg);color:var(--t
 .export-analysis-btn{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:6px;font-size:10px;font-family:var(--mono);font-weight:600;background:var(--blueDim);color:var(--blueL);border:1px solid rgba(37,99,235,.3);cursor:pointer;transition:all .15s}
 .export-analysis-btn:hover{background:rgba(37,99,235,.2);border-color:rgba(37,99,235,.5)}
 
+/* ── PHASE F: PROVENANCE & MEDIA TIMELINE ── */
+.inv-modal-overlay{position:fixed;inset:0;background:rgba(4,6,10,.88);z-index:9000;display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(10px);animation:fadeIn .18s ease}
+.inv-modal{background:var(--bg2);border:1px solid var(--border3);border-radius:12px;width:100%;max-width:980px;max-height:94vh;display:flex;flex-direction:column;box-shadow:0 12px 60px rgba(0,0,0,.7),0 0 30px rgba(6,182,212,.15);overflow:hidden}
+.inv-header{padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--bg3);flex-shrink:0}
+.inv-title{font-size:13px;font-weight:700;color:var(--text);font-family:var(--mono);display:flex;align-items:center;gap:8px}
+.inv-close{background:none;border:none;color:var(--text3);cursor:pointer;font-size:18px;padding:4px 8px;border-radius:4px;transition:all .15s}
+.inv-close:hover{color:var(--text);background:var(--bg4)}
+.inv-case-bar{padding:10px 20px;background:var(--bg);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;flex-wrap:wrap;flex-shrink:0}
+.inv-tabs{display:flex;gap:4px;padding:8px 20px 0;background:var(--bg3);border-bottom:1px solid var(--border);flex-shrink:0;overflow-x:auto}
+.inv-tab-btn{padding:8px 14px;font-size:11px;font-family:var(--mono);font-weight:600;border:none;background:none;color:var(--text2);cursor:pointer;border-bottom:2px solid transparent;transition:all .15s;white-space:nowrap}
+.inv-tab-btn:hover{color:var(--text)}
+.inv-tab-btn.active{color:var(--cyan);border-bottom-color:var(--cyan);background:rgba(6,182,212,.06)}
+.inv-body{padding:20px;overflow-y:auto;flex:1}
+.inv-card{background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:14px 16px;margin-bottom:14px}
+.inv-earliest-banner{background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.3);border-radius:8px;padding:12px 16px;margin-bottom:16px;display:flex;flex-direction:column;gap:6px}
+.inv-earliest-badge{align-self:flex-start;font-size:9px;font-weight:800;letter-spacing:.08em;font-family:var(--mono);padding:3px 9px;border-radius:20px;background:rgba(6,182,212,.2);color:var(--cyan);border:1px solid rgba(6,182,212,.4)}
+.inv-timeline-item{position:relative;padding-left:24px;border-left:2px solid var(--border3);margin-left:8px;padding-bottom:18px}
+.inv-timeline-item:last-child{border-left-color:transparent;padding-bottom:0}
+.inv-timeline-dot{position:absolute;left:-7px;top:2px;width:12px;height:12px;border-radius:50%;background:var(--bg);border:2px solid var(--cyan)}
+.inv-timeline-arrow{text-align:center;color:var(--text3);font-size:16px;margin:2px 0 10px -18px;font-family:var(--mono)}
+.inv-expand-btn{background:none;border:none;color:var(--cyan);font-size:10px;font-family:var(--mono);cursor:pointer;padding:3px 0;display:inline-flex;align-items:center;gap:4px}
+.inv-expand-btn:hover{text-decoration:underline}
+.inv-demo-banner{background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);color:var(--amber);padding:6px 12px;border-radius:6px;font-size:10px;font-family:var(--mono);font-weight:700;display:inline-flex;align-items:center;gap:6px;margin-bottom:12px}
+.inv-confidence-chip{font-size:9px;padding:3px 8px;border-radius:12px;font-family:var(--mono);font-weight:600;display:inline-flex;align-items:center;gap:5px}
+
 
 
 
@@ -1712,6 +1737,150 @@ html,body{height:100%;font-family:var(--font);background:var(--bg);color:var(--t
   </div>
 </div>
 
+<!-- PHASE F: PROVENANCE & MEDIA TIMELINE MODAL -->
+<div id="investigationModal" style="display:none" class="inv-modal-overlay" onclick="if(event.target===this)closeInvestigationModal()">
+  <div class="inv-modal" role="dialog" aria-labelledby="invModalTitle">
+    <div class="inv-header">
+      <div class="inv-title" id="invModalTitle">
+        🧭 <span>Where Did It Come From?</span>
+        <span style="font-size:9px;color:var(--text3);font-family:var(--mono);font-weight:normal">PROVENANCE &amp; MEDIA TIMELINE · PHASE F</span>
+      </div>
+      <button class="inv-close" onclick="closeInvestigationModal()" aria-label="Close modal">✕</button>
+    </div>
+
+    <!-- Case Selector & Demo Isolation Banner -->
+    <div class="inv-case-bar">
+      <div style="font-size:10px;font-family:var(--mono);color:var(--text2);display:flex;align-items:center;gap:6px">
+        <span>Investigation Case:</span>
+        <select id="invCaseSelect" onchange="loadSelectedInvestigation(this.value)" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text);font-family:var(--mono);font-size:10px;padding:4px 8px;border-radius:6px;outline:none">
+          <option value="INV-VM-2026-CHAMP">Championship Broadcast Clip (INV-VM-2026-CHAMP)</option>
+          <option value="INV-DEMO-SIM-99">Demo Simulated Viral Leak Scenario (INV-DEMO-SIM-99)</option>
+        </select>
+      </div>
+      <div id="invDemoNotice" style="display:none" class="inv-demo-banner">
+        ⚠️ DEMO SCENARIO — SIMULATED EVIDENCE
+      </div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <div class="inv-tabs" role="tablist">
+      <button class="inv-tab-btn active" id="tabBtnWhere" onclick="switchInvTab('where')">⏱ Where Did It Come From?</button>
+      <button class="inv-tab-btn" id="tabBtnHistory" onclick="switchInvTab('history')">🧬 Media History</button>
+      <button class="inv-tab-btn" id="tabBtnEpistemic" onclick="switchInvTab('epistemic')">⚖ What We Know / Unknown</button>
+      <button class="inv-tab-btn" id="tabBtnTrace" onclick="switchInvTab('trace')">🔗 Traceability Explorer</button>
+    </div>
+
+    <!-- Modal Content Body -->
+    <div class="inv-body" id="invModalBody">
+      <!-- Loading State -->
+      <div id="invLoading" style="text-align:center;padding:40px;font-family:var(--mono);font-size:11px;color:var(--text2)">
+        Loading provenance &amp; media timeline data…
+      </div>
+
+      <!-- Tab 1: Where Did It Come From? (Media Timeline) -->
+      <div id="invViewWhere" style="display:none">
+        <!-- Earliest Observed Appearance Banner -->
+        <div id="invEarliestCard" class="inv-earliest-banner">
+          <div class="inv-earliest-badge">EARLIEST OBSERVED APPEARANCE</div>
+          <div id="invEarliestNote" style="font-size:11px;color:var(--text);font-family:var(--mono);line-height:1.5">
+            Earliest appearance supported in current evidence was observed on ...
+          </div>
+          <div style="display:flex;gap:10px;margin-top:4px;flex-wrap:wrap">
+            <span class="inv-confidence-chip" style="background:rgba(37,99,235,.15);border:1px solid rgba(37,99,235,.3);color:var(--blueL)">
+              Forensic Confidence: <strong id="invForensicConf">--</strong>
+            </span>
+            <span class="inv-confidence-chip" style="background:rgba(6,182,212,.15);border:1px solid rgba(6,182,212,.3);color:var(--cyan)">
+              Provenance Confidence: <strong id="invProvenanceConf">--</strong>
+            </span>
+            <span style="font-size:8px;color:var(--text3);font-family:var(--mono);align-self:center">
+              (Forensic and Provenance confidences are independently evaluated)
+            </span>
+          </div>
+        </div>
+
+        <!-- Media Timeline Container -->
+        <div class="inv-card">
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--cyan);font-family:var(--mono);margin-bottom:12px;display:flex;align-items:center;gap:6px">
+            <span>📅 Media Timeline</span>
+            <span style="font-size:8px;color:var(--text3);text-transform:none;font-weight:normal">(Chronological observed appearances)</span>
+          </div>
+          <div id="invTimelineEvents"></div>
+        </div>
+      </div>
+
+      <!-- Tab 2: Media History (Lineage & Transformation View) -->
+      <div id="invViewHistory" style="display:none">
+        <div class="inv-card">
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--cyan);font-family:var(--mono);margin-bottom:12px">
+            🧬 Media History &amp; Lineage Flow
+          </div>
+          <div style="font-size:10px;color:var(--text2);margin-bottom:16px;line-height:1.6">
+            Visual progression of known artifact versions. Relationships are labeled with neutral, evidence-grounded terms.
+          </div>
+          <div id="invLineageFlow" style="display:flex;flex-direction:column;align-items:center;gap:12px;margin:16px 0"></div>
+        </div>
+
+        <!-- Comparative Transformation Inspector -->
+        <div class="inv-card">
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--cyan);font-family:var(--mono);margin-bottom:8px">
+            🔬 Artifact Comparator
+          </div>
+          <div style="font-size:10px;color:var(--text2);margin-bottom:12px">
+            Compare two artifacts directly. Evaluates cryptographic hash identity, perceptual fingerprint similarity (Hamming distance), and dimensional transformations.
+          </div>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+            <select id="compareArtA" style="background:var(--bg);border:1px solid var(--border2);color:var(--text);font-family:var(--mono);font-size:10px;padding:6px 10px;border-radius:6px"></select>
+            <span style="font-size:11px;color:var(--text3);font-family:var(--mono)">vs</span>
+            <select id="compareArtB" style="background:var(--bg);border:1px solid var(--border2);color:var(--text);font-family:var(--mono);font-size:10px;padding:6px 10px;border-radius:6px"></select>
+            <button onclick="runArtifactComparison()" style="background:var(--cyan);color:#06080C;border:none;padding:6px 14px;border-radius:6px;font-size:10px;font-family:var(--mono);font-weight:700;cursor:pointer">
+              Run Comparison
+            </button>
+          </div>
+          <div id="compareResultBox" style="display:none;background:var(--bg);border:1px solid var(--border2);border-radius:6px;padding:12px;font-family:var(--mono);font-size:10px;line-height:1.7"></div>
+        </div>
+      </div>
+
+      <!-- Tab 3: What We Know / What Remains Unknown -->
+      <div id="invViewEpistemic" style="display:none">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:14px">
+          <!-- What We Know -->
+          <div class="inv-card" style="border-top:3px solid var(--green)">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--green);font-family:var(--mono);margin-bottom:10px;display:flex;align-items:center;gap:6px">
+              <span>✔ What We Know</span>
+            </div>
+            <div id="invWhatWeKnow" style="display:flex;flex-direction:column;gap:8px;font-size:10px;color:var(--text);line-height:1.6"></div>
+          </div>
+
+          <!-- What Remains Unknown -->
+          <div class="inv-card" style="border-top:3px solid var(--amber)">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--amber);font-family:var(--mono);margin-bottom:10px;display:flex;align-items:center;gap:6px">
+              <span>❓ What Remains Unknown</span>
+            </div>
+            <div id="invWhatRemainsUnknown" style="display:flex;flex-direction:column;gap:8px;font-size:10px;color:var(--text2);line-height:1.6"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 4: Traceability Explorer -->
+      <div id="invViewTrace" style="display:none">
+        <div class="inv-card">
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--cyan);font-family:var(--mono);margin-bottom:8px">
+            🔗 Provenance Traceability Chain
+          </div>
+          <div style="font-size:10px;color:var(--text2);margin-bottom:12px">
+            Auditable progression: <strong>Finding → Evidence → Observation → Source / Artifact → AnalysisRun → AnalysisMethod</strong>
+          </div>
+          <div style="display:flex;gap:10px;align-items:center;margin-bottom:16px">
+            <span style="font-size:10px;color:var(--text2);font-family:var(--mono)">Select Finding:</span>
+            <select id="invTraceFindingSelect" onchange="inspectFindingTrace(this.value)" style="background:var(--bg);border:1px solid var(--border2);color:var(--text);font-family:var(--mono);font-size:10px;padding:6px 10px;border-radius:6px;outline:none"></select>
+          </div>
+          <div id="invTraceResult"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="app">
 
 <!-- NAV -->
@@ -1724,6 +1893,9 @@ html,body{height:100%;font-family:var(--font);background:var(--bg);color:var(--t
     </div>
   </div>
   <div class="npills" role="status" aria-live="polite">
+    <button class="npill" id="btnProvenanceNav" style="cursor:pointer;border-color:rgba(6,182,212,.4);background:rgba(6,182,212,.12);color:var(--cyan);font-weight:700" onclick="openInvestigationModal()" title="Open Where Did It Come From? / Provenance & Media Timeline">
+      <div class="dot g"></div>🧭 Where Did It Come From?
+    </button>
     <div class="npill live" id="aiStatusPill"><div class="dot g" id="aiStatusDot"></div><span id="aiStatusTxt">AI Ready</span></div>
     <div class="npill" id="nStat"><div class="dot gr" id="tdot"></div><span id="ttxt">0 threats</span></div>
     <div class="npill"><div class="dot g"></div>AI Verification Engine</div>
@@ -1789,12 +1961,14 @@ html,body{height:100%;font-family:var(--font);background:var(--bg);color:var(--t
     <span class="uh-chip" onclick="runDemo('entertainment')">🎬 Entertainment</span>
     <span class="uh-chip" onclick="runDemo('manipulated')">🎛 Manipulated</span>
     <span class="uh-chip" onclick="runDemo('insufficient')" style="border-color:rgba(139,92,246,.3);color:var(--purpleL)" title="Insufficient evidence — system abstains">⚖ Uncertain</span>
+    <span class="uh-chip" onclick="openInvestigationModal('INV-VM-2026-CHAMP')" style="border-color:rgba(6,182,212,.4);background:rgba(6,182,212,.08);color:var(--cyan);font-weight:600">🧭 Where Did It Come From?</span>
   </div>
 </div>
 
 <!-- CONTROL BAR -->
 <div class="ctrlbar" role="toolbar">
   <button class="dbtn" style="border-color:rgba(6,182,212,.3);color:var(--cyan);margin-right:4px" onclick="document.getElementById('heroOverlay').classList.remove('hero-hidden')">← Overview</button>
+  <button class="dbtn" id="btnProvenanceCtrl" style="border-color:rgba(6,182,212,.5);background:rgba(6,182,212,.14);color:var(--cyan);font-weight:700;margin-right:6px;box-shadow:0 0 10px rgba(6,182,212,.2)" onclick="openInvestigationModal()">🧭 Where Did It Come From?</button>
   <div class="sep"></div>
   <span class="demo-lbl">Content:</span>
   <button class="dbtn green" id="db-normal" onclick="runDemo('normal')" title="Clean case — authorized share, no violation">✔ Clean — No Violation</button>
@@ -7832,6 +8006,459 @@ END EVERY RESPONSE WITH:
 
   console.log('[VeriMedia Assistant] Initialized · Powered by Gemini');
 })();
+</script>
+
+<!-- PHASE F: PROVENANCE & MEDIA TIMELINE CLIENT CONTROLLER -->
+<script>
+let currentProvenanceData = null;
+let currentInvestigationId = 'INV-VM-2026-CHAMP';
+
+window.openInvestigationModal = async function(caseId) {
+  const modal = document.getElementById('investigationModal');
+  if (!modal) return;
+  modal.style.display = 'flex';
+  
+  if (caseId) {
+    currentInvestigationId = caseId;
+    const sel = document.getElementById('invCaseSelect');
+    if (sel) sel.value = caseId;
+  }
+  
+  // Load list of investigations
+  try {
+    const res = await fetch('/api/investigations');
+    if (res.ok) {
+      const list = await res.json();
+      const sel = document.getElementById('invCaseSelect');
+      if (sel && list.length > 0) {
+        sel.innerHTML = list.map(item => `
+          <option value="${item.id}" ${item.id === currentInvestigationId ? 'selected' : ''}>
+            ${escapeHtml(item.title)} (${item.id}) ${item.isDemo ? ' [DEMO]' : ''}
+          </option>
+        `).join('');
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to load investigations list:', err);
+  }
+
+  loadSelectedInvestigation(currentInvestigationId);
+};
+
+window.closeInvestigationModal = function() {
+  const modal = document.getElementById('investigationModal');
+  if (modal) modal.style.display = 'none';
+};
+
+window.switchInvTab = function(tabName) {
+  const tabs = ['where', 'history', 'epistemic', 'trace'];
+  tabs.forEach(t => {
+    const btn = document.getElementById('tabBtn' + t.charAt(0).toUpperCase() + t.slice(1));
+    const view = document.getElementById('invView' + t.charAt(0).toUpperCase() + t.slice(1));
+    if (btn) btn.classList.toggle('active', t === tabName);
+    if (view) view.style.display = (t === tabName) ? 'block' : 'none';
+  });
+};
+
+window.loadSelectedInvestigation = async function(invId) {
+  currentInvestigationId = invId;
+  const loading = document.getElementById('invLoading');
+  const viewWhere = document.getElementById('invViewWhere');
+  const viewHistory = document.getElementById('invViewHistory');
+  const viewEpistemic = document.getElementById('invViewEpistemic');
+  const viewTrace = document.getElementById('invViewTrace');
+  const demoNotice = document.getElementById('invDemoNotice');
+
+  if (loading) loading.style.display = 'block';
+  if (viewWhere) viewWhere.style.display = 'none';
+  if (viewHistory) viewHistory.style.display = 'none';
+  if (viewEpistemic) viewEpistemic.style.display = 'none';
+  if (viewTrace) viewTrace.style.display = 'none';
+
+  try {
+    const res = await fetch(`/api/investigations/${invId}/provenance`);
+    if (!res.ok) throw new Error('Failed to fetch provenance data');
+    const data = await res.json();
+    currentProvenanceData = data;
+
+    if (loading) loading.style.display = 'none';
+    if (demoNotice) {
+      demoNotice.style.display = data.isDemo ? 'inline-flex' : 'none';
+    }
+
+    renderWhereDidItComeFrom(data);
+    renderMediaHistory(data);
+    renderEpistemicBalance(data);
+    renderTraceabilityExplorer(data);
+
+    // Default to active tab (Where Did It Come From)
+    switchInvTab('where');
+  } catch (err) {
+    if (loading) {
+      loading.innerHTML = `<span style="color:var(--red)">Error loading provenance: ${escapeHtml(err.message)}</span>`;
+    }
+  }
+};
+
+function renderWhereDidItComeFrom(data) {
+  const tl = data.timeline;
+  if (!tl) return;
+
+  // Earliest Observed Appearance Banner
+  const noteEl = document.getElementById('invEarliestNote');
+  if (noteEl) {
+    noteEl.textContent = tl.earliestAppearance 
+      ? tl.earliestAppearance.note 
+      : 'No verified appearances currently registered in evidence.';
+  }
+
+  const fConfEl = document.getElementById('invForensicConf');
+  const pConfEl = document.getElementById('invProvenanceConf');
+  if (fConfEl) fConfEl.textContent = typeof tl.forensicConfidence === 'number' ? (tl.forensicConfidence * 100).toFixed(0) + '%' : tl.forensicConfidence;
+  if (pConfEl) pConfEl.textContent = typeof tl.provenanceConfidence === 'number' ? (tl.provenanceConfidence * 100).toFixed(0) + '%' : tl.provenanceConfidence;
+
+  // Events list
+  const container = document.getElementById('invTimelineEvents');
+  if (!container) return;
+
+  if (!tl.events || tl.events.length === 0) {
+    container.innerHTML = '<div style="color:var(--text3);font-family:var(--mono);font-size:10px">No timeline events recorded.</div>';
+    return;
+  }
+
+  let html = '';
+  tl.events.forEach((evt, idx) => {
+    const isFirst = idx === 0;
+    const pubDateStr = evt.publishedAt ? new Date(evt.publishedAt).toUTCString() : 'Unspecified by source';
+    const obsDateStr = evt.observedAt ? new Date(evt.observedAt).toUTCString() : 'Unknown';
+
+    html += `
+      <div class="inv-timeline-item" id="invEvtItem_${evt.id}">
+        <div class="inv-timeline-dot" style="${isFirst ? 'border-color:var(--cyan);background:rgba(6,182,212,.3)' : ''}"></div>
+        
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+          <div>
+            <span style="font-size:11px;font-weight:700;color:var(--text);font-family:var(--mono)">
+              ${escapeHtml(evt.sourceName)}
+            </span>
+            <span style="font-size:9px;color:var(--cyan);font-family:var(--mono);margin-left:6px">
+              ${escapeHtml(evt.sourceDomain || evt.sourcePlatform || '')}
+            </span>
+            ${isFirst ? '<span class="inv-earliest-badge" style="margin-left:8px;font-size:8px;padding:2px 6px">EARLIEST OBSERVED</span>' : ''}
+          </div>
+          <div style="font-size:9px;color:var(--text2);font-family:var(--mono)">
+            ${evt.publishedAt ? new Date(evt.publishedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Unknown date'}
+          </div>
+        </div>
+
+        <div style="font-size:10px;color:var(--text2);margin-top:4px">
+          Target Artifact: <code style="color:var(--text);background:var(--bg);padding:1px 4px;border-radius:4px">${escapeHtml(evt.artifactFilename || evt.artifactId)}</code>
+        </div>
+
+        <button class="inv-expand-btn" onclick="toggleTimelineDetail('${evt.id}')" id="btnToggle_${evt.id}">
+          <span>▼ Show details &amp; evidence</span>
+        </button>
+
+        <!-- Collapsible Details Box -->
+        <div id="invEvtDetail_${evt.id}" style="display:none;background:var(--bg);border:1px solid var(--border2);border-radius:6px;padding:12px;margin-top:8px;font-family:var(--mono);font-size:9px;line-height:1.7">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:10px;margin-bottom:10px">
+            <div>
+              <div style="color:var(--text3);text-transform:uppercase;font-size:8px">Source URL</div>
+              <div style="word-break:break-all;color:var(--blueL)">${evt.sourceUrl ? escapeHtml(evt.sourceUrl) : 'N/A'}</div>
+            </div>
+            <div>
+              <div style="color:var(--text3);text-transform:uppercase;font-size:8px">Source Platform &amp; Type</div>
+              <div>${escapeHtml(evt.sourcePlatform || 'Web')} · <span style="color:var(--cyan)">${escapeHtml(evt.sourceType || 'UNKNOWN')}</span></div>
+            </div>
+            <div>
+              <div style="color:var(--text3);text-transform:uppercase;font-size:8px">Observed At (System)</div>
+              <div>${obsDateStr}</div>
+            </div>
+            <div>
+              <div style="color:var(--text3);text-transform:uppercase;font-size:8px">Published At (Source Claim)</div>
+              <div style="color:${evt.publishedAt ? 'var(--text)' : 'var(--amber)'}">${pubDateStr}</div>
+            </div>
+          </div>
+
+          <div style="background:var(--bg2);padding:8px 10px;border-radius:4px;border:1px solid var(--border);margin-bottom:8px">
+            <div style="color:var(--amber);font-size:8px;font-weight:700;text-transform:uppercase;margin-bottom:3px">⚠️ Observation Boundary</div>
+            <div style="color:var(--text2);font-size:8px">
+              The timestamp indicates when this source reported publication, not necessarily when the media was created or recorded.
+            </div>
+          </div>
+
+          <!-- Source Quality Signals -->
+          ${evt.sourceQuality ? `
+            <div style="margin-bottom:8px">
+              <div style="color:var(--text3);text-transform:uppercase;font-size:8px;margin-bottom:4px">Source Quality Assessment</div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap">
+                <span class="inv-confidence-chip" style="background:var(--bg3);border:1px solid var(--border2);color:${evt.sourceQuality.isFirstParty ? 'var(--green)' : 'var(--text2)'}">
+                  ${evt.sourceQuality.isFirstParty ? '✔ First-Party' : 'Third-Party'}
+                </span>
+                <span class="inv-confidence-chip" style="background:var(--bg3);border:1px solid var(--border2);color:${evt.sourceQuality.containsMediaDirectly ? 'var(--green)' : 'var(--text3)'}">
+                  ${evt.sourceQuality.containsMediaDirectly ? '✔ Direct Media' : 'Embed/Link'}
+                </span>
+                <span class="inv-confidence-chip" style="background:var(--bg3);border:1px solid var(--border2);color:${evt.sourceQuality.independentlyObserved ? 'var(--cyan)' : 'var(--text3)'}">
+                  ${evt.sourceQuality.independentlyObserved ? '✔ Independently Observed' : 'Secondary Claim'}
+                </span>
+              </div>
+            </div>
+          ` : ''}
+
+          <!-- Linked Evidence -->
+          ${evt.evidence && evt.evidence.length > 0 ? `
+            <div style="margin-bottom:8px">
+              <div style="color:var(--cyan);text-transform:uppercase;font-size:8px;font-weight:700;margin-bottom:4px">Linked Corroborating Evidence</div>
+              ${evt.evidence.map(e => `
+                <div style="background:var(--bg2);padding:6px 8px;border-radius:4px;border-left:2px solid var(--cyan);margin-bottom:4px">
+                  <div style="display:flex;justify-content:space-between">
+                    <strong style="color:var(--text)">${escapeHtml(e.evidenceType)}</strong>
+                    <span style="color:var(--green)">Confidence: ${(e.confidence * 100).toFixed(0)}%</span>
+                  </div>
+                  <div style="color:var(--text2);margin-top:2px">${escapeHtml(e.description)}</div>
+                  <div style="color:var(--text3);font-size:8px;margin-top:2px">ID: ${escapeHtml(e.id)} · Group: ${escapeHtml(e.independenceGroupId || 'NONE')}</div>
+                </div>
+              `).join('')}
+            </div>
+          ` : ''}
+
+          <!-- Limitations -->
+          ${evt.limitations && evt.limitations.length > 0 ? `
+            <div>
+              <div style="color:var(--text3);text-transform:uppercase;font-size:8px;margin-bottom:2px">Explicit Limitations</div>
+              <ul style="padding-left:14px;color:var(--text3);font-size:8px">
+                ${evt.limitations.map(l => `<li>${escapeHtml(l)}</li>`).join('')}
+              </ul>
+            </div>
+          ` : ''}
+        </div>
+      </div>
+    `;
+
+    if (idx < tl.events.length - 1) {
+      html += `<div class="inv-timeline-arrow">↓</div>`;
+    }
+  });
+
+  container.innerHTML = html;
+}
+
+window.toggleTimelineDetail = function(evtId) {
+  const el = document.getElementById(`invEvtDetail_${evtId}`);
+  const btn = document.getElementById(`btnToggle_${evtId}`);
+  if (!el) return;
+  const isOpen = el.style.display === 'block';
+  el.style.display = isOpen ? 'none' : 'block';
+  if (btn) btn.innerHTML = isOpen ? '<span>▼ Show details &amp; evidence</span>' : '<span>▲ Hide details</span>';
+};
+
+function renderMediaHistory(data) {
+  const flowContainer = document.getElementById('invLineageFlow');
+  const selA = document.getElementById('compareArtA');
+  const selB = document.getElementById('compareArtB');
+  if (!flowContainer || !data.artifacts) return;
+
+  // Populate compare selectors
+  if (selA && selB) {
+    const opts = data.artifacts.map(a => `<option value="${a.id}">${escapeHtml(a.filename)} (${a.dimensions ? a.dimensions.width + 'x' + a.dimensions.height : 'unknown'})</option>`).join('');
+    selA.innerHTML = opts;
+    selB.innerHTML = opts;
+    if (data.artifacts.length > 1) selB.selectedIndex = 1;
+  }
+
+  // Render lineage diagram
+  if (data.artifacts.length === 0) {
+    flowContainer.innerHTML = '<div style="color:var(--text3)">No media artifacts registered.</div>';
+    return;
+  }
+
+  let flowHtml = '';
+  data.artifacts.forEach((art, idx) => {
+    const dims = art.dimensions ? `${art.dimensions.width} × ${art.dimensions.height}` : 'Dimensions not specified';
+    flowHtml += `
+      <div style="background:var(--bg);border:1px solid var(--border2);border-radius:8px;padding:12px 18px;min-width:320px;text-align:center;box-shadow:0 4px 14px rgba(0,0,0,.3)">
+        <div style="font-size:10px;font-weight:700;color:var(--text);font-family:var(--mono)">
+          Version ${String.fromCharCode(65 + idx)}: ${escapeHtml(art.filename)}
+        </div>
+        <div style="font-size:9px;color:var(--cyan);font-family:var(--mono);margin-top:3px">
+          ${dims} · ${art.mimeType || 'media'}
+        </div>
+        <div style="font-size:8px;color:var(--text3);font-family:var(--mono);margin-top:2px">
+          SHA-256: ${art.sha256 ? art.sha256.substring(0, 16) + '…' : 'None'} · pHash: ${art.perceptualHash || 'None'}
+        </div>
+      </div>
+    `;
+
+    // If there is a subsequent artifact or relationship, render the connector
+    if (idx < data.artifacts.length - 1) {
+      const rel = data.relationships ? data.relationships.find(r => 
+        (r.fromArtifactId === art.id && r.toArtifactId === data.artifacts[idx + 1].id) ||
+        (r.toArtifactId === art.id && r.fromArtifactId === data.artifacts[idx + 1].id)
+      ) : null;
+
+      const relLabel = rel ? rel.relationshipType.replace(/_/g, ' ') : 'Possible transformation';
+      flowHtml += `
+        <div style="display:flex;flex-direction:column;align-items:center;margin:2px 0">
+          <div style="color:var(--cyan);font-size:16px;font-family:var(--mono)">↓</div>
+          <div style="font-size:8px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;font-family:var(--mono);padding:2px 8px;border-radius:12px;background:rgba(6,182,212,.1);border:1px solid rgba(6,182,212,.25);color:var(--cyan);margin:2px 0">
+            ${escapeHtml(relLabel)}
+          </div>
+          <div style="color:var(--cyan);font-size:16px;font-family:var(--mono)">↓</div>
+        </div>
+      `;
+    }
+  });
+
+  flowContainer.innerHTML = flowHtml;
+}
+
+window.runArtifactComparison = async function() {
+  const selA = document.getElementById('compareArtA');
+  const selB = document.getElementById('compareArtB');
+  const resultBox = document.getElementById('compareResultBox');
+  if (!selA || !selB || !resultBox) return;
+
+  const artA = selA.value;
+  const artB = selB.value;
+  if (!artA || !artB) return;
+
+  resultBox.style.display = 'block';
+  resultBox.innerHTML = '<span style="color:var(--cyan)">Computing perceptual hash distance and transformation delta…</span>';
+
+  try {
+    const res = await fetch(`/api/investigations/${currentInvestigationId}/provenance/compare`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ artifactAId: artA, artifactBId: artB })
+    });
+    if (!res.ok) throw new Error('Comparison failed');
+    const comp = await res.json();
+
+    resultBox.innerHTML = `
+      <div style="color:var(--text);font-weight:700;margin-bottom:6px">Comparison Analysis Results</div>
+      <div><strong>Cryptographic SHA-256 Match:</strong> ${comp.isExactMatch ? '<span style="color:var(--green)">EXACT MATCH (100% Identical)</span>' : '<span style="color:var(--text2)">Different Files</span>'}</div>
+      <div><strong>Perceptual Visual Similarity:</strong> <span style="color:var(--cyan)">${(comp.perceptualSimilarity * 100).toFixed(1)}%</span></div>
+      <div><strong>Relationship Type:</strong> <code style="color:var(--blueL)">${escapeHtml(comp.relationship ? comp.relationship.relationshipType : 'NONE')}</code></div>
+      <div><strong>Detected Transformations:</strong> ${comp.transformations.length > 0 ? comp.transformations.map(t => `<span style="background:var(--bg3);padding:1px 6px;border-radius:4px;border:1px solid var(--border2);margin-right:4px">${escapeHtml(t)}</span>`).join('') : '<span style="color:var(--text3)">None observed</span>'}</div>
+      <div style="margin-top:6px;color:var(--text3);font-size:8px">
+        Note: High perceptual similarity establishes visual correspondence, but does not prove which artifact was created first without authoritative publication records.
+      </div>
+    `;
+  } catch (err) {
+    resultBox.innerHTML = `<span style="color:var(--red)">Comparison error: ${escapeHtml(err.message)}</span>`;
+  }
+};
+
+function renderEpistemicBalance(data) {
+  const knownContainer = document.getElementById('invWhatWeKnow');
+  const unknownContainer = document.getElementById('invWhatRemainsUnknown');
+  if (!knownContainer || !unknownContainer) return;
+
+  const knowItems = data.whatWeKnow || [];
+  const unknownItems = data.whatRemainsUnknown || [];
+
+  knownContainer.innerHTML = knowItems.length > 0
+    ? knowItems.map(item => `
+        <div style="display:flex;align-items:flex-start;gap:6px">
+          <span style="color:var(--green)">✔</span>
+          <span>${escapeHtml(item)}</span>
+        </div>
+      `).join('')
+    : '<div style="color:var(--text3)">No corroborated facts in current evidence.</div>';
+
+  unknownContainer.innerHTML = unknownItems.length > 0
+    ? unknownItems.map(item => `
+        <div style="display:flex;align-items:flex-start;gap:6px">
+          <span style="color:var(--amber)">❓</span>
+          <span>${escapeHtml(item)}</span>
+        </div>
+      `).join('')
+    : '<div style="color:var(--text3)">All variables established.</div>';
+}
+
+function renderTraceabilityExplorer(data) {
+  const select = document.getElementById('invTraceFindingSelect');
+  if (!select) return;
+
+  const findings = data.findings || [];
+  if (findings.length === 0) {
+    select.innerHTML = '<option value="">No findings available</option>';
+    document.getElementById('invTraceResult').innerHTML = '<div style="color:var(--text3)">No findings available to trace.</div>';
+    return;
+  }
+
+  select.innerHTML = findings.map(f => `
+    <option value="${f.id}">${escapeHtml(f.title)} (${f.id})</option>
+  `).join('');
+
+  inspectFindingTrace(findings[0].id);
+}
+
+window.inspectFindingTrace = async function(findingId) {
+  const resContainer = document.getElementById('invTraceResult');
+  if (!resContainer || !findingId) return;
+
+  resContainer.innerHTML = '<div style="color:var(--text2);font-family:var(--mono);font-size:10px">Tracing evidence chain…</div>';
+
+  try {
+    const res = await fetch(`/api/findings/${findingId}/trace`);
+    if (!res.ok) throw new Error('Failed to trace finding');
+    const trace = await res.json();
+
+    let html = `
+      <div style="background:var(--bg);border:1px solid var(--border2);border-radius:6px;padding:12px;margin-bottom:12px;font-family:var(--mono)">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <strong style="color:var(--text);font-size:11px">${escapeHtml(trace.finding.title)}</strong>
+          <span style="font-size:9px;color:var(--green)">Status: ${escapeHtml(trace.finding.status)}</span>
+        </div>
+        <div style="font-size:9px;color:var(--text2);margin-top:4px">${escapeHtml(trace.finding.summary)}</div>
+      </div>
+    `;
+
+    trace.traceChain.forEach((link, idx) => {
+      html += `
+        <div style="background:var(--bg2);border:1px solid var(--border3);border-radius:6px;padding:10px;margin-bottom:10px;font-family:var(--mono);font-size:9px">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+            <span style="background:rgba(6,182,212,.15);color:var(--cyan);padding:2px 6px;border-radius:4px;font-weight:700">STEP 1: EVIDENCE</span>
+            <strong style="color:var(--text)">${escapeHtml(link.evidence.evidenceType)}</strong>
+            <span style="color:var(--text3);margin-left:auto">${escapeHtml(link.evidence.id)}</span>
+          </div>
+          <div style="color:var(--text2);margin-bottom:8px">${escapeHtml(link.evidence.description)}</div>
+
+          <div style="padding-left:10px;border-left:2px solid var(--cyan)">
+            ${link.observations.map(obsNode => `
+              <div style="margin-bottom:6px">
+                <div style="display:flex;align-items:center;gap:6px">
+                  <span style="background:rgba(37,99,235,.15);color:var(--blueL);padding:1px 5px;border-radius:3px">STEP 2: OBSERVATION</span>
+                  <span style="color:var(--text)">${escapeHtml(obsNode.observation.observationType)} (${escapeHtml(obsNode.observation.id)})</span>
+                </div>
+                
+                <div style="display:flex;align-items:center;gap:6px;margin-top:4px">
+                  <span style="background:rgba(16,185,129,.15);color:var(--green);padding:1px 5px;border-radius:3px">STEP 3: TARGET</span>
+                  <span style="color:var(--text2)">${obsNode.artifact ? 'Artifact: ' + escapeHtml(obsNode.artifact.filename) : (obsNode.source ? 'Source: ' + escapeHtml(obsNode.source.name) : 'Investigation Record')}</span>
+                </div>
+
+                <div style="display:flex;align-items:center;gap:6px;margin-top:4px">
+                  <span style="background:rgba(139,92,246,.15);color:var(--purpleL);padding:1px 5px;border-radius:3px">STEP 4: METHOD</span>
+                  <span style="color:var(--text3)">${escapeHtml(obsNode.analysisMethod)} (${obsNode.analysisRun ? escapeHtml(obsNode.analysisRun.id) : 'Direct Inspection'})</span>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    });
+
+    resContainer.innerHTML = html;
+  } catch (err) {
+    resContainer.innerHTML = `<span style="color:var(--red)">Trace error: ${escapeHtml(err.message)}</span>`;
+  }
+};
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
 </script>
 <script src="/gemini-integration.js"></script>
 
