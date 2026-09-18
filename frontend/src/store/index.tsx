@@ -23,6 +23,7 @@ interface AppState {
   activeTab: TabId
   showEvidenceModal: boolean
   showDMCAModal: boolean
+  showMonitoringModal: boolean
   showHeroOverlay: boolean
   selectedCaseId: string | null
 
@@ -40,6 +41,7 @@ interface AppState {
   setActiveTab: (t: TabId) => void
   setShowEvidenceModal: (v: boolean) => void
   setShowDMCAModal: (v: boolean) => void
+  setShowMonitoringModal: (v: boolean) => void
   setShowHeroOverlay: (v: boolean) => void
   setSelectedCaseId: (id: string | null) => void
   updateStats: (r: DetectionResult) => void
@@ -57,6 +59,7 @@ export const useStore = create<AppState>((set, get) => ({
   activeTab: 'feed',
   showEvidenceModal: false,
   showDMCAModal: false,
+  showMonitoringModal: false,
   showHeroOverlay: true,
   selectedCaseId: null,
   stats: { total: 0, threats: 0, dmca: 0, clean: 0 },
@@ -71,6 +74,7 @@ export const useStore = create<AppState>((set, get) => ({
   setActiveTab: (t) => set({ activeTab: t }),
   setShowEvidenceModal: (v) => set({ showEvidenceModal: v }),
   setShowDMCAModal: (v) => set({ showDMCAModal: v }),
+  setShowMonitoringModal: (v) => set({ showMonitoringModal: v }),
   setShowHeroOverlay: (v) => set({ showHeroOverlay: v }),
   setSelectedCaseId: (id) => set({ selectedCaseId: id }),
   updateStats: (r) => set(s => {

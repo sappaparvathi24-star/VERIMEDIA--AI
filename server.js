@@ -5,8 +5,21 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI } from '@google/genai';
 import { provenanceService } from './src/provenance/service.js';
+import { 
+  searchReddit, 
+  searchYouTube, 
+  searchMastodon, 
+  searchArchiveOrg, 
+  searchGoogleImages, 
+  getDiscoveryHealth,
+  checkRateLimit 
+} from './src/proxy/searchProxy.js';
+import { MultiSourceDiscoveryManager } from './src/matching/providers/index.js';
+import { getFullDiscoveryTransparency } from './src/matching/discoveryTransparency.js';
 
 dotenv.config();
+
+const multiSourceDiscovery = new MultiSourceDiscoveryManager();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -69,9 +82,9 @@ app.get('/api/health', healthResponse);
 app.get('/api/v1/health', healthResponse);
 
 // ---------------------------------------------------------------------------
-// POST /chat — VeriMedia Assistant conversational agent
+// POST /chat, /api/chat, /api/v1/chat — VeriMedia Assistant conversational agent
 // ---------------------------------------------------------------------------
-app.post('/chat', async (req, res) => {
+const handleChat = async (req, res) => {
   const { messages = [], prompt, system_prompt = '', max_tokens = 1024 } = req.body;
 
   let userText = '';
@@ -112,12 +125,16 @@ app.post('/chat', async (req, res) => {
     text: fallbackReply,
     source: 'rule-based-fallback'
   });
-});
+};
+
+app.post('/chat', handleChat);
+app.post('/api/chat', handleChat);
+app.post('/api/v1/chat', handleChat);
 
 // ---------------------------------------------------------------------------
-// POST /analyze — Core Media Authenticity & Forensics
+// POST /analyze, /api/analyze, /api/v1/analyze — Core Media Authenticity & Forensics
 // ---------------------------------------------------------------------------
-app.post('/analyze', async (req, res) => {
+const handleAnalyze = async (req, res) => {
   // Check if caller sent a Claude/Gemini conversational format: { messages: [...] }
   if (Array.isArray(req.body.messages) && req.body.messages.length > 0) {
     const last = req.body.messages[req.body.messages.length - 1];
@@ -222,7 +239,11 @@ Return ONLY a valid JSON object matching this exact schema:
     platform,
     flags
   }));
-});
+};
+
+app.post('/analyze', handleAnalyze);
+app.post('/api/analyze', handleAnalyze);
+app.post('/api/v1/analyze', handleAnalyze);
 
 // ---------------------------------------------------------------------------
 // POST /dmca-reasoning and POST /dmca/generate
@@ -827,6 +848,196 @@ app.post('/api/discovery/candidates/manual', async (req, res) => {
     res.status(201).json(result);
   } catch (err) {
     res.status(400).json({ error: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// PHASE 15: REAL MULTI-SOURCE DISCOVERY & SEARCH PROXY
+// ---------------------------------------------------------------------------
+
+// Discovery Health & Transparency endpoint
+app.get('/api/search/health', (req, res) => {
+  res.json(getDiscoveryHealth());
+});
+
+app.get('/api/search/transparency', (req, res) => {
+  const health = getDiscoveryHealth();
+  const transparency = getFullDiscoveryTransparency(health.providers);
+  res.json({
+    status: 'ok',
+    sources: transparency,
+    permanentUnavailablePlatforms: ['Instagram', 'TikTok', 'Facebook', 'X (formerly Twitter)'],
+    notice: 'No public media-search API exists for closed social networks (Instagram, TikTok, Facebook, X). Scraping violates ToS and is not attempted.'
+  });
+});
+
+// 1. Reddit Search Proxy
+app.get('/api/search/reddit', async (req, res) => {
+  const clientIp = req.ip || req.connection?.remoteAddress || 'unknown';
+  if (!checkRateLimit(clientIp)) {
+    return res.status(429).json({ error: 'Rate limit exceeded. Please wait a moment.' });
+  }
+
+  const query = req.query.q;
+  if (!query) {
+    return res.status(400).json({ error: 'Query parameter "q" is required' });
+  }
+
+  try {
+    const results = await searchReddit(query, req.query);
+    res.json({
+      status: 'ok',
+      provider: 'Reddit',
+      sourceType: 'EXTERNAL_API_VERIFIED',
+      count: results.length,
+      results
+    });
+  } catch (err) {
+    res.status(502).json({ error: 'Reddit search failed', message: err.message });
+  }
+});
+
+// 2. YouTube Data API v3 Proxy
+app.get('/api/search/youtube', async (req, res) => {
+  const clientIp = req.ip || req.connection?.remoteAddress || 'unknown';
+  if (!checkRateLimit(clientIp)) {
+    return res.status(429).json({ error: 'Rate limit exceeded. Please wait a moment.' });
+  }
+
+  const query = req.query.q;
+  if (!query) {
+    return res.status(400).json({ error: 'Query parameter "q" is required' });
+  }
+
+  try {
+    const response = await searchYouTube(query);
+    if (!response.available) {
+      return res.json({
+        status: 'UNAVAILABLE',
+        provider: 'YouTube',
+        reason: response.reason,
+        count: 0,
+        results: []
+      });
+    }
+    res.json({
+      status: 'ok',
+      provider: 'YouTube',
+      sourceType: 'EXTERNAL_API_VERIFIED',
+      count: response.results?.length || 0,
+      results: response.results || []
+    });
+  } catch (err) {
+    res.status(502).json({ error: 'YouTube search failed', message: err.message });
+  }
+});
+
+// 3. Mastodon Federated Timeline Search Proxy
+app.get('/api/search/mastodon', async (req, res) => {
+  const clientIp = req.ip || req.connection?.remoteAddress || 'unknown';
+  if (!checkRateLimit(clientIp)) {
+    return res.status(429).json({ error: 'Rate limit exceeded. Please wait a moment.' });
+  }
+
+  const query = req.query.q;
+  const instance = req.query.instance || 'mastodon.social';
+  if (!query) {
+    return res.status(400).json({ error: 'Query parameter "q" is required' });
+  }
+
+  try {
+    const results = await searchMastodon(query, instance);
+    res.json({
+      status: 'ok',
+      provider: `Mastodon@${instance}`,
+      sourceType: 'EXTERNAL_API_VERIFIED',
+      count: results.length,
+      results
+    });
+  } catch (err) {
+    res.status(502).json({ error: 'Mastodon search failed', message: err.message });
+  }
+});
+
+// 4. Wayback Machine Snapshot Search Proxy
+app.get('/api/search/archive', async (req, res) => {
+  const clientIp = req.ip || req.connection?.remoteAddress || 'unknown';
+  if (!checkRateLimit(clientIp)) {
+    return res.status(429).json({ error: 'Rate limit exceeded. Please wait a moment.' });
+  }
+
+  const targetUrl = req.query.url;
+  if (!targetUrl) {
+    return res.status(400).json({ error: 'Query parameter "url" is required' });
+  }
+
+  try {
+    const results = await searchArchiveOrg(targetUrl);
+    res.json({
+      status: 'ok',
+      provider: 'Wayback Machine (archive.org)',
+      sourceType: 'EXTERNAL_API_VERIFIED',
+      count: results.length,
+      results
+    });
+  } catch (err) {
+    res.status(502).json({ error: 'Wayback Machine search failed', message: err.message });
+  }
+});
+
+// 5. Google Programmable Search (Images) Proxy
+app.get('/api/search/google-images', async (req, res) => {
+  const clientIp = req.ip || req.connection?.remoteAddress || 'unknown';
+  if (!checkRateLimit(clientIp)) {
+    return res.status(429).json({ error: 'Rate limit exceeded. Please wait a moment.' });
+  }
+
+  const query = req.query.q;
+  if (!query) {
+    return res.status(400).json({ error: 'Query parameter "q" is required' });
+  }
+
+  try {
+    const response = await searchGoogleImages(query);
+    if (!response.available) {
+      return res.json({
+        status: response.quotaReached ? 'QUOTA_REACHED' : 'UNAVAILABLE',
+        provider: 'Google Images',
+        reason: response.reason,
+        count: 0,
+        results: []
+      });
+    }
+    res.json({
+      status: 'ok',
+      provider: 'Google Images',
+      sourceType: 'EXTERNAL_API_VERIFIED',
+      count: response.results?.length || 0,
+      results: response.results || []
+    });
+  } catch (err) {
+    res.status(502).json({ error: 'Google Images search failed', message: err.message });
+  }
+});
+
+// Multi-Source parallel search
+app.post('/api/search/multi-source', async (req, res) => {
+  const clientIp = req.ip || req.connection?.remoteAddress || 'unknown';
+  if (!checkRateLimit(clientIp)) {
+    return res.status(429).json({ error: 'Rate limit exceeded. Please wait a moment.' });
+  }
+
+  const { signals, query, options } = req.body;
+  const searchSignals = signals || (query ? [{ term: query, confidence: 1.0, source: 'USER_QUERY' }] : []);
+
+  try {
+    const result = await multiSourceDiscovery.searchAll(searchSignals, options || {});
+    res.json({
+      status: 'ok',
+      ...result
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Multi-source search failed', message: err.message });
   }
 });
 

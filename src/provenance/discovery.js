@@ -10,6 +10,8 @@ import {
   AppearanceStatus
 } from './core.js';
 import { validateSourceUrl } from './claims.js';
+import { MultiSourceDiscoveryManager } from '../matching/providers/index.js';
+import { buildQuerySignals } from '../matching/querySignals.js';
 
 /**
  * Calculates hex Hamming distance between two perceptual hash hex strings.
@@ -80,31 +82,52 @@ export function analyzeTransformations(targetArt, candidateArt) {
 }
 
 /**
- * Adapter interface for external discovery providers.
- * In $0 local-first configuration, external provider returns clear status:
- * "External discovery unavailable — showing indexed evidence only."
+ * Adapter interface for external discovery providers (Phase 15).
+ * Connects to the 5 honest providers (Reddit, YouTube, Mastodon, Wayback Machine, Google Images).
+ * Permanently declares Instagram, TikTok, Facebook, and X as UNAVAILABLE.
  */
 export class ExternalDiscoveryAdapter {
   constructor(config = {}) {
     this.apiUrl = config.apiUrl || null;
-    this.enabled = Boolean(this.apiUrl);
+    this.enabled = config.enabled !== undefined ? config.enabled : Boolean(config.apiUrl);
+    this.manager = new MultiSourceDiscoveryManager(config);
   }
 
   async discover(artifact, strategy, options = {}) {
-    if (!this.enabled) {
+    if (!this.enabled && !options.enableExternal && !options.query && !options.signals) {
       return {
         available: false,
+        reason: 'External discovery unavailable — showing indexed evidence only.',
+        providerStatuses: this.manager.getTransparencyReport(),
+        candidates: []
+      };
+    }
+
+    const signals = buildQuerySignals(artifact, options);
+    if (signals.length === 0 && !options.query && !options.url) {
+      return {
+        available: false,
+        providerStatuses: this.manager.getTransparencyReport(),
         reason: 'External discovery unavailable — showing indexed evidence only.',
         candidates: []
       };
     }
 
-    // If an external endpoint is configured in the future, it is called here.
-    return {
-      available: false,
-      reason: 'External discovery unavailable — showing indexed evidence only.',
-      candidates: []
-    };
+    try {
+      const searchResult = await this.manager.searchAll(signals, options);
+      return {
+        available: true,
+        providerStatuses: searchResult.providerStatuses,
+        candidates: searchResult.candidates || [],
+        count: searchResult.totalCount || 0
+      };
+    } catch (err) {
+      return {
+        available: false,
+        reason: `External discovery search failed: ${err.message}`,
+        candidates: []
+      };
+    }
   }
 }
 
@@ -482,12 +505,134 @@ export class DiscoveryService {
         }
       }
 
-      // Check external adapter status
+      // 3. Process candidates returned by External Multi-Source Discovery Adapter (Phase 15)
       const extResult = await this.externalAdapter.discover(artifact, queryStrategy, options);
 
-      const completedStatus = createdCandidates.length > 0 
-        ? DiscoveryJobStatus.COMPLETED 
-        : DiscoveryJobStatus.COMPLETED;
+      if (extResult && Array.isArray(extResult.candidates) && extResult.candidates.length > 0) {
+        for (const extItem of extResult.candidates) {
+          if (!extItem.url) continue;
+
+          let candidateSource = Array.from(this.store.sources.values()).find(s => s.url === extItem.url);
+          if (!candidateSource) {
+            let domain = 'external-web';
+            try {
+              domain = new URL(extItem.url).hostname;
+            } catch (_) {}
+
+            candidateSource = this.store.createSource({
+              url: extItem.url,
+              name: extItem.title || `${extItem.platform} Appearance`,
+              domain,
+              platform: extItem.platform || 'External Web',
+              type: SourceTypes.SOCIAL_POST,
+              isFirstParty: false,
+              independentlyObserved: true,
+              containsMediaDirectly: Boolean(extItem.mediaUrl || extItem.thumbnailUrl),
+              canDownload: Boolean(extItem.mediaUrl),
+              observedAt: extItem.publishedAt || null
+            });
+          }
+
+          // Compute independence group
+          const indepGroup = extItem.platform?.startsWith('Reddit')
+            ? `IG-REDDIT-${extItem.subreddit || 'COMMUNITY'}`
+            : (extItem.platform?.startsWith('YouTube')
+              ? `IG-YOUTUBE-${extItem.author || 'CHANNEL'}`
+              : (extItem.platform?.startsWith('Mastodon')
+                ? `IG-MASTODON-${extItem.metadata?.instance || 'FEDIVERSE'}`
+                : `IG-EXT-${candidateSource.domain || candidateSource.id}`));
+
+          // Create Observation
+          const obsExt = this.store.createObservation({
+            runId: run.id,
+            artifactId: artifact.id,
+            observationType: 'EXTERNAL_API_MATCH',
+            target: extItem.url,
+            value: {
+              platform: extItem.platform,
+              title: extItem.title,
+              author: extItem.author,
+              publishedAt: extItem.publishedAt,
+              similarityStatus: extItem.similarityStatus || 'TEXT_MATCH_ONLY',
+              metadata: extItem.metadata || {}
+            },
+            confidence: 0.85
+          });
+
+          // Create Evidence
+          const evExt = this.store.createEvidence({
+            observationIds: [obsExt.id],
+            independenceGroupId: indepGroup,
+            evidenceType: 'EXTERNAL_API_SIGHTING',
+            description: `Live sighting discovered on ${extItem.platform} (${extItem.title || extItem.url}) with publication timestamp ${extItem.publishedAt || 'UNREPORTED'}.`,
+            confidence: 0.85,
+            polarity: EvidencePolarity.SUPPORTING,
+            metadata: {
+              platform: extItem.platform,
+              url: extItem.url,
+              author: extItem.author,
+              publishedAt: extItem.publishedAt
+            }
+          });
+
+          const extCandidateRecord = this.store.createDiscoveryCandidate({
+            discoveryJobId: job.id,
+            investigationId,
+            artifactId: artifact.id,
+            matchedArtifactId: null,
+            sourceId: candidateSource.id,
+            url: extItem.url,
+            title: extItem.title || `${extItem.platform} Candidate`,
+            platform: extItem.platform,
+            author: extItem.author || null,
+            discoveredAt: new Date().toISOString(),
+            publishedAt: extItem.publishedAt || null,
+            retrievedAt: extItem.retrievedAt || new Date().toISOString(),
+            contentHash: null,
+            perceptualFingerprint: null,
+            similarityMeasurements: {
+              comparisonMethod: extItem.similarityStatus || 'EXTERNAL_API_METADATA_SEARCH',
+              similarityStatus: extItem.similarityStatus || 'TEXT_MATCH_ONLY',
+              thumbnailUrl: extItem.thumbnailUrl || null
+            },
+            relationshipType: CandidateRelationshipType.RELATED_MEDIA,
+            evidenceIds: [evExt.id],
+            independenceGroup: indepGroup,
+            status: CandidateStatus.OBSERVED,
+            sourceCharacteristics: {
+              directMediaHost: Boolean(extItem.mediaUrl),
+              primaryPublisherClaim: false,
+              repost: false,
+              syndication: false,
+              archive: extItem.platform === 'Wayback Machine',
+              socialPlatform: true,
+              unknownHost: false,
+              publicationTimestampAvailable: Boolean(extItem.publishedAt),
+              mediaBytesRetrievable: Boolean(extItem.mediaUrl),
+              attributionPresent: Boolean(extItem.author),
+              independentlyObserved: true
+            },
+            limitations: [
+              'External candidate discovered via live API query on public endpoint.',
+              'Presence on platform establishes public appearance, not original physical capture authorship.',
+              'No public API exists for Instagram, TikTok, Facebook, or X; these closed networks are not indexed.'
+            ],
+            transformationIndicators: [],
+            isDemo: Boolean(isDemo || artifact.isDemo),
+            metadata: {
+              observationId: obsExt.id,
+              evidenceId: evExt.id,
+              sourceType: 'EXTERNAL_API_VERIFIED',
+              thumbnailUrl: extItem.thumbnailUrl || null,
+              mediaUrl: extItem.mediaUrl || null
+            }
+          });
+
+          createdCandidates.push(extCandidateRecord);
+        }
+      }
+
+      const completedStatus = DiscoveryJobStatus.COMPLETED;
 
       this.store.updateDiscoveryJob(job.id, {
         status: completedStatus,
@@ -496,7 +641,8 @@ export class DiscoveryService {
         metadata: {
           ...job.metadata,
           externalProviderStatus: extResult.available ? 'AVAILABLE' : 'UNAVAILABLE',
-          externalProviderNotice: extResult.reason
+          externalProviderNotice: extResult.reason,
+          providerStatuses: extResult.providerStatuses || {}
         }
       });
 
@@ -504,6 +650,7 @@ export class DiscoveryService {
         job: this.store.getDiscoveryJob(job.id),
         candidates: createdCandidates,
         externalProviderNotice: extResult.reason,
+        providerStatuses: extResult.providerStatuses || {},
         candidateCount: createdCandidates.length
       };
     } catch (err) {

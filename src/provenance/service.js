@@ -664,3 +664,5 @@ class ProvenanceService {
 }
 
 export const provenanceService = new ProvenanceService();
+export { ProvenanceService };
+export default provenanceService;
