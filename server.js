@@ -1262,6 +1262,139 @@ app.post('/api/investigations/:id/artifacts/upload', uploadLimiter, requireAuth,
   }
 });
 
+// Standalone Media Artifact Upload & Registration
+const handleRegisterArtifact = async (req, res) => {
+  try {
+    const uploadedFile = req.file || (req.files && req.files[0]);
+    if (!uploadedFile) {
+      return res.status(400).json({ error: 'No media file provided in form-data field "media" or "file"' });
+    }
+
+    const buffer = uploadedFile.buffer;
+    const filename = uploadedFile.originalname || 'uploaded_media';
+    const sha256 = crypto.createHash('sha256').update(buffer).digest('hex');
+    const byteSize = buffer.length;
+
+    let mimeType = uploadedFile.mimetype || 'application/octet-stream';
+    try {
+      const typeInfo = await fileTypeFromBuffer(buffer);
+      if (typeInfo && typeInfo.mime) {
+        mimeType = typeInfo.mime;
+      }
+    } catch (_) {}
+
+    let dimensions = null;
+    let exif = null;
+    let pHash = null;
+
+    if (mimeType.startsWith('image/')) {
+      try {
+        const meta = await sharp(buffer).metadata();
+        if (meta.width && meta.height) {
+          dimensions = { width: meta.width, height: meta.height };
+        }
+      } catch (_) {}
+
+      try {
+        exif = await exifr.parse(buffer);
+      } catch (_) {}
+
+      try {
+        pHash = await computeAverageHash(buffer);
+      } catch (err) {
+        console.warn('[PerceptualHash] Computation error:', err.message);
+      }
+    }
+
+    let invId = req.body?.investigationId || req.query?.investigationId;
+    if (!invId) {
+      const invs = provenanceService.getInvestigations();
+      if (invs && invs.length > 0) {
+        invId = invs[0].id;
+      } else {
+        const defaultInv = provenanceService.createInvestigation({
+          title: 'Direct Media Scan Investigation',
+          description: 'Auto-created investigation for media artifact scanner ingest',
+          createdBy: req.user?.email || 'analyst@verimedia.ai'
+        });
+        invId = defaultInv.id;
+      }
+    }
+
+    const artifact = provenanceService.createArtifact({
+      investigationId: invId,
+      filename,
+      mimeType,
+      byteSize,
+      sha256,
+      perceptualHash: pHash,
+      dimensions: dimensions || null,
+      metadata: {
+        ...(exif ? { exif } : {}),
+        originalName: uploadedFile.originalname,
+        uploadedAt: new Date().toISOString(),
+        uploadedBy: req.user?.email || 'analyst@verimedia.ai'
+      }
+    });
+
+    let forensicAnalysis = null;
+    if (mimeType.startsWith('image/')) {
+      try {
+        forensicAnalysis = await provenanceService.runImageForensicAnalysis({
+          investigationId: invId,
+          artifactId: artifact.id,
+          buffer,
+          mimeType,
+          exif
+        });
+      } catch (err) {
+        console.warn('[Forensics] Image forensic analysis execution failed:', err.message);
+      }
+    }
+
+    logAuditEvent({
+      investigationId: invId,
+      actor: req.user?.email,
+      action: AuditAction.ARTIFACT_CREATE,
+      objectType: AuditObjectType.ARTIFACT,
+      objectId: artifact.id,
+      afterState: { filename, sha256, mimeType, byteSize },
+      req
+    });
+
+    res.status(201).json({
+      status: 'registered',
+      success: true,
+      artifact: {
+        id: artifact.id,
+        filename: artifact.filename,
+        sha256: artifact.sha256,
+        perceptualHash: artifact.perceptualHash,
+        mimeType: artifact.mimeType,
+        byteSize: artifact.byteSize,
+        dimensions: artifact.dimensions,
+        metadata: artifact.metadata
+      },
+      forensicAnalysis,
+      extractedMetadata: {
+        sha256,
+        perceptualHash: pHash,
+        mimeType,
+        byteSize,
+        dimensions,
+        hasExif: Boolean(exif)
+      }
+    });
+  } catch (err) {
+    console.error('Artifact registration endpoint error:', err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+app.post('/api/artifacts/register', uploadLimiter, upload.any(), handleRegisterArtifact);
+app.post('/artifacts/register', uploadLimiter, upload.any(), handleRegisterArtifact);
+app.post('/api/v1/artifacts/register', uploadLimiter, upload.any(), handleRegisterArtifact);
+
 // JSON Artifact Registration
 app.post('/api/investigations/:id/artifacts', uploadLimiter, requireAuth, authorizeChain(provenanceService), (req, res) => {
   try {

@@ -2,6 +2,7 @@ import { useState, useRef } from 'react'
 import { useStore } from '../../store'
 import { useDetection } from '../../hooks/useDetection'
 import { Tooltip } from '../ui/Tooltip'
+import { getToken } from '../../lib/supabaseClient'
 import type { Platform, ContentType, Scenario } from '../../types'
 
 const CATEGORIZED_SCENARIOS: {
@@ -118,8 +119,15 @@ export function ScannerBar() {
       const formData = new FormData()
       formData.append('media', file)
 
+      const token = await getToken()
+      const headers: Record<string, string> = {}
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`
+      }
+
       const res = await fetch('/api/artifacts/register', {
         method: 'POST',
+        headers,
         body: formData
       })
 
