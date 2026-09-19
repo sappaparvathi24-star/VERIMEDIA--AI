@@ -1,4 +1,5 @@
 import { useStore } from '../../store'
+import { Tooltip } from '../ui/Tooltip'
 
 const SIGNALS = [
   { key: 'jpeg_artifact',      label: 'JPEG Artifact',       invert: false },
@@ -34,9 +35,9 @@ export function ForensicPanel() {
     )
   }
 
-  const sigs = currentResult.integrity.signals
-  const score = currentResult.integrity.score
-  const flags = currentResult.integrity.flags
+  const sigs = currentResult?.integrity?.signals || {}
+  const score = currentResult?.integrity?.score ?? 0
+  const flags = currentResult?.integrity?.flags || []
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'auto', padding: 16 }}>
@@ -45,14 +46,17 @@ export function ForensicPanel() {
         <span style={{ fontSize: 11, color: '#8899aa', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
           9-Signal Forensic Analysis
         </span>
-        <span style={{
-          padding: '3px 10px', borderRadius: 4,
-          background: score > 0.7 ? 'rgba(34,197,94,0.1)' : score > 0.4 ? 'rgba(245,158,11,0.1)' : 'rgba(239,68,68,0.1)',
-          color: score > 0.7 ? '#22c55e' : score > 0.4 ? '#f59e0b' : '#ef4444',
-          fontSize: 12, fontWeight: 800, fontFamily: 'monospace',
-        }}>
-          {Math.round(score * 100)}% CLEAN
-        </span>
+        <Tooltip content={`Media Integrity Cleanliness Score: ${Math.round(score * 100)}%`} position="bottom">
+          <span style={{
+            padding: '3px 10px', borderRadius: 4,
+            background: score > 0.7 ? 'rgba(34,197,94,0.1)' : score > 0.4 ? 'rgba(245,158,11,0.1)' : 'rgba(239,68,68,0.1)',
+            color: score > 0.7 ? '#22c55e' : score > 0.4 ? '#f59e0b' : '#ef4444',
+            fontSize: 12, fontWeight: 800, fontFamily: 'monospace',
+            cursor: 'default'
+          }}>
+            {Math.round(score * 100)}% CLEAN
+          </span>
+        </Tooltip>
       </div>
 
       {/* Heatmap grid */}
@@ -135,11 +139,11 @@ export function ForensicPanel() {
         </p>
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
           {[
-            { label: 'Label',       value: currentResult.ml.label,
-              color: currentResult.ml.label === 'TAMPERED' ? '#ef4444' : currentResult.ml.label === 'SUSPICIOUS' ? '#f59e0b' : '#22c55e' },
-            { label: 'Manip. Prob', value: `${Math.round(currentResult.ml.manipulation_probability * 100)}%`, color: '#f97316' },
-            { label: 'Trust Score', value: `${Math.round(currentResult.ml.trust_score * 100)}%`,             color: '#22c55e' },
-            { label: 'Confidence',  value: `${Math.round(currentResult.ml.confidence * 100)}%`,              color: '#00d4ff' },
+            { label: 'Label',       value: currentResult?.ml?.label ?? 'SUSPICIOUS',
+              color: currentResult?.ml?.label === 'TAMPERED' ? '#ef4444' : currentResult?.ml?.label === 'SUSPICIOUS' ? '#f59e0b' : '#22c55e' },
+            { label: 'Manip. Prob', value: `${Math.round((currentResult?.ml?.manipulation_probability ?? 0) * 100)}%`, color: '#f97316' },
+            { label: 'Trust Score', value: `${Math.round((currentResult?.ml?.trust_score ?? 0) * 100)}%`,             color: '#22c55e' },
+            { label: 'Confidence',  value: `${Math.round((currentResult?.ml?.confidence ?? 0) * 100)}%`,              color: '#00d4ff' },
           ].map(item => (
             <div key={item.label}>
               <div style={{ fontSize: 10, color: '#8899aa' }}>{item.label}</div>

@@ -1,4 +1,5 @@
 import { useStore } from '../../store'
+import { Tooltip } from '../ui/Tooltip'
 import type { DetectionResult } from '../../types'
 
 const DECISION_COLOR: Record<string, string> = {
@@ -40,19 +41,24 @@ function FeedItem({ result, onClick }: { result: DetectionResult; onClick: () =>
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
         {/* Platform icon */}
-        <span style={{ fontSize: 12, color: '#00d4ff', width: 16, textAlign: 'center' }}>
-          {PLATFORM_ICON[result.platform] || '○'}
-        </span>
+        <Tooltip content={`Platform: ${result.platform}`} position="top">
+          <span style={{ fontSize: 12, color: '#00d4ff', width: 16, textAlign: 'center', cursor: 'default' }}>
+            {PLATFORM_ICON[result.platform] || '○'}
+          </span>
+        </Tooltip>
 
         {/* Decision badge */}
-        <span style={{
-          padding: '2px 6px', borderRadius: 3,
-          background: `${dc}18`, color: dc,
-          fontSize: 9, fontWeight: 700, fontFamily: 'monospace', letterSpacing: '0.06em',
-          flexShrink: 0,
-        }}>
-          {result.ai_analysis.decision}
-        </span>
+        <Tooltip content={`AI Assessment: ${result.ai_analysis.decision} · Severity: ${result.ai_analysis.severity || 'STANDARD'}`} position="top">
+          <span style={{
+            padding: '2px 6px', borderRadius: 3,
+            background: `${dc}18`, color: dc,
+            fontSize: 9, fontWeight: 700, fontFamily: 'monospace', letterSpacing: '0.06em',
+            flexShrink: 0,
+            cursor: 'default'
+          }}>
+            {result.ai_analysis.decision}
+          </span>
+        </Tooltip>
 
         {/* Username */}
         <span style={{ fontSize: 12, color: '#e2e8f0', fontWeight: 600, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -60,9 +66,11 @@ function FeedItem({ result, onClick }: { result: DetectionResult; onClick: () =>
         </span>
 
         {/* Similarity */}
-        <span style={{ fontSize: 10, fontFamily: 'monospace', color: simPct >= 80 ? '#ef4444' : simPct >= 60 ? '#f59e0b' : '#22c55e', flexShrink: 0 }}>
-          {simPct}%
-        </span>
+        <Tooltip content={`Perceptual Similarity Match: ${simPct}%`} position="top">
+          <span style={{ fontSize: 10, fontFamily: 'monospace', color: simPct >= 80 ? '#ef4444' : simPct >= 60 ? '#f59e0b' : '#22c55e', flexShrink: 0, cursor: 'default' }}>
+            {simPct}%
+          </span>
+        </Tooltip>
       </div>
 
       {/* Caption */}

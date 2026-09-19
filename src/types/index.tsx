@@ -102,6 +102,16 @@ export interface DetectionResult {
   timestamp: string
   case_id: string | null
   processing_ms: number
+  is_demo?: boolean
+  mode?: string
+  disclaimer?: string
+  artifact?: {
+    id: string
+    filename: string
+    sha256?: string
+    perceptualHash?: string
+    matchedReferenceId?: string | null
+  }
 }
 
 export interface DetectionRequest {
@@ -111,6 +121,8 @@ export interface DetectionRequest {
   content_type: ContentType
   scenario: Scenario
   media_url?: string
+  artifactId?: string
+  investigationId?: string
 }
 
 export interface DMCARequest {

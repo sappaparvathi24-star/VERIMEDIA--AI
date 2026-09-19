@@ -1,6 +1,7 @@
 // VeriMedia AI — Provenance Core Data Model (Phase F)
 import crypto from 'crypto';
 import persistence from '../db/persistence.js';
+import { performErrorLevelAnalysis, analyzeExifMetadata } from '../forensics/imageForensics.js';
 
 export const PROHIBITED_CERTAINTY_TERMS = [
   'ORIGINAL SOURCE',
@@ -268,6 +269,22 @@ export class ProvenanceStore {
       for (const art of storedArts) {
         this.artifacts.set(art.id, art);
       }
+      const storedRuns = persistence.loadAnalysisRuns();
+      for (const run of storedRuns) {
+        this.analysisRuns.set(run.id, run);
+      }
+      const storedObs = persistence.loadObservations();
+      for (const obs of storedObs) {
+        this.observations.set(obs.id, obs);
+      }
+      const storedEvs = persistence.loadEvidence();
+      for (const ev of storedEvs) {
+        this.evidence.set(ev.id, ev);
+      }
+      const storedFindings = persistence.loadFindings();
+      for (const fnd of storedFindings) {
+        this.findings.set(fnd.id, fnd);
+      }
     } catch (_) {}
   }
 
@@ -350,17 +367,37 @@ export class ProvenanceStore {
     return inv.notes || [];
   }
 
+  deleteInvestigation(id) {
+    const inv = this.getInvestigation(id);
+    if (!inv) return false;
+    this.investigations.delete(id);
+    return true;
+  }
+
+  deleteArtifact(id) {
+    const art = this.getArtifact(id);
+    if (!art) return false;
+    this.artifacts.delete(id);
+    if (art.investigationId) {
+      const inv = this.getInvestigation(art.investigationId);
+      if (inv && inv.artifactIds) {
+        inv.artifactIds = inv.artifactIds.filter(aId => aId !== id);
+      }
+    }
+    return true;
+  }
+
   // ── MEDIA ARTIFACT ─────────────────────────────────────────────────────────
   createArtifact({
     id,
     investigationId,
     filename,
-    mimeType = 'video/mp4',
-    byteSize = 102400,
-    sha256,
-    perceptualHash,
-    dimensions = { width: 1920, height: 1080 },
-    duration = 15.0,
+    mimeType = 'application/octet-stream',
+    byteSize = null,
+    sha256 = null,
+    perceptualHash = null,
+    dimensions = null,
+    duration = null,
     isReference = false,
     isDemo = false,
     metadata = {},
@@ -368,22 +405,30 @@ export class ProvenanceStore {
     ...rest
   }) {
     const artId = id || `ART-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
-    const computedSha = sha256 || (buffer ? crypto.createHash('sha256').update(buffer).digest('hex') : crypto.createHash('sha256').update(`${investigationId || 'INV'}:${filename || 'file'}:${artId}`).digest('hex'));
-    const computedPHash = perceptualHash || crypto.createHash('md5').update(computedSha).digest('hex').slice(0, 16);
+    const computedSha = sha256 || (buffer
+      ? crypto.createHash('sha256').update(buffer).digest('hex')
+      : crypto.createHash('sha256').update(`${investigationId || 'INV'}:${filename || 'file'}:${artId}`).digest('hex'));
+    
+    // Perceptual hash is strictly null unless a genuine computed perceptual hash is provided
+    const computedPHash = perceptualHash || null;
+
+    const computedByteSize = (byteSize !== null && byteSize !== undefined)
+      ? byteSize
+      : (buffer ? buffer.length : null);
 
     const artifact = {
       id: artId,
       investigationId,
-      filename: filename || `${artId}.mp4`,
+      filename: filename || `${artId}`,
       mimeType,
-      byteSize,
+      byteSize: computedByteSize,
       sha256: computedSha,
       perceptualHash: computedPHash,
       dimensions: dimensions ? {
-        width: dimensions.width || 1920,
-        height: dimensions.height || 1080
-      } : { width: 1920, height: 1080 },
-      duration,
+        width: dimensions.width,
+        height: dimensions.height
+      } : null,
+      duration: duration !== undefined ? duration : null,
       isReference: Boolean(isReference),
       isDemo: Boolean(isDemo),
       createdAt: new Date().toISOString(),
@@ -429,6 +474,7 @@ export class ProvenanceStore {
       metadata: { ...metadata }
     };
     this.analysisRuns.set(runId, run);
+    persistence.saveAnalysisRun(run);
     return run;
   }
 
@@ -441,6 +487,7 @@ export class ProvenanceStore {
     id,
     runId,
     artifactId,
+    investigationId,
     observationType,
     target,
     value,
@@ -449,11 +496,13 @@ export class ProvenanceStore {
     metadata = {}
   }) {
     const obsId = id || `OBS-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
+    const derivedInvId = investigationId || (runId && this.analysisRuns.has(runId) ? this.analysisRuns.get(runId).investigationId : null);
     const obs = {
       id: obsId,
       runId,
       artifactId,
-      observationType, // e.g. 'SHA256_HASH', 'PHASH_SIMILARITY', 'DIMENSIONS', 'PUBLICATION_TIMESTAMP'
+      investigationId: derivedInvId,
+      observationType,
       target: target || artifactId,
       value,
       confidence,
@@ -461,6 +510,7 @@ export class ProvenanceStore {
       metadata: { ...metadata }
     };
     this.observations.set(obsId, obs);
+    persistence.saveObservation(obs);
     return obs;
   }
 
@@ -471,6 +521,7 @@ export class ProvenanceStore {
   // ── EVIDENCE ───────────────────────────────────────────────────────────────
   createEvidence({
     id,
+    investigationId,
     observationIds = [],
     independenceGroupId,
     evidenceType,
@@ -483,6 +534,7 @@ export class ProvenanceStore {
     const evId = id || `EVD-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
     const ev = {
       id: evId,
+      investigationId,
       observationIds: [...observationIds],
       independenceGroupId: independenceGroupId || `IG-${evId}`,
       evidenceType,
@@ -494,6 +546,7 @@ export class ProvenanceStore {
       metadata: { ...metadata }
     };
     this.evidence.set(evId, ev);
+    persistence.saveEvidence(ev);
     return ev;
   }
 
@@ -527,6 +580,7 @@ export class ProvenanceStore {
       metadata: { ...metadata }
     };
     this.findings.set(findId, finding);
+    persistence.saveFinding(finding);
 
     if (investigationId && this.investigations.has(investigationId)) {
       const inv = this.investigations.get(investigationId);
@@ -540,6 +594,139 @@ export class ProvenanceStore {
 
   getFinding(id) {
     return this.findings.get(id) || null;
+  }
+
+  // ── REAL IMAGE FORENSIC PIPELINE ──────────────────────────────────────────
+  async runImageForensicAnalysis({ investigationId, artifactId, buffer, mimeType = 'image/jpeg', exif = null }) {
+    const artifact = this.getArtifact(artifactId);
+    const artId = artifact ? artifact.id : artifactId;
+    const invId = investigationId || (artifact ? artifact.investigationId : null);
+
+    // 1. Create AnalysisRun
+    const run = this.createAnalysisRun({
+      investigationId: invId,
+      artifactId: artId,
+      method: 'IMAGE_FORENSICS_ELA_AND_EXIF',
+      status: 'COMPLETED',
+      metadata: {
+        analyzedAt: new Date().toISOString(),
+        mimeType
+      }
+    });
+
+    const observations = [];
+    const observationIds = [];
+
+    // 2. Perform Error-Level Analysis (ELA)
+    const elaResult = await performErrorLevelAnalysis(buffer, mimeType);
+    if (elaResult.status === 'COMPLETED') {
+      const obsElaMean = this.createObservation({
+        investigationId: invId,
+        runId: run.id,
+        artifactId: artId,
+        observationType: 'ELA_MEAN_ERROR',
+        target: 'DCT_QUANTIZATION_GRID',
+        value: elaResult.meanError,
+        confidence: elaResult.confidence
+      });
+      observations.push(obsElaMean);
+      observationIds.push(obsElaMean.id);
+
+      const obsElaAnomaly = this.createObservation({
+        investigationId: invId,
+        runId: run.id,
+        artifactId: artId,
+        observationType: 'ELA_COMPRESSION_ANOMALY',
+        target: 'IMAGE_SURFACE_UNIFORMITY',
+        value: elaResult.hasCompressionAnomaly ? 'ANOMALOUS_ERROR_DISCREPANCY' : 'UNIFORM_COMPRESSION_DECAY',
+        confidence: elaResult.confidence
+      });
+      observations.push(obsElaAnomaly);
+      observationIds.push(obsElaAnomaly.id);
+    } else if (elaResult.status === 'NOT_APPLICABLE') {
+      const obsElaNA = this.createObservation({
+        investigationId: invId,
+        runId: run.id,
+        artifactId: artId,
+        observationType: 'ELA_STATUS',
+        target: 'DCT_QUANTIZATION_GRID',
+        value: 'NOT_APPLICABLE_NON_JPEG',
+        confidence: 1.0,
+        metadata: { reason: elaResult.reason }
+      });
+      observations.push(obsElaNA);
+      observationIds.push(obsElaNA.id);
+    }
+
+    // 3. Analyze EXIF Metadata
+    const exifResult = analyzeExifMetadata(exif);
+    for (const exObs of exifResult.observations) {
+      const obs = this.createObservation({
+        investigationId: invId,
+        runId: run.id,
+        artifactId: artId,
+        observationType: exObs.type,
+        target: 'EXIF_HEADER',
+        value: exObs.value,
+        confidence: exObs.confidence
+      });
+      observations.push(obs);
+      observationIds.push(obs.id);
+    }
+
+    // 4. Create Evidence Record
+    const hasEditingSoftware = Boolean(exifResult.softwareDetected);
+    const hasElaAnomaly = Boolean(elaResult.hasCompressionAnomaly);
+    const polarity = (hasEditingSoftware || hasElaAnomaly)
+      ? EvidencePolarity.SUPPORTING
+      : EvidencePolarity.INCONCLUSIVE;
+
+    const evidenceConfidence = Number((
+      (elaResult.confidence || 0.6) * 0.5 + (exifResult.status === 'ANALYZED' ? 0.85 : 0.5) * 0.5
+    ).toFixed(2));
+
+    const evidence = this.createEvidence({
+      investigationId: invId,
+      observationIds,
+      evidenceType: 'FORENSIC_SIGNAL',
+      description: `Deterministic image forensic analysis (ELA & EXIF). Software: ${exifResult.softwareDetected || 'None detected'}; ELA anomaly: ${hasElaAnomaly ? 'Present' : 'None'}; Timestamp discrepancy: ${exifResult.timestampAnomaly ? 'Detected' : 'None'}.`,
+      confidence: evidenceConfidence,
+      polarity,
+      verified: true,
+      metadata: {
+        ela: elaResult,
+        exif: exifResult,
+        flags: exifResult.flags
+      }
+    });
+
+    // 5. Create Finding Record
+    const finding = this.createFinding({
+      investigationId: invId,
+      title: 'Deterministic Image Forensics & Integrity Signal',
+      summary: hasElaAnomaly
+        ? `Compression error anomalies detected on JPEG surface (mean error ${elaResult.meanError}). ${hasEditingSoftware ? `EXIF indicates editing application (${exifResult.softwareDetected}).` : ''}`
+        : (hasEditingSoftware
+            ? `Editing application signature recorded in metadata (${exifResult.softwareDetected}), though error-level dissipation is relatively uniform.`
+            : `Image compression error-level is uniform (${elaResult.meanError || 'N/A'}); no editing software detected in available headers.`),
+      status: (hasElaAnomaly || hasEditingSoftware) ? FindingStatus.SUPPORTED : FindingStatus.OBSERVED,
+      confidence: evidenceConfidence,
+      evidenceIds: [evidence.id],
+      limitations: [
+        ...(elaResult.limitations || []),
+        ...(exifResult.limitations || []),
+        'Deterministic signal extraction reflects file-level compression and header characteristics; it cannot prove creator identity or generative synthetic origins.'
+      ]
+    });
+
+    return {
+      run,
+      observations,
+      evidence,
+      finding,
+      ela: elaResult,
+      exif: exifResult
+    };
   }
 
   // ── SOURCE ─────────────────────────────────────────────────────────────────

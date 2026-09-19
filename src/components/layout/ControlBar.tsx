@@ -2,20 +2,21 @@ import { useState, useRef } from 'react'
 import { useDetection } from '../../hooks/useDetection'
 import { useStore } from '../../store'
 import { createInvestigation, uploadArtifactFile } from '../../services/api'
+import { Tooltip } from '../ui/Tooltip'
 import type { Platform, ContentType, Scenario } from '../../types'
 
-const SCENARIOS: { key: Scenario; label: string; color: string }[] = [
-  { key: 'normal',       label: 'Normal',       color: '#22c55e' },
-  { key: 'education',    label: 'Fair Use',      color: '#22c55e' },
-  { key: 'news',         label: 'News Attr.',    color: '#f59e0b' },
-  { key: 'crop',         label: 'Crop',          color: '#f97316' },
-  { key: 'blur',         label: 'Blur',          color: '#6366f1' },
-  { key: 'entertainment',label: 'Entertain.',    color: '#f97316' },
-  { key: 'manipulated',  label: 'Manipulated',   color: '#ef4444' },
-  { key: 'scam',         label: 'Scam',          color: '#ef4444' },
-  { key: 'insufficient', label: 'Low Evidence',  color: '#6366f1' },
-  { key: 'deepfake',     label: 'Deepfake',      color: '#dc2626' },
-  { key: 'adversarial',  label: 'Adversarial',   color: '#a855f7' },
+const SCENARIOS: { key: Scenario; label: string; color: string; tooltip: string }[] = [
+  { key: 'normal',       label: 'Normal',       color: '#22c55e', tooltip: 'Authentic original content with intact signatures and verified provenance' },
+  { key: 'education',    label: 'Fair Use',      color: '#22c55e', tooltip: 'Educational breakdown with commentary under fair use exemptions' },
+  { key: 'news',         label: 'News Attr.',    color: '#f59e0b', tooltip: 'Syndicated news re-upload lacking primary creator attribution' },
+  { key: 'crop',         label: 'Crop',          color: '#f97316', tooltip: 'Spatially cropped media with removed branding/watermarks' },
+  { key: 'blur',         label: 'Blur',          color: '#6366f1', tooltip: 'Spatial blur & compression noise applied to alter visual hashes' },
+  { key: 'entertainment',label: 'Entertain.',    color: '#f97316', tooltip: 'Viral social media edit re-posted for high engagement' },
+  { key: 'manipulated',  label: 'Manipulated',   color: '#ef4444', tooltip: 'Frame-edited or re-compressed video with altered audio track' },
+  { key: 'scam',         label: 'Scam',          color: '#ef4444', tooltip: 'Unauthorized clip re-upload driving unauthorized promotional links' },
+  { key: 'insufficient', label: 'Low Evidence',  color: '#6366f1', tooltip: 'Low quality or truncated media yielding inconclusive forensic signals' },
+  { key: 'deepfake',     label: 'Deepfake',      color: '#dc2626', tooltip: 'AI synthesized video/audio with neural face-swap or voice clone' },
+  { key: 'adversarial',  label: 'Adversarial',   color: '#a855f7', tooltip: 'Perturbed media with invisible noise patterns targeting ML detectors' },
 ]
 
 const PLATFORMS: Platform[] = ['YouTube', 'Instagram', 'TikTok', 'X / Twitter', 'Facebook', 'Reddit']
@@ -62,6 +63,7 @@ export function ControlBar() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isUploading, setIsUploading] = useState(false)
   const [uploadMessage, setUploadMessage] = useState<string | null>(null)
+  const [uploadedArtifact, setUploadedArtifact] = useState<{ artifactId: string; investigationId: string; filename: string } | null>(null)
 
   async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -72,8 +74,16 @@ export function ControlBar() {
       const inv = await createInvestigation({ title: `Upload: ${file.name}` })
       const res = await uploadArtifactFile(inv.id, file)
       const sha = res?.extractedMetadata?.sha256 || ''
-      setUploadMessage(`Uploaded ${file.name}! SHA-256: ${sha.slice(0, 16)}...`)
-      setTimeout(() => setUploadMessage(null), 6000)
+      const artId = res?.artifact?.id
+      if (artId) {
+        setUploadedArtifact({
+          artifactId: artId,
+          investigationId: inv.id,
+          filename: file.name
+        })
+      }
+      setUploadMessage(`Uploaded ${file.name}! Real artifact pipeline active. SHA: ${sha.slice(0, 16)}...`)
+      setTimeout(() => setUploadMessage(null), 8000)
     } catch (err: any) {
       setUploadMessage(`Upload failed: ${err.message}`)
       setTimeout(() => setUploadMessage(null), 6000)
@@ -90,7 +100,15 @@ export function ControlBar() {
   }
 
   async function handleScan() {
-    await runDetection({ platform, username, caption, content_type: contentType, scenario })
+    await runDetection({
+      platform,
+      username,
+      caption,
+      content_type: contentType,
+      scenario,
+      artifactId: uploadedArtifact?.artifactId,
+      investigationId: uploadedArtifact?.investigationId
+    })
   }
 
   const selectedSc = SCENARIOS.find(s => s.key === scenario)
@@ -105,23 +123,24 @@ export function ControlBar() {
       {/* Scenario selector */}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
         {SCENARIOS.map(sc => (
-          <button
-            key={sc.key}
-            onClick={() => onScenarioChange(sc.key)}
-            style={{
-              padding: '5px 12px',
-              borderRadius: 5,
-              fontSize: 11,
-              fontWeight: 600,
-              cursor: 'pointer',
-              border: `1px solid ${scenario === sc.key ? sc.color : '#1e2d3d'}`,
-              background: scenario === sc.key ? `${sc.color}18` : 'transparent',
-              color: scenario === sc.key ? sc.color : '#8899aa',
-              transition: 'all 0.15s',
-            }}
-          >
-            {sc.label}
-          </button>
+          <Tooltip key={sc.key} content={sc.tooltip} position="bottom">
+            <button
+              onClick={() => onScenarioChange(sc.key)}
+              style={{
+                padding: '5px 12px',
+                borderRadius: 5,
+                fontSize: 11,
+                fontWeight: 600,
+                cursor: 'pointer',
+                border: `1px solid ${scenario === sc.key ? sc.color : '#1e2d3d'}`,
+                background: scenario === sc.key ? `${sc.color}18` : 'transparent',
+                color: scenario === sc.key ? sc.color : '#8899aa',
+                transition: 'all 0.15s',
+              }}
+            >
+              {sc.label}
+            </button>
+          </Tooltip>
         ))}
       </div>
 
@@ -169,44 +188,82 @@ export function ControlBar() {
           accept="image/*,video/*,audio/*"
         />
 
-        <button
-          className="vm-btn"
-          style={{
-            flexShrink: 0,
-            background: 'rgba(6,182,212,0.12)',
-            border: '1px solid rgba(6,182,212,0.4)',
-            color: '#38bdf8',
-            fontSize: 11,
-            fontWeight: 600,
-            padding: '6px 12px',
-            borderRadius: 6,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6
-          }}
-          onClick={() => fileInputRef.current?.click()}
-          disabled={isUploading}
-        >
-          {isUploading ? '⌛ Hashing...' : '📁 Upload Artifact'}
-        </button>
+        <Tooltip content="Upload local image/audio/video file to calculate SHA-256 and register artifact" position="top">
+          <button
+            className="vm-btn"
+            style={{
+              flexShrink: 0,
+              background: 'rgba(6,182,212,0.12)',
+              border: '1px solid rgba(6,182,212,0.4)',
+              color: '#38bdf8',
+              fontSize: 11,
+              fontWeight: 600,
+              padding: '6px 12px',
+              borderRadius: 6,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6
+            }}
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isUploading}
+          >
+            {isUploading ? '⌛ Hashing...' : '📁 Upload Artifact'}
+          </button>
+        </Tooltip>
 
-        <button
-          className="vm-btn vm-btn-primary"
-          style={{ flexShrink: 0, minWidth: 130, justifyContent: 'center' }}
-          onClick={handleScan}
-          disabled={isScanning}
-        >
-          {isScanning ? (
-            <>
-              <span style={{ display: 'inline-block', animation: 'spin-slow 1s linear infinite' }}>◌</span>
-              Scanning...
-            </>
-          ) : (
-            <>🔍 Run Detection</>
-          )}
-        </button>
+        <Tooltip content={uploadedArtifact ? `Run real forensic pipeline on uploaded media ${uploadedArtifact.filename}` : "Run detection pipeline (Upload an artifact for real analysis or select a test scenario)"} position="top">
+          <button
+            className="vm-btn vm-btn-primary"
+            style={{ flexShrink: 0, minWidth: 150, justifyContent: 'center' }}
+            onClick={handleScan}
+            disabled={isScanning}
+          >
+            {isScanning ? (
+              <>
+                <span style={{ display: 'inline-block', animation: 'spin-slow 1s linear infinite' }}>◌</span>
+                Scanning...
+              </>
+            ) : uploadedArtifact ? (
+              <>🔬 Run Real Detection</>
+            ) : (
+              <>🔍 Run Detection</>
+            )}
+          </button>
+        </Tooltip>
       </div>
+
+      {uploadedArtifact && (
+        <div style={{
+          marginTop: 8,
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '4px 10px',
+          background: 'rgba(56,189,248,0.12)',
+          border: '1px solid rgba(56,189,248,0.3)',
+          borderRadius: 6,
+          color: '#38bdf8',
+          fontSize: 11,
+          fontFamily: 'monospace'
+        }}>
+          <span>🔬 Ready: {uploadedArtifact.filename}</span>
+          <button
+            onClick={() => setUploadedArtifact(null)}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#8899aa',
+              cursor: 'pointer',
+              fontSize: 11,
+              padding: '0 4px'
+            }}
+            title="Clear loaded media"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {uploadMessage && (
         <div style={{
@@ -225,12 +282,15 @@ export function ControlBar() {
 
       {/* Active scenario badge */}
       {selectedSc && (
-        <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-          <div style={{ width: 6, height: 6, borderRadius: '50%', background: selectedSc.color }} />
-          <span style={{ fontSize: 10, color: '#8899aa', fontFamily: 'monospace' }}>
-            SCENARIO: <span style={{ color: selectedSc.color }}>{selectedSc.key.toUpperCase()}</span>
-          </span>
-        </div>
+        <Tooltip content={selectedSc.tooltip} position="top">
+          <div style={{ marginTop: 8, display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'default' }}>
+            <div style={{ width: 6, height: 6, borderRadius: '50%', background: selectedSc.color }} />
+            <span style={{ fontSize: 10, color: '#8899aa', fontFamily: 'monospace' }}>
+              SCENARIO: <span style={{ color: selectedSc.color }}>{selectedSc.key.toUpperCase()}</span>
+              {uploadedArtifact ? ' (Overridden by uploaded media artifact)' : ' (Simulation mode)'}
+            </span>
+          </div>
+        </Tooltip>
       )}
     </div>
   )

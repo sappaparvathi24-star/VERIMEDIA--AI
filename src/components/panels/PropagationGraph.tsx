@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useStore } from '../../store'
+import { Tooltip } from '../ui/Tooltip'
 
 const PLATFORM_COLORS: Record<string, string> = {
   'YouTube':    '#ff0000',
@@ -164,17 +165,22 @@ export function PropagationGraph() {
         padding: '10px 14px', borderBottom: '1px solid #1e2d3d',
         display: 'flex', alignItems: 'center', gap: 8,
       }}>
-        <span style={{ fontSize: 11, color: '#8899aa', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-          Viral Propagation Graph
-        </span>
-        {currentResult?.propagation?.urgency && (
-          <span style={{
-            padding: '2px 8px', borderRadius: 3, fontSize: 9, fontFamily: 'monospace', fontWeight: 700,
-            background: currentResult.propagation.urgency === 'critical' ? 'rgba(220,38,38,0.2)' : 'rgba(34,197,94,0.1)',
-            color: currentResult.propagation.urgency === 'critical' ? '#dc2626' : '#22c55e',
-          }}>
-            {currentResult?.propagation?.urgency?.toUpperCase()}
+        <Tooltip content="Live cross-platform spread network & velocity vector topology" position="bottom">
+          <span style={{ fontSize: 11, color: '#8899aa', textTransform: 'uppercase', letterSpacing: '0.1em', cursor: 'default' }}>
+            Viral Propagation Graph
           </span>
+        </Tooltip>
+        {currentResult?.propagation?.urgency && (
+          <Tooltip content={`Propagation Urgency Level: ${currentResult.propagation.urgency.toUpperCase()} · PPM: ${currentResult.propagation.ppm || 0}`} position="bottom">
+            <span style={{
+              padding: '2px 8px', borderRadius: 3, fontSize: 9, fontFamily: 'monospace', fontWeight: 700,
+              background: currentResult.propagation.urgency === 'critical' ? 'rgba(220,38,38,0.2)' : 'rgba(34,197,94,0.1)',
+              color: currentResult.propagation.urgency === 'critical' ? '#dc2626' : '#22c55e',
+              cursor: 'default'
+            }}>
+              {currentResult?.propagation?.urgency?.toUpperCase()}
+            </span>
+          </Tooltip>
         )}
       </div>
       <canvas

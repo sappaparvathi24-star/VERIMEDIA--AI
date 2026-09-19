@@ -10,15 +10,16 @@ import { CasesPanel } from '../components/panels/CasesPanel'
 import { SystemPanel } from '../components/panels/SystemPanel'
 import { EvidenceModal } from '../components/modals/EvidenceModal'
 import { DMCAModal } from '../components/modals/DMCAModal'
+import { Tooltip } from '../components/ui/Tooltip'
 import type { TabId } from '../types'
 
-const TABS: { id: TabId; label: string; icon: string }[] = [
-  { id: 'feed',     label: 'Live Feed',   icon: '📡' },
-  { id: 'trends',   label: 'Trends',      icon: '📈' },
-  { id: 'origin',   label: 'Origin',      icon: '🔗' },
-  { id: 'forensic', label: 'Forensic',    icon: '🔬' },
-  { id: 'cases',    label: 'Cases',       icon: '📋' },
-  { id: 'system',   label: 'System',      icon: '⚙️'  },
+const TABS: { id: TabId; label: string; icon: string; description: string }[] = [
+  { id: 'feed',     label: 'Live Feed',   icon: '📡', description: 'Monitored media ingest & real-time detection events' },
+  { id: 'trends',   label: 'Trends',      icon: '📈', description: 'Historical volume analysis & detection trend metrics' },
+  { id: 'origin',   label: 'Origin',      icon: '🔗', description: 'Provenance tree, digital signatures & perceptual hashing' },
+  { id: 'forensic', label: 'Forensic',    icon: '🔬', description: '9-signal deepfake analysis & ML classification matrix' },
+  { id: 'cases',    label: 'Cases',       icon: '📋', description: 'Active DMCA cases, copyright strikes & enforcement actions' },
+  { id: 'system',   label: 'System',      icon: '⚙️',  description: 'Unified backend engine status, API keys & discovery providers' },
 ]
 
 export function Dashboard() {
@@ -57,15 +58,16 @@ export function Dashboard() {
             flexShrink: 0,
           }}>
             {TABS.map(tab => (
-              <button
-                key={tab.id}
-                className={`vm-tab ${activeTab === tab.id ? 'active' : ''}`}
-                onClick={() => setActiveTab(tab.id)}
-                style={{ padding: '10px 8px', fontSize: 10 }}
-              >
-                <span style={{ marginRight: 3 }}>{tab.icon}</span>
-                {tab.label}
-              </button>
+              <Tooltip key={tab.id} content={tab.description} position="bottom">
+                <button
+                  className={`vm-tab ${activeTab === tab.id ? 'active' : ''}`}
+                  onClick={() => setActiveTab(tab.id)}
+                  style={{ padding: '10px 8px', fontSize: 10 }}
+                >
+                  <span style={{ marginRight: 3 }}>{tab.icon}</span>
+                  {tab.label}
+                </button>
+              </Tooltip>
             ))}
           </div>
 

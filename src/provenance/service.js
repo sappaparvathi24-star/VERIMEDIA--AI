@@ -32,12 +32,20 @@ class ProvenanceService {
     return this.store.createInvestigation(payload);
   }
 
+  deleteInvestigation(id) {
+    return this.store.deleteInvestigation(id);
+  }
+
   getArtifact(id) {
     return this.store.getArtifact(id);
   }
 
   createArtifact(payload) {
     return this.store.createArtifact(payload);
+  }
+
+  deleteArtifact(id) {
+    return this.store.deleteArtifact(id);
   }
 
   getSource(id) {

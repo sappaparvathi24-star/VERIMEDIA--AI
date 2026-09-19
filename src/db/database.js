@@ -12,8 +12,10 @@ export function getDatabase() {
   if (!dbInstance) {
     try {
       const isVercel = Boolean(process.env.VERCEL);
-      const dataDir = isVercel ? '/tmp/data' : path.resolve(process.cwd(), 'data');
-      const dbPath = path.join(dataDir, 'verimedia.db');
+      const dbPath = process.env.DATABASE_PATH
+        ? path.resolve(process.env.DATABASE_PATH)
+        : path.join(isVercel ? '/tmp/data' : path.resolve(process.cwd(), 'data'), 'verimedia.db');
+      const dataDir = path.dirname(dbPath);
 
       if (!fs.existsSync(dataDir)) {
         fs.mkdirSync(dataDir, { recursive: true });

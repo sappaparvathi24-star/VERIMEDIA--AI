@@ -38,8 +38,25 @@ export function EvidenceModal({ result }: Props) {
   const { setShowEvidenceModal, setShowDMCAModal } = useStore()
   const ai_analysis = result?.ai_analysis || { decision: 'REVIEW REQUIRED', severity: 'MEDIUM', source: '', confidence: 0, reasoning_points: [], action: '' }
   const ds = DECISION_STYLES[ai_analysis.decision] || DECISION_STYLES['REVIEW REQUIRED']
-  const ml = result?.ml || { label: 'SUSPICIOUS', signals: { spatial_diff: 0, color_diff: 0, frame_diff: 0, temporal_diff: 0, noise_score: 0, watermark_detected: 0 } }
-  const integrity = result?.integrity || { score: 0, flags: [], signals: { face_landmark: 0, lipsync: 0, noise_pattern: 0, jpeg_artifact: 0, edge_consistency: 0, temporal_mismatch: 0 } }
+  const ml = result?.ml ? {
+    ...result.ml,
+    signals: result.ml.signals || { spatial_diff: 0, color_diff: 0, frame_diff: 0, temporal_diff: 0, noise_score: 0, watermark_detected: 0 }
+  } : {
+    label: 'SUSPICIOUS',
+    manipulation_probability: 0,
+    trust_score: 0,
+    confidence: 0,
+    signals: { spatial_diff: 0, color_diff: 0, frame_diff: 0, temporal_diff: 0, noise_score: 0, watermark_detected: 0 }
+  }
+
+  const integrity = result?.integrity ? {
+    ...result.integrity,
+    signals: result.integrity.signals || { face_landmark: 0, lipsync: 0, noise_pattern: 0, jpeg_artifact: 0, edge_consistency: 0, temporal_mismatch: 0 }
+  } : {
+    score: 0,
+    flags: [],
+    signals: { face_landmark: 0, lipsync: 0, noise_pattern: 0, jpeg_artifact: 0, edge_consistency: 0, temporal_mismatch: 0 }
+  }
   const trust = result?.trust || { trust_score: 0 }
   const propagation = result?.propagation || { urgency: 'low', velocity: 0, ppm: 0, indicator: 'STABLE' }
   const authorship = result?.authorship || { confidence: 0, key_match: false, stego_detected: false, exif_consistent: false }
@@ -111,6 +128,43 @@ export function EvidenceModal({ result }: Props) {
 
         {/* Body */}
         <div style={{ padding: '20px 24px' }}>
+          {result.is_demo && (
+            <div style={{
+              marginBottom: 16,
+              padding: '8px 14px',
+              background: 'rgba(245,158,11,0.12)',
+              border: '1px solid rgba(245,158,11,0.35)',
+              borderRadius: 6,
+              color: '#fbbf24',
+              fontSize: 12,
+              fontFamily: 'monospace',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8
+            }}>
+              <span>⚠️</span>
+              <span>{result.disclaimer || 'SIMULATED SCENARIO — For demonstrative scenario testing. Upload a media artifact for real forensic analysis.'}</span>
+            </div>
+          )}
+          {result.artifact && (
+            <div style={{
+              marginBottom: 16,
+              padding: '8px 14px',
+              background: 'rgba(56,189,248,0.12)',
+              border: '1px solid rgba(56,189,248,0.35)',
+              borderRadius: 6,
+              color: '#38bdf8',
+              fontSize: 12,
+              fontFamily: 'monospace',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8
+            }}>
+              <span>🔬</span>
+              <span>REAL PIPELINE ARTIFACT: {result.artifact.filename} (ID: {result.artifact.id}) {result.artifact.sha256 ? `• SHA: ${result.artifact.sha256.slice(0, 16)}...` : ''}</span>
+            </div>
+          )}
+
           {/* Score strip */}
           <div style={{
             display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20,
