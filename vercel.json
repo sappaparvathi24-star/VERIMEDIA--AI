@@ -6,6 +6,26 @@
       "destination": "/api/index.js"
     },
     {
+      "source": "/chat",
+      "destination": "/api/index.js"
+    },
+    {
+      "source": "/analyze",
+      "destination": "/api/index.js"
+    },
+    {
+      "source": "/dmca-reasoning",
+      "destination": "/api/index.js"
+    },
+    {
+      "source": "/dmca/generate",
+      "destination": "/api/index.js"
+    },
+    {
+      "source": "/claims/(.*)",
+      "destination": "/api/index.js"
+    },
+    {
       "source": "/health",
       "destination": "/api/index.js"
     },

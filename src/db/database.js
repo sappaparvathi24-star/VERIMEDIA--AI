@@ -6,21 +6,29 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const DATA_DIR = path.resolve(process.cwd(), 'data');
-const DB_PATH = path.join(DATA_DIR, 'verimedia.db');
-
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-}
-
 let dbInstance = null;
 
 export function getDatabase() {
   if (!dbInstance) {
-    dbInstance = new Database(DB_PATH);
-    dbInstance.pragma('journal_mode = WAL');
-    dbInstance.pragma('foreign_keys = ON');
-    runMigrations(dbInstance);
+    try {
+      const isVercel = Boolean(process.env.VERCEL);
+      const dataDir = isVercel ? '/tmp/data' : path.resolve(process.cwd(), 'data');
+      const dbPath = path.join(dataDir, 'verimedia.db');
+
+      if (!fs.existsSync(dataDir)) {
+        fs.mkdirSync(dataDir, { recursive: true });
+      }
+
+      dbInstance = new Database(dbPath);
+      dbInstance.pragma('journal_mode = WAL');
+      dbInstance.pragma('foreign_keys = ON');
+      runMigrations(dbInstance);
+    } catch (err) {
+      console.warn('File-based SQLite unavailable, using in-memory database:', err.message);
+      dbInstance = new Database(':memory:');
+      dbInstance.pragma('foreign_keys = ON');
+      runMigrations(dbInstance);
+    }
   }
   return dbInstance;
 }

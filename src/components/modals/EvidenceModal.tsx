@@ -67,7 +67,7 @@ export function EvidenceModal({ result }: Props) {
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <span style={{ fontSize: 11, fontFamily: 'monospace', color: '#8899aa' }}>
-                {result.job_id.slice(0, 8).toUpperCase()}
+                {(result.job_id || '').slice(0, 8).toUpperCase()}
               </span>
               <span style={{
                 padding: '3px 10px', borderRadius: 4,
@@ -216,9 +216,9 @@ export function EvidenceModal({ result }: Props) {
             borderRadius: 6, padding: '10px 14px', fontFamily: 'monospace',
           }}>
             <span style={{ fontSize: 10, color: '#4a5568' }}>FINGERPRINT: </span>
-            <span style={{ fontSize: 11, color: '#00d4ff' }}>{result.fingerprint_hash.toUpperCase()}</span>
+            <span style={{ fontSize: 11, color: '#00d4ff' }}>{(result.fingerprint_hash || '').toUpperCase()}</span>
             <span style={{ fontSize: 10, color: '#4a5568', marginLeft: 16 }}>PROCESS: </span>
-            <span style={{ fontSize: 11, color: '#22c55e' }}>{result.processing_ms.toFixed(0)}ms</span>
+            <span style={{ fontSize: 11, color: '#22c55e' }}>{(result.processing_ms || 0).toFixed(0)}ms</span>
           </div>
         </div>
 

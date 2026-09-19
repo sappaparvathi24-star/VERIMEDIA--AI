@@ -66,7 +66,7 @@ export function OriginPanel() {
           Perceptual Fingerprint
         </p>
         <div style={{ fontSize: 16, color: '#00d4ff', letterSpacing: '0.1em', marginBottom: 6 }}>
-          {fingerprint_hash.toUpperCase().match(/.{1,4}/g)?.join(' ')}
+          {(fingerprint_hash || '').toUpperCase().match(/.{1,4}/g)?.join(' ') || 'N/A'}
         </div>
         <p style={{ fontSize: 10, color: '#4a5568' }}>AES-256 watermark verified · pHash + CLIP embedding</p>
       </div>

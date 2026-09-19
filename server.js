@@ -42,7 +42,14 @@ function getGenAI() {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return null;
   if (!aiClient) {
-    aiClient = new GoogleGenAI({ apiKey });
+    aiClient = new GoogleGenAI({
+      apiKey,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build'
+        }
+      }
+    });
   }
   return aiClient;
 }
@@ -51,7 +58,7 @@ function getGenAI() {
 async function callGemini(contents, config = {}) {
   const ai = getGenAI();
   if (!ai) return null;
-  const models = ['gemini-3.1-flash-lite', 'gemini-flash-latest', 'gemini-3.8-flash'];
+  const models = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'];
   for (const model of models) {
     try {
       const response = await ai.models.generateContent({

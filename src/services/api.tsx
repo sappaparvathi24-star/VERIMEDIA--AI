@@ -69,3 +69,17 @@ export const updateCase = (caseId: string, status: CaseStatus, notes?: string) =
 
 export const getHealth = (): Promise<HealthStatus> =>
   api.get<HealthStatus>('/health').then(r => r.data)
+
+// ── Gemini Intelligence API ──────────────────────────────────────────────────
+export const askGeminiCopilot = (prompt: string, history?: Array<{ role: string; content: string }>) =>
+  axios.post(`${BASE}/chat`, { prompt, messages: history }).then(r => r.data)
+
+export const analyzeForensicsGemini = (payload: any) =>
+  axios.post(`${BASE}/analyze`, payload).then(r => r.data)
+
+export const decomposeClaimGemini = (statement: string) =>
+  axios.post(`${BASE}/claims/decompose`, { statement }).then(r => r.data)
+
+export const generateDMCANoticeGemini = (payload: any) =>
+  axios.post(`${BASE}/dmca/generate`, payload).then(r => r.data)
+
