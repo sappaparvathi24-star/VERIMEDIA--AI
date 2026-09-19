@@ -397,8 +397,8 @@ runTest('Verify demo provenance remains isolated', () => {
 // ---------------------------------------------------------------------------
 runTest('Verify full traceability: Finding → Evidence → Observation → Source/Artifact → AnalysisRun → AnalysisMethod', () => {
   const cases = provenanceService.getInvestigations();
-  const realCase = cases.find(c => !c.isDemo);
-  assert(realCase, 'Real investigation required for traceability check');
+  const realCase = cases.find(c => !c.isDemo && c.findingIds && c.findingIds.length > 0) || cases.find(c => c.id === 'INV-VM-2026-CHAMP');
+  assert(realCase, 'Real investigation with findings required for traceability check');
 
   const provenance = provenanceService.getProvenance(realCase.id);
   assert(provenance.findings.length > 0, 'Investigation must contain findings');

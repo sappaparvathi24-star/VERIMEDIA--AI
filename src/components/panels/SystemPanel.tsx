@@ -29,7 +29,7 @@ export function SystemPanel() {
       {/* Services */}
       <div style={{ marginBottom: 20 }}>
         <p style={{ fontSize: 10, color: '#4a5568', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>Services</p>
-        {health ? (
+        {health?.services ? (
           Object.entries(health.services).map(([name, status]) => (
             <div key={name} style={{
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',

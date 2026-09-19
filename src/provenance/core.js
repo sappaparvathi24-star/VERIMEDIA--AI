@@ -1,5 +1,6 @@
 // VeriMedia AI — Provenance Core Data Model (Phase F)
 import crypto from 'crypto';
+import persistence from '../db/persistence.js';
 
 export const PROHIBITED_CERTAINTY_TERMS = [
   'ORIGINAL SOURCE',
@@ -256,6 +257,18 @@ export class ProvenanceStore {
     this.monitoringJobs = new Map();
     this.alerts = new Map();
     this.reportAuditRecords = new Map();
+
+    // Hydrate existing records from SQLite if present
+    try {
+      const storedInvs = persistence.loadInvestigations();
+      for (const inv of storedInvs) {
+        this.investigations.set(inv.id, inv);
+      }
+      const storedArts = persistence.loadArtifacts();
+      for (const art of storedArts) {
+        this.artifacts.set(art.id, art);
+      }
+    } catch (_) {}
   }
 
   clear() {
@@ -302,6 +315,7 @@ export class ProvenanceStore {
       metadata: { ...metadata }
     };
     this.investigations.set(invId, record);
+    persistence.saveInvestigation(record);
     return record;
   }
 
@@ -350,10 +364,11 @@ export class ProvenanceStore {
     isReference = false,
     isDemo = false,
     metadata = {},
+    buffer,
     ...rest
   }) {
     const artId = id || `ART-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
-    const computedSha = sha256 || crypto.createHash('sha256').update(artId + (filename || '')).digest('hex');
+    const computedSha = sha256 || (buffer ? crypto.createHash('sha256').update(buffer).digest('hex') : crypto.createHash('sha256').update(`${investigationId || 'INV'}:${filename || 'file'}:${artId}`).digest('hex'));
     const computedPHash = perceptualHash || crypto.createHash('md5').update(computedSha).digest('hex').slice(0, 16);
 
     const artifact = {
@@ -377,6 +392,7 @@ export class ProvenanceStore {
     };
 
     this.artifacts.set(artId, artifact);
+    persistence.saveArtifact(artifact);
 
     if (investigationId && this.investigations.has(investigationId)) {
       const inv = this.investigations.get(investigationId);

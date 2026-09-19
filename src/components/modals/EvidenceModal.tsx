@@ -36,8 +36,13 @@ interface Props { result: DetectionResult }
 
 export function EvidenceModal({ result }: Props) {
   const { setShowEvidenceModal, setShowDMCAModal } = useStore()
-  const ds = DECISION_STYLES[result.ai_analysis.decision] || DECISION_STYLES['REVIEW REQUIRED']
-  const { ai_analysis, ml, integrity, trust, propagation, authorship } = result
+  const ai_analysis = result?.ai_analysis || { decision: 'REVIEW REQUIRED', severity: 'MEDIUM', source: '', confidence: 0, reasoning_points: [], action: '' }
+  const ds = DECISION_STYLES[ai_analysis.decision] || DECISION_STYLES['REVIEW REQUIRED']
+  const ml = result?.ml || { label: 'SUSPICIOUS', signals: { spatial_diff: 0, color_diff: 0, frame_diff: 0, temporal_diff: 0, noise_score: 0, watermark_detected: 0 } }
+  const integrity = result?.integrity || { score: 0, flags: [], signals: { face_landmark: 0, lipsync: 0, noise_pattern: 0, jpeg_artifact: 0, edge_consistency: 0, temporal_mismatch: 0 } }
+  const trust = result?.trust || { trust_score: 0 }
+  const propagation = result?.propagation || { urgency: 'low', velocity: 0, ppm: 0, indicator: 'STABLE' }
+  const authorship = result?.authorship || { confidence: 0, key_match: false, stego_detected: false, exif_consistent: false }
 
   return (
     <div className="modal-backdrop" onClick={() => setShowEvidenceModal(false)}>
@@ -189,7 +194,7 @@ export function EvidenceModal({ result }: Props) {
                 {propagation.ppm} ppm
               </p>
               <p style={{ fontSize: 11, color: '#8899aa', marginTop: 4 }}>
-                {propagation.indicator} · urgency: <span style={{ fontWeight: 700, color: '#e2e8f0' }}>{propagation.urgency.toUpperCase()}</span>
+                {propagation.indicator} · urgency: <span style={{ fontWeight: 700, color: '#e2e8f0' }}>{(propagation.urgency || 'low').toUpperCase()}</span>
               </p>
             </div>
             <div style={{ background: '#0d1117', border: '1px solid #1e2d3d', borderRadius: 8, padding: 14 }}>

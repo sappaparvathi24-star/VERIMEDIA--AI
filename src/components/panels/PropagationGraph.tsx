@@ -37,7 +37,7 @@ export function PropagationGraph() {
       ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke()
     }
 
-    if (!currentResult) {
+    if (!currentResult || !currentResult.propagation) {
       ctx.fillStyle = '#4a5568'
       ctx.font = '12px Inter'
       ctx.textAlign = 'center'
@@ -45,9 +45,9 @@ export function PropagationGraph() {
       return
     }
 
-    const urgency = currentResult.propagation.urgency
-    const velocity = currentResult.propagation.velocity
-    const decision = currentResult.ai_analysis.decision
+    const urgency = currentResult.propagation.urgency || 'low'
+    const velocity = currentResult.propagation.velocity || 0
+    const decision = currentResult.ai_analysis?.decision || 'REVIEW REQUIRED'
 
     // Node positions: origin at center, platforms spread out
     const cx = W / 2, cy = H / 2
@@ -167,13 +167,13 @@ export function PropagationGraph() {
         <span style={{ fontSize: 11, color: '#8899aa', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
           Viral Propagation Graph
         </span>
-        {currentResult && (
+        {currentResult?.propagation?.urgency && (
           <span style={{
             padding: '2px 8px', borderRadius: 3, fontSize: 9, fontFamily: 'monospace', fontWeight: 700,
             background: currentResult.propagation.urgency === 'critical' ? 'rgba(220,38,38,0.2)' : 'rgba(34,197,94,0.1)',
             color: currentResult.propagation.urgency === 'critical' ? '#dc2626' : '#22c55e',
           }}>
-            {currentResult.propagation.urgency.toUpperCase()}
+            {currentResult?.propagation?.urgency?.toUpperCase()}
           </span>
         )}
       </div>

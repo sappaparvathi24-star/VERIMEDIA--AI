@@ -15,18 +15,18 @@ export function DMCAModal() {
     if (!currentResult) return
     setLoading(true)
     const result = await runDMCA({
-      case_id: currentResult.case_id || `VM-${currentResult.job_id.slice(0, 8).toUpperCase()}`,
+      case_id: currentResult.case_id || `VM-${(currentResult.job_id || '').slice(0, 8).toUpperCase()}`,
       platform: currentResult.platform,
       username: currentResult.username,
       caption: currentResult.caption,
       content_type: currentResult.content_type,
       analysis: {
         similarity: currentResult.similarity,
-        integrity_score: currentResult.integrity.score,
-        ml_label: currentResult.ml.label,
-        ml_confidence: currentResult.ml.confidence,
-        decision: currentResult.ai_analysis.decision,
-        severity: currentResult.ai_analysis.severity,
+        integrity_score: currentResult.integrity?.score ?? 0,
+        ml_label: currentResult.ml?.label ?? 'SUSPICIOUS',
+        ml_confidence: currentResult.ml?.confidence ?? 0,
+        decision: currentResult.ai_analysis?.decision ?? 'REVIEW REQUIRED',
+        severity: currentResult.ai_analysis?.severity ?? 'MEDIUM',
         scenario: currentResult.scenario,
       },
     })

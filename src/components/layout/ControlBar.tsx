@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useDetection } from '../../hooks/useDetection'
 import { useStore } from '../../store'
+import { createInvestigation, uploadArtifactFile } from '../../services/api'
 import type { Platform, ContentType, Scenario } from '../../types'
 
 const SCENARIOS: { key: Scenario; label: string; color: string }[] = [
@@ -57,6 +58,30 @@ export function ControlBar() {
   const [contentType, setContentType] = useState<ContentType>('sports')
   const [username, setUsername] = useState(USERNAMES.normal)
   const [caption, setCaption] = useState(CAPTIONS.normal)
+
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [isUploading, setIsUploading] = useState(false)
+  const [uploadMessage, setUploadMessage] = useState<string | null>(null)
+
+  async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setIsUploading(true)
+    setUploadMessage(`Processing ${file.name}...`)
+    try {
+      const inv = await createInvestigation({ title: `Upload: ${file.name}` })
+      const res = await uploadArtifactFile(inv.id, file)
+      const sha = res?.extractedMetadata?.sha256 || ''
+      setUploadMessage(`Uploaded ${file.name}! SHA-256: ${sha.slice(0, 16)}...`)
+      setTimeout(() => setUploadMessage(null), 6000)
+    } catch (err: any) {
+      setUploadMessage(`Upload failed: ${err.message}`)
+      setTimeout(() => setUploadMessage(null), 6000)
+    } finally {
+      setIsUploading(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
 
   function onScenarioChange(sc: Scenario) {
     setScenario(sc)
@@ -136,6 +161,36 @@ export function ControlBar() {
           placeholder="Post caption..."
         />
 
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handleFileSelected}
+          style={{ display: 'none' }}
+          accept="image/*,video/*,audio/*"
+        />
+
+        <button
+          className="vm-btn"
+          style={{
+            flexShrink: 0,
+            background: 'rgba(6,182,212,0.12)',
+            border: '1px solid rgba(6,182,212,0.4)',
+            color: '#38bdf8',
+            fontSize: 11,
+            fontWeight: 600,
+            padding: '6px 12px',
+            borderRadius: 6,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6
+          }}
+          onClick={() => fileInputRef.current?.click()}
+          disabled={isUploading}
+        >
+          {isUploading ? '⌛ Hashing...' : '📁 Upload Artifact'}
+        </button>
+
         <button
           className="vm-btn vm-btn-primary"
           style={{ flexShrink: 0, minWidth: 130, justifyContent: 'center' }}
@@ -152,6 +207,21 @@ export function ControlBar() {
           )}
         </button>
       </div>
+
+      {uploadMessage && (
+        <div style={{
+          marginTop: 8,
+          padding: '6px 12px',
+          background: 'rgba(16,185,129,0.12)',
+          border: '1px solid rgba(16,185,129,0.3)',
+          borderRadius: 6,
+          color: '#34d399',
+          fontSize: 11,
+          fontFamily: 'monospace'
+        }}>
+          {uploadMessage}
+        </div>
+      )}
 
       {/* Active scenario badge */}
       {selectedSc && (

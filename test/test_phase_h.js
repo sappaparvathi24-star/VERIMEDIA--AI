@@ -26,6 +26,7 @@ function pass(name) {
 
 async function runTests() {
   const store = new ProvenanceStore();
+  store.clear();
   const discoveryService = new DiscoveryService(store);
 
   // Setup test environment
