@@ -4,24 +4,34 @@ import type { TabId } from '../../types'
 
 const PAGE_TITLES: Record<TabId, { title: string; subtitle: string; icon: string }> = {
   scanner: {
-    title: 'Media Scanner & Detection Hub',
-    subtitle: 'Upload local media artifacts or select synthetic test scenarios for multi-signal ML deepfake classification',
+    title: 'Media Scanner & Ingestion Hub',
+    subtitle: 'Upload local media artifacts, audio or select synthetic test scenarios for 5-engine deepfake analysis',
     icon: '⚡'
   },
-  propagation: {
-    title: 'Viral Propagation Topology Mesh',
-    subtitle: 'Cross-platform velocity vectors, node replication, and viral threat containment graph',
-    icon: '📡'
-  },
   forensic: {
-    title: '9-Signal Forensic Matrix & Hashes',
-    subtitle: 'Detailed perceptual hashing, noise residual maps, face landmark lipsync, and ML model confidence score breakdown',
+    title: 'Engine 1 — Media Forensics',
+    subtitle: 'Ensemble multi-signal extraction: ELA, PRNU sensor noise, EXIF/C2PA metadata, facial Delaunay mesh & perceptual hashes',
     icon: '🔬'
   },
+  discovery: {
+    title: 'Engine 2 — Discovery Intelligence',
+    subtitle: 'Provider-agnostic discovery orchestrator with normalized platform observation adapters & Sybil defense',
+    icon: '🌐'
+  },
   origin: {
-    title: 'Provenance Lineage & Signature Tree',
-    subtitle: 'Cryptographic C2PA metadata verification, perceptual tree distance, and origin node attribution',
-    icon: '🔗'
+    title: 'Engine 3 — Provenance & Origin Intelligence',
+    subtitle: 'D3 provenance tree, transformation flow & earliest observed source attribution with epistemic certainty demarcations',
+    icon: '🌳'
+  },
+  propagation: {
+    title: 'Engine 4 — Propagation Intelligence',
+    subtitle: 'Content genealogy graph, viral velocity vectors & multi-platform spread topology',
+    icon: '📡'
+  },
+  reasoning: {
+    title: 'Engine 5 — Evidence Reasoning',
+    subtitle: 'Explainable AI reasoning dossier, structured confidence calculus & IBM AI governance audit matrix',
+    icon: '⚖️'
   },
   cases: {
     title: 'Copyright Cases & DMCA Enforcement',
@@ -35,7 +45,7 @@ const PAGE_TITLES: Record<TabId, { title: string; subtitle: string; icon: string
   },
   system: {
     title: 'System Health & Engine Diagnostics',
-    subtitle: 'Unified Express backend status, Supabase database synchronization, discovery adapters, and background jobs',
+    subtitle: 'Unified Express backend status, database synchronization, discovery adapters, and background jobs',
     icon: '⚙️'
   },
   feed: {
@@ -102,161 +112,128 @@ export function HeaderBar() {
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: 10,
-            background: 'rgba(15, 23, 42, 0.85)',
+            gap: 12,
+            background: 'rgba(15, 23, 42, 0.8)',
             border: '1px solid #1e2d3d',
             borderRadius: 8,
             padding: '6px 14px',
-            color: '#94a3b8',
+            color: '#64748b',
             fontSize: 12,
-            fontWeight: 500,
             cursor: 'pointer',
-            transition: 'all 0.15s ease',
-            minWidth: 240
+            minWidth: 280,
+            justifyContent: 'space-between',
+            transition: 'all 0.15s'
           }}
-          className="hover:border-cyan-500/50 hover:text-slate-200"
+          className="hover:border-cyan-500/40 hover:text-slate-300"
         >
-          <span style={{ fontSize: 14, color: '#00d4ff' }}>🔍</span>
-          <span style={{ flex: 1, textAlign: 'left' }}>Search or command...</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 13, color: '#00d4ff' }}>🔍</span>
+            <span>Search forensic scans or commands...</span>
+          </div>
           <span style={{
             fontSize: 10,
             fontWeight: 700,
             fontFamily: 'monospace',
             color: '#38bdf8',
             background: 'rgba(0, 212, 255, 0.1)',
-            border: '1px solid rgba(0, 212, 255, 0.25)',
-            padding: '1px 6px',
+            border: '1px solid rgba(0, 212, 255, 0.2)',
+            padding: '2px 6px',
             borderRadius: 4
           }}>
-            Ctrl+K
+            ⌘K
           </span>
         </button>
       </Tooltip>
 
-      {/* Right Side: Quick Stats, System Health & User Status */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        {/* Quick stats pills */}
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+      {/* Right: Quick Operational Counters & Live Health */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+        {/* Metric Tickers */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'rgba(13, 17, 23, 0.6)', padding: '4px 12px', borderRadius: 8, border: '1px solid #1e2d3d' }}>
           {[
-            { label: 'Scans', value: stats.total, color: '#38bdf8', bg: 'rgba(56,189,248,0.08)' },
-            { label: 'Threats', value: stats.threats, color: '#f87171', bg: 'rgba(248,113,113,0.08)' },
-            { label: 'DMCA', value: stats.dmca, color: '#fb923c', bg: 'rgba(251,146,60,0.08)' },
-            { label: 'Clean', value: stats.clean, color: '#4ade80', bg: 'rgba(74,222,128,0.08)' },
+            { label: 'Scans', val: stats?.total || 0, color: '#00d4ff' },
+            { label: 'Threats', val: stats?.threats || 0, color: '#ef4444' },
+            { label: 'DMCA', val: stats?.dmca || 0, color: '#f59e0b' },
           ].map(s => (
             <Tooltip key={s.label} content={STAT_DESCRIPTIONS[s.label]} position="bottom">
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: 5,
-                background: s.bg, border: `1px solid ${s.color}25`,
-                padding: '4px 8px', borderRadius: 6,
-                cursor: 'default'
-              }}>
-                <span style={{ fontSize: 12, fontWeight: 800, color: s.color, fontFamily: 'monospace' }}>
-                  {s.value}
-                </span>
-                <span style={{ fontSize: 9, color: '#94a3b8', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.04em' }}>
-                  {s.label}
-                </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'default' }}>
+                <span style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', fontWeight: 700, fontFamily: 'monospace' }}>{s.label}:</span>
+                <span style={{ fontSize: 12, fontWeight: 800, color: s.color, fontFamily: 'monospace' }}>{s.val}</span>
               </div>
             </Tooltip>
           ))}
         </div>
 
-        <div style={{ height: 18, width: 1, background: '#1e2d3d' }} />
+        {/* Live Monitoring Modal Trigger */}
+        <Tooltip content="Live Platform Ingestion Jobs & Discovery Scheduler" position="bottom">
+          <button
+            onClick={() => setShowMonitoringModal(true)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              background: 'rgba(30, 41, 59, 0.6)',
+              border: '1px solid #334155',
+              padding: '6px 12px',
+              borderRadius: 6,
+              color: '#cbd5e1',
+              fontSize: 11,
+              fontWeight: 700,
+              cursor: 'pointer',
+              transition: 'all 0.15s'
+            }}
+            className="hover:border-slate-400 hover:text-white"
+          >
+            <span>📡</span>
+            <span>Jobs</span>
+          </button>
+        </Tooltip>
 
-        {/* Live Engine Status Badge */}
-        <Tooltip content={health ? 'Unified Engine Online · DB & Adapters Synchronized' : 'Connecting to Engine...'} position="bottom">
+        {/* Backend Status Indicator */}
+        <Tooltip content="5-Engine VeriMedia Engine API: Nominal Operational Status" position="bottom">
           <div style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            background: health ? 'rgba(34, 197, 94, 0.08)' : 'rgba(100, 116, 139, 0.1)',
-            border: `1px solid ${health ? 'rgba(34, 197, 94, 0.25)' : '#1e2d3d'}`,
-            padding: '4px 8px', borderRadius: 6,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            background: 'rgba(34, 197, 94, 0.08)',
+            border: '1px solid rgba(34, 197, 94, 0.25)',
+            padding: '5px 10px',
+            borderRadius: 6,
             cursor: 'default'
           }}>
-            <div style={{
-              width: 6, height: 6, borderRadius: '50%',
-              background: health ? '#22c55e' : '#64748b',
-              boxShadow: health ? '0 0 6px #22c55e' : 'none',
-              animation: health ? 'pulse-dot 2s ease-in-out infinite' : 'none',
+            <span style={{
+              width: 7, height: 7, borderRadius: '50%',
+              background: health?.status === 'ok' ? '#22c55e' : '#eab308',
+              boxShadow: health?.status === 'ok' ? '0 0 8px #22c55e' : '0 0 8px #eab308',
+              display: 'inline-block'
             }} />
-            <span style={{ fontSize: 9, color: health ? '#4ade80' : '#94a3b8', fontFamily: 'monospace', fontWeight: 700 }}>
-              {health ? 'OPERATIONAL' : 'OFFLINE'}
+            <span style={{ fontSize: 10, fontFamily: 'monospace', fontWeight: 700, color: '#4ade80' }}>
+              ONLINE
             </span>
           </div>
         </Tooltip>
 
-        <div style={{ height: 18, width: 1, background: '#1e2d3d' }} />
-
-        {/* Action Buttons */}
-        <div style={{ display: 'flex', gap: 6 }}>
-          <Tooltip content="Manage automated platform monitoring & alert scan jobs" position="bottom">
-            <button
-              onClick={() => setShowMonitoringModal(true)}
-              style={{
-                background: 'rgba(30, 41, 59, 0.8)',
-                border: '1px solid #334155',
-                color: '#cbd5e1',
-                padding: '5px 10px',
-                borderRadius: 6,
-                fontSize: 11,
-                fontWeight: 600,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 5,
-                transition: 'all 0.15s'
-              }}
-              className="hover:border-slate-400 hover:text-white"
-            >
-              <span>📡</span> Jobs
-            </button>
-          </Tooltip>
-
-          <Tooltip content="View platform capabilities & architecture showcase" position="bottom">
-            <button
-              onClick={() => setShowHeroOverlay(true)}
-              style={{
-                background: 'rgba(0, 212, 255, 0.1)',
-                border: '1px solid rgba(0, 212, 255, 0.3)',
-                color: '#38bdf8',
-                padding: '5px 10px',
-                borderRadius: 6,
-                fontSize: 11,
-                fontWeight: 600,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 5,
-                transition: 'all 0.15s'
-              }}
-            >
-              <span>ℹ️</span> Specs
-            </button>
-          </Tooltip>
-        </div>
-
-        <div style={{ height: 18, width: 1, background: '#1e2d3d' }} />
-
-        {/* User Analyst Profile Badge */}
-        <Tooltip content="Logged in as Guest Analyst (Enterprise Tier)" position="bottom">
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 8,
-            background: '#090e17',
-            border: '1px solid #1e2d3d',
-            padding: '3px 8px 3px 4px',
-            borderRadius: 20
-          }}>
-            <div style={{
-              width: 24, height: 24, borderRadius: '50%',
-              background: '#1e293b', border: '1px solid #00d4ff',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 10, color: '#00d4ff', fontWeight: 800
-            }}>
-              GA
-            </div>
-            <span style={{ fontSize: 11, fontWeight: 700, color: '#f8fafc' }}>
-              Analyst
-            </span>
-          </div>
+        {/* System Architecture Overview trigger */}
+        <Tooltip content="VeriMedia 5-Engine Architecture & Specs" position="bottom">
+          <button
+            onClick={() => setShowHeroOverlay(true)}
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: 6,
+              background: 'rgba(0, 212, 255, 0.1)',
+              border: '1px solid rgba(0, 212, 255, 0.3)',
+              color: '#38bdf8',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              fontSize: 14,
+              fontWeight: 700
+            }}
+            className="hover:bg-cyan-500/20"
+          >
+            ⓘ
+          </button>
         </Tooltip>
       </div>
     </header>

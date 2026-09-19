@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import { useStore } from '../../store'
 import type { DetectionResult } from '../../types'
+import { D3ProvenanceTree } from '../charts/D3ProvenanceTree'
 
 const DECISION_STYLES: Record<string, { bg: string; color: string; border: string }> = {
   'ALLOW':             { bg: 'rgba(34,197,94,0.1)',  color: '#22c55e', border: '#22c55e' },
@@ -36,6 +38,8 @@ interface Props { result: DetectionResult }
 
 export function EvidenceModal({ result }: Props) {
   const { setShowEvidenceModal, setShowDMCAModal } = useStore()
+  const [modalTab, setModalTab] = useState<'signals' | 'tree'>('signals')
+
   const ai_analysis = result?.ai_analysis || { decision: 'REVIEW REQUIRED', severity: 'MEDIUM', source: '', confidence: 0, reasoning_points: [], action: '' }
   const ds = DECISION_STYLES[ai_analysis.decision] || DECISION_STYLES['REVIEW REQUIRED']
   const ml = result?.ml ? {
@@ -67,8 +71,8 @@ export function EvidenceModal({ result }: Props) {
         onClick={e => e.stopPropagation()}
         className="vm-card"
         style={{
-          width: 'min(900px, 96vw)',
-          maxHeight: '92vh',
+          width: 'min(960px, 96vw)',
+          maxHeight: '94vh',
           overflow: 'auto',
           padding: 0,
           border: `1px solid ${ds.border}`,
@@ -76,7 +80,7 @@ export function EvidenceModal({ result }: Props) {
       >
         {/* Header */}
         <div style={{
-          padding: '20px 24px',
+          padding: '16px 24px',
           background: ds.bg,
           borderBottom: `1px solid ${ds.border}`,
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -118,12 +122,49 @@ export function EvidenceModal({ result }: Props) {
               <span style={{ color: '#8899aa' }}>{result.content_type} / {result.scenario}</span>
             </div>
           </div>
-          <button
-            onClick={() => setShowEvidenceModal(false)}
-            style={{ background: 'none', border: 'none', color: '#8899aa', fontSize: 20, cursor: 'pointer' }}
-          >
-            ✕
-          </button>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {/* Modal Tabs */}
+            <div style={{ display: 'flex', gap: 4, background: '#080c10', padding: 3, borderRadius: 6, border: '1px solid #1e2d3d' }}>
+              <button
+                onClick={() => setModalTab('signals')}
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: 4,
+                  fontSize: 10,
+                  fontWeight: 700,
+                  background: modalTab === 'signals' ? '#1e293b' : 'transparent',
+                  border: modalTab === 'signals' ? '1px solid #38bdf8' : 'none',
+                  color: modalTab === 'signals' ? '#38bdf8' : '#94a3b8',
+                  cursor: 'pointer'
+                }}
+              >
+                🔬 Forensic Signals
+              </button>
+              <button
+                onClick={() => setModalTab('tree')}
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: 4,
+                  fontSize: 10,
+                  fontWeight: 700,
+                  background: modalTab === 'tree' ? '#1e293b' : 'transparent',
+                  border: modalTab === 'tree' ? '1px solid #38bdf8' : 'none',
+                  color: modalTab === 'tree' ? '#38bdf8' : '#94a3b8',
+                  cursor: 'pointer'
+                }}
+              >
+                🌳 D3 Provenance Tree
+              </button>
+            </div>
+
+            <button
+              onClick={() => setShowEvidenceModal(false)}
+              style={{ background: 'none', border: 'none', color: '#8899aa', fontSize: 20, cursor: 'pointer' }}
+            >
+              ✕
+            </button>
+          </div>
         </div>
 
         {/* Body */}
@@ -143,9 +184,10 @@ export function EvidenceModal({ result }: Props) {
               gap: 8
             }}>
               <span>⚠️</span>
-              <span>{result.disclaimer || 'SIMULATED SCENARIO — For demonstrative scenario testing. Upload a media artifact for real forensic analysis.'}</span>
+              <span>{result.disclaimer || 'DEMONSTRATION SCENARIO — For validation and scenario testing. Upload a real media file for live bitstream analysis.'}</span>
             </div>
           )}
+
           {result.artifact && (
             <div style={{
               marginBottom: 16,
@@ -161,119 +203,127 @@ export function EvidenceModal({ result }: Props) {
               gap: 8
             }}>
               <span>🔬</span>
-              <span>REAL PIPELINE ARTIFACT: {result.artifact.filename} (ID: {result.artifact.id}) {result.artifact.sha256 ? `• SHA: ${result.artifact.sha256.slice(0, 16)}...` : ''}</span>
+              <span>REAL ARTIFACT: {result.artifact.filename} (ID: {result.artifact.id}) {result.artifact.sha256 ? `• SHA: ${result.artifact.sha256.slice(0, 16)}...` : ''}</span>
             </div>
           )}
 
-          {/* Score strip */}
-          <div style={{
-            display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20,
-          }}>
-            {[
-              { label: 'Similarity',   value: result.similarity,      color: '#00d4ff'  },
-              { label: 'Integrity',    value: integrity.score,         color: '#22c55e'  },
-              { label: 'Trust Score',  value: trust.trust_score,       color: '#f59e0b'  },
-              { label: 'AI Confidence',value: ai_analysis.confidence,  color: '#a855f7'  },
-            ].map(item => (
-              <div key={item.label} style={{
-                background: '#0d1117', border: '1px solid #1e2d3d', borderRadius: 8, padding: 12,
+          {modalTab === 'tree' ? (
+            <div style={{ marginTop: 6 }}>
+              <D3ProvenanceTree result={result} height={480} />
+            </div>
+          ) : (
+            <>
+              {/* Score strip */}
+              <div style={{
+                display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20,
               }}>
-                <div style={{ fontSize: 22, fontWeight: 800, color: item.color, fontFamily: 'monospace' }}>
-                  {Math.round(item.value * 100)}%
+                {[
+                  { label: 'Similarity',   value: result.similarity,      color: '#00d4ff'  },
+                  { label: 'Integrity',    value: integrity.score,         color: '#22c55e'  },
+                  { label: 'Trust Score',  value: trust.trust_score,       color: '#f59e0b'  },
+                  { label: 'AI Confidence',value: ai_analysis.confidence,  color: '#a855f7'  },
+                ].map(item => (
+                  <div key={item.label} style={{
+                    background: '#0d1117', border: '1px solid #1e2d3d', borderRadius: 8, padding: 12,
+                  }}>
+                    <div style={{ fontSize: 22, fontWeight: 800, color: item.color, fontFamily: 'monospace' }}>
+                      {Math.round(item.value * 100)}%
+                    </div>
+                    <div style={{ fontSize: 10, color: '#8899aa', marginTop: 2, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                      {item.label}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                {/* ML Signals */}
+                <div style={{ background: '#0d1117', border: '1px solid #1e2d3d', borderRadius: 8, padding: 16 }}>
+                  <p style={{ fontSize: 11, color: '#8899aa', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 12 }}>
+                    ML Signals — <span style={{ color: ml.label === 'TAMPERED' ? '#ef4444' : ml.label === 'SUSPICIOUS' ? '#f59e0b' : '#22c55e' }}>{ml.label}</span>
+                  </p>
+                  <Signal label="Spatial Diff"   value={ml.signals.spatial_diff} />
+                  <Signal label="Color Shift"    value={ml.signals.color_diff} />
+                  <Signal label="Frame Variance" value={ml.signals.frame_diff} />
+                  <Signal label="Temporal Diff"  value={ml.signals.temporal_diff} />
+                  <Signal label="Noise Score"    value={ml.signals.noise_score} />
+                  <Signal label="Watermark"      value={ml.signals.watermark_detected} invert />
                 </div>
-                <div style={{ fontSize: 10, color: '#8899aa', marginTop: 2, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                  {item.label}
+
+                {/* Integrity Signals */}
+                <div style={{ background: '#0d1117', border: '1px solid #1e2d3d', borderRadius: 8, padding: 16 }}>
+                  <p style={{ fontSize: 11, color: '#8899aa', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 12 }}>
+                    Integrity Analysis — {integrity.flags.length} flag{integrity.flags.length !== 1 ? 's' : ''}
+                  </p>
+                  <Signal label="Face Landmark"   value={integrity.signals.face_landmark} />
+                  <Signal label="Lip-sync"        value={integrity.signals.lipsync} />
+                  <Signal label="Noise Pattern"   value={integrity.signals.noise_pattern} />
+                  <Signal label="JPEG Artifact"   value={integrity.signals.jpeg_artifact} />
+                  <Signal label="Edge Consist."   value={integrity.signals.edge_consistency} invert />
+                  <Signal label="Temporal Mismatch" value={integrity.signals.temporal_mismatch} />
                 </div>
               </div>
-            ))}
-          </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-            {/* ML Signals */}
-            <div style={{ background: '#0d1117', border: '1px solid #1e2d3d', borderRadius: 8, padding: 16 }}>
-              <p style={{ fontSize: 11, color: '#8899aa', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 12 }}>
-                ML Signals — <span style={{ color: ml.label === 'TAMPERED' ? '#ef4444' : ml.label === 'SUSPICIOUS' ? '#f59e0b' : '#22c55e' }}>{ml.label}</span>
-              </p>
-              <Signal label="Spatial Diff"   value={ml.signals.spatial_diff} />
-              <Signal label="Color Shift"    value={ml.signals.color_diff} />
-              <Signal label="Frame Variance" value={ml.signals.frame_diff} />
-              <Signal label="Temporal Diff"  value={ml.signals.temporal_diff} />
-              <Signal label="Noise Score"    value={ml.signals.noise_score} />
-              <Signal label="Watermark"      value={ml.signals.watermark_detected} invert />
-            </div>
-
-            {/* Integrity Signals */}
-            <div style={{ background: '#0d1117', border: '1px solid #1e2d3d', borderRadius: 8, padding: 16 }}>
-              <p style={{ fontSize: 11, color: '#8899aa', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 12 }}>
-                Integrity Analysis — {integrity.flags.length} flag{integrity.flags.length !== 1 ? 's' : ''}
-              </p>
-              <Signal label="Face Landmark"   value={integrity.signals.face_landmark} />
-              <Signal label="Lip-sync"        value={integrity.signals.lipsync} />
-              <Signal label="Noise Pattern"   value={integrity.signals.noise_pattern} />
-              <Signal label="JPEG Artifact"   value={integrity.signals.jpeg_artifact} />
-              <Signal label="Edge Consist."   value={integrity.signals.edge_consistency} invert />
-              <Signal label="Temporal Mismatch" value={integrity.signals.temporal_mismatch} />
-            </div>
-          </div>
-
-          {/* AI Reasoning */}
-          <div style={{
-            background: '#0d1117', border: `1px solid ${ds.border}`,
-            borderRadius: 8, padding: 16, marginTop: 16,
-          }}>
-            <p style={{ fontSize: 11, color: '#8899aa', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 10 }}>
-              AI Reasoning Points
-            </p>
-            {ai_analysis.reasoning_points.map((point, i) => (
-              <div key={i} style={{ display: 'flex', gap: 10, marginBottom: 8 }}>
-                <span style={{ color: ds.color, fontSize: 12, marginTop: 1 }}>▸</span>
-                <span style={{ fontSize: 12, color: '#cbd5e1', lineHeight: 1.5 }}>{point}</span>
+              {/* AI Reasoning */}
+              <div style={{
+                background: '#0d1117', border: `1px solid ${ds.border}`,
+                borderRadius: 8, padding: 16, marginTop: 16,
+              }}>
+                <p style={{ fontSize: 11, color: '#8899aa', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 10 }}>
+                  AI Reasoning Points
+                </p>
+                {ai_analysis.reasoning_points.map((point, i) => (
+                  <div key={i} style={{ display: 'flex', gap: 10, marginBottom: 8 }}>
+                    <span style={{ color: ds.color, fontSize: 12, marginTop: 1 }}>▸</span>
+                    <span style={{ fontSize: 12, color: '#cbd5e1', lineHeight: 1.5 }}>{point}</span>
+                  </div>
+                ))}
+                <div style={{
+                  marginTop: 12, padding: '10px 14px',
+                  background: ds.bg, borderRadius: 6, borderLeft: `3px solid ${ds.color}`,
+                }}>
+                  <p style={{ fontSize: 12, color: ds.color, fontWeight: 600 }}>⚡ {ai_analysis.action}</p>
+                </div>
               </div>
-            ))}
-            <div style={{
-              marginTop: 12, padding: '10px 14px',
-              background: ds.bg, borderRadius: 6, borderLeft: `3px solid ${ds.color}`,
-            }}>
-              <p style={{ fontSize: 12, color: ds.color, fontWeight: 600 }}>⚡ {ai_analysis.action}</p>
-            </div>
-          </div>
 
-          {/* Propagation + Authorship row */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 16 }}>
-            <div style={{ background: '#0d1117', border: '1px solid #1e2d3d', borderRadius: 8, padding: 14 }}>
-              <p style={{ fontSize: 11, color: '#8899aa', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>
-                Viral Propagation
-              </p>
-              <p style={{ fontSize: 22, fontWeight: 800, color: propagation.urgency === 'critical' ? '#dc2626' : propagation.urgency === 'high' ? '#ef4444' : propagation.urgency === 'medium' ? '#f59e0b' : '#22c55e', fontFamily: 'monospace' }}>
-                {propagation.ppm} ppm
-              </p>
-              <p style={{ fontSize: 11, color: '#8899aa', marginTop: 4 }}>
-                {propagation.indicator} · urgency: <span style={{ fontWeight: 700, color: '#e2e8f0' }}>{(propagation.urgency || 'low').toUpperCase()}</span>
-              </p>
-            </div>
-            <div style={{ background: '#0d1117', border: '1px solid #1e2d3d', borderRadius: 8, padding: 14 }}>
-              <p style={{ fontSize: 11, color: '#8899aa', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>
-                Origin Authorship
-              </p>
-              <p style={{ fontSize: 22, fontWeight: 800, color: '#00d4ff', fontFamily: 'monospace' }}>
-                {Math.round(authorship.confidence * 100)}%
-              </p>
-              <p style={{ fontSize: 11, color: '#8899aa', marginTop: 4 }}>
-                {authorship.origin_node || 'Origin'} · Δ{(authorship.embedding_distance ?? 0).toFixed(3)}
-              </p>
-            </div>
-          </div>
+              {/* Propagation + Authorship row */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 16 }}>
+                <div style={{ background: '#0d1117', border: '1px solid #1e2d3d', borderRadius: 8, padding: 14 }}>
+                  <p style={{ fontSize: 11, color: '#8899aa', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>
+                    Viral Propagation
+                  </p>
+                  <p style={{ fontSize: 22, fontWeight: 800, color: propagation.urgency === 'critical' ? '#dc2626' : propagation.urgency === 'high' ? '#ef4444' : propagation.urgency === 'medium' ? '#f59e0b' : '#22c55e', fontFamily: 'monospace' }}>
+                    {propagation.ppm} ppm
+                  </p>
+                  <p style={{ fontSize: 11, color: '#8899aa', marginTop: 4 }}>
+                    {propagation.indicator} · urgency: <span style={{ fontWeight: 700, color: '#e2e8f0' }}>{(propagation.urgency || 'low').toUpperCase()}</span>
+                  </p>
+                </div>
+                <div style={{ background: '#0d1117', border: '1px solid #1e2d3d', borderRadius: 8, padding: 14 }}>
+                  <p style={{ fontSize: 11, color: '#8899aa', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>
+                    Origin Authorship
+                  </p>
+                  <p style={{ fontSize: 22, fontWeight: 800, color: '#00d4ff', fontFamily: 'monospace' }}>
+                    {Math.round(authorship.confidence * 100)}%
+                  </p>
+                  <p style={{ fontSize: 11, color: '#8899aa', marginTop: 4 }}>
+                    {authorship.origin_node || 'Origin'} · Δ{(authorship.embedding_distance ?? 0).toFixed(3)}
+                  </p>
+                </div>
+              </div>
 
-          {/* Fingerprint */}
-          <div style={{
-            marginTop: 16, background: '#080c10', border: '1px solid #1e2d3d',
-            borderRadius: 6, padding: '10px 14px', fontFamily: 'monospace',
-          }}>
-            <span style={{ fontSize: 10, color: '#4a5568' }}>FINGERPRINT: </span>
-            <span style={{ fontSize: 11, color: '#00d4ff' }}>{(result.fingerprint_hash || '').toUpperCase()}</span>
-            <span style={{ fontSize: 10, color: '#4a5568', marginLeft: 16 }}>PROCESS: </span>
-            <span style={{ fontSize: 11, color: '#22c55e' }}>{(result.processing_ms || 0).toFixed(0)}ms</span>
-          </div>
+              {/* Fingerprint */}
+              <div style={{
+                marginTop: 16, background: '#080c10', border: '1px solid #1e2d3d',
+                borderRadius: 6, padding: '10px 14px', fontFamily: 'monospace',
+              }}>
+                <span style={{ fontSize: 10, color: '#4a5568' }}>FINGERPRINT: </span>
+                <span style={{ fontSize: 11, color: '#00d4ff' }}>{(result.fingerprint_hash || '').toUpperCase()}</span>
+                <span style={{ fontSize: 10, color: '#4a5568', marginLeft: 16 }}>PROCESS: </span>
+                <span style={{ fontSize: 11, color: '#22c55e' }}>{(result.processing_ms || 0).toFixed(0)}ms</span>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Footer actions */}

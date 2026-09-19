@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useStore } from '../store'
 import { useDetection } from '../hooks/useDetection'
 import { Sidebar } from '../components/layout/Sidebar'
@@ -8,7 +8,10 @@ import { FeedPanel } from '../components/panels/FeedPanel'
 import { DetectionTrendChart } from '../components/charts/DetectionTrendChart'
 import { PropagationGraph } from '../components/panels/PropagationGraph'
 import { ForensicPanel } from '../components/panels/ForensicPanel'
+import { DiscoveryPanel } from '../components/panels/DiscoveryPanel'
 import { OriginPanel } from '../components/panels/OriginPanel'
+import { EvidenceReasoningPanel } from '../components/panels/EvidenceReasoningPanel'
+import { EvidenceReasoningCard } from '../components/panels/EvidenceReasoningCard'
 import { CasesPanel } from '../components/panels/CasesPanel'
 import { SystemPanel } from '../components/panels/SystemPanel'
 import { EvidenceModal } from '../components/modals/EvidenceModal'
@@ -24,6 +27,7 @@ export function Dashboard() {
     currentResult,
   } = useStore()
 
+  const [scannerVisualizerMode, setScannerVisualizerMode] = useState<'propagation' | 'reasoning'>('propagation')
   const { runDetection } = useDetection()
 
   // Auto-run initial showcase scan on mount if no current result exists
@@ -64,7 +68,7 @@ export function Dashboard() {
               boxShadow: '0 2px 10px rgba(0,0,0,0.2)'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 13, color: '#00d4ff' }}>🎯 Active Investigation:</span>
+                <span style={{ fontSize: 13, color: '#00d4ff' }}>🎯 Active Scan:</span>
                 <span style={{ fontSize: 12, fontWeight: 700, color: '#f8fafc' }}>
                   Job #{currentResult.job_id} · @{currentResult.username} ({currentResult.platform})
                 </span>
@@ -97,7 +101,7 @@ export function Dashboard() {
                   }}
                   className="hover:border-cyan-400 hover:text-white"
                 >
-                  🔬 Forensic Matrix
+                  🔬 E1: Forensics
                 </button>
 
                 <button
@@ -114,7 +118,24 @@ export function Dashboard() {
                   }}
                   className="hover:border-purple-400 hover:text-white"
                 >
-                  🔗 C2PA Lineage
+                  🌳 E3: Origin Tree
+                </button>
+
+                <button
+                  onClick={() => useStore.getState().setActiveTab('reasoning')}
+                  style={{
+                    background: 'rgba(30, 41, 59, 0.8)',
+                    border: '1px solid #334155',
+                    color: '#fbbf24',
+                    padding: '3px 10px',
+                    borderRadius: 5,
+                    fontSize: 10,
+                    fontWeight: 700,
+                    cursor: 'pointer'
+                  }}
+                  className="hover:border-amber-400 hover:text-white"
+                >
+                  ⚖️ E5: Reasoning
                 </button>
 
                 <button
@@ -142,7 +163,7 @@ export function Dashboard() {
               {/* Top Scanner Input Bar */}
               <ScannerBar />
 
-              {/* Main Split: Left Propagation Mesh, Right Live Ingestion Feed */}
+              {/* Main Split: Left Visualizer (Propagation Graph / Evidence Reasoning), Right Live Ingestion Feed */}
               <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 380px', gap: 16, minHeight: 480, overflow: 'hidden' }}>
                 <div style={{
                   background: '#0d1117',
@@ -153,7 +174,74 @@ export function Dashboard() {
                   flexDirection: 'column',
                   boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)'
                 }}>
-                  <PropagationGraph />
+                  {/* View Mode Toggle Header */}
+                  <div style={{
+                    padding: '8px 14px',
+                    borderBottom: '1px solid #1e2d3d',
+                    background: '#080c10',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between'
+                  }}>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button
+                        onClick={() => setScannerVisualizerMode('propagation')}
+                        style={{
+                          padding: '4px 10px',
+                          borderRadius: 5,
+                          fontSize: 11,
+                          fontWeight: 700,
+                          background: scannerVisualizerMode === 'propagation' ? '#1e293b' : 'transparent',
+                          border: scannerVisualizerMode === 'propagation' ? '1px solid #00d4ff' : '1px solid transparent',
+                          color: scannerVisualizerMode === 'propagation' ? '#38bdf8' : '#8899aa',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        📡 Engine 4: Propagation Topology
+                      </button>
+                      <button
+                        onClick={() => setScannerVisualizerMode('reasoning')}
+                        style={{
+                          padding: '4px 10px',
+                          borderRadius: 5,
+                          fontSize: 11,
+                          fontWeight: 700,
+                          background: scannerVisualizerMode === 'reasoning' ? '#1e293b' : 'transparent',
+                          border: scannerVisualizerMode === 'reasoning' ? '1px solid #fbbf24' : '1px solid transparent',
+                          color: scannerVisualizerMode === 'reasoning' ? '#fbbf24' : '#8899aa',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        ⚖️ Engine 5: Evidence Reasoning
+                      </button>
+                    </div>
+
+                    <button
+                      onClick={() => useStore.getState().setActiveTab('reasoning')}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#64748b',
+                        fontSize: 10,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        textDecoration: 'underline'
+                      }}
+                      className="hover:text-cyan-400"
+                    >
+                      Full XAI Dossier ↗
+                    </button>
+                  </div>
+
+                  <div style={{ flex: 1, overflow: 'auto' }}>
+                    {scannerVisualizerMode === 'propagation' ? (
+                      <PropagationGraph />
+                    ) : (
+                      <div style={{ padding: 14 }}>
+                        <EvidenceReasoningCard />
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div style={{
@@ -171,44 +259,56 @@ export function Dashboard() {
             </div>
           )}
 
+          {activeTab === 'forensic' && (
+            <div style={{ height: '100%', width: '100%', overflow: 'hidden' }}>
+              <ForensicPanel />
+            </div>
+          )}
+
+          {activeTab === 'discovery' && (
+            <div style={{ height: '100%', width: '100%', overflow: 'hidden' }}>
+              <DiscoveryPanel />
+            </div>
+          )}
+
+          {activeTab === 'origin' && (
+            <div style={{ height: '100%', width: '100%', overflow: 'hidden' }}>
+              <OriginPanel />
+            </div>
+          )}
+
           {activeTab === 'propagation' && (
             <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', background: '#080c10' }}>
               <PropagationGraph />
             </div>
           )}
 
-          {activeTab === 'forensic' && (
-            <div style={{ padding: 20, maxWidth: 1400, margin: '0 auto', width: '100%' }}>
-              <ForensicPanel />
-            </div>
-          )}
-
-          {activeTab === 'origin' && (
-            <div style={{ padding: 20, maxWidth: 1400, margin: '0 auto', width: '100%' }}>
-              <OriginPanel />
+          {activeTab === 'reasoning' && (
+            <div style={{ height: '100%', width: '100%', overflow: 'hidden' }}>
+              <EvidenceReasoningPanel />
             </div>
           )}
 
           {activeTab === 'cases' && (
-            <div style={{ padding: 20, maxWidth: 1400, margin: '0 auto', width: '100%' }}>
+            <div style={{ height: '100%', width: '100%', overflow: 'hidden' }}>
               <CasesPanel />
             </div>
           )}
 
           {activeTab === 'trends' && (
-            <div style={{ padding: 20, maxWidth: 1400, margin: '0 auto', width: '100%' }}>
+            <div style={{ height: '100%', width: '100%', overflow: 'auto', padding: 20 }}>
               <DetectionTrendChart />
             </div>
           )}
 
           {activeTab === 'system' && (
-            <div style={{ padding: 20, maxWidth: 1400, margin: '0 auto', width: '100%' }}>
+            <div style={{ height: '100%', width: '100%', overflow: 'hidden' }}>
               <SystemPanel />
             </div>
           )}
 
           {activeTab === 'feed' && (
-            <div style={{ padding: 20, maxWidth: 1200, margin: '0 auto', width: '100%' }}>
+            <div style={{ height: '100%', width: '100%', overflow: 'auto', padding: 20 }}>
               <FeedPanel />
             </div>
           )}

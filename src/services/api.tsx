@@ -65,6 +65,40 @@ export const uploadArtifactFile = async (investigationId: string, file: File) =>
   }).then(r => r.data)
 }
 
+// ── Discovery & Provider Health API ──────────────────────────────────────────
+export const getProviders = () =>
+  api.get('/providers').then(r => r.data)
+
+export const getProviderHealth = (provider: string) =>
+  api.get(`/providers/${provider}/health`).then(r => r.data)
+
+export const testProvider = (provider: string) =>
+  api.post(`/providers/${provider}/test`).then(r => r.data)
+
+export const getSearchTransparency = () =>
+  api.get('/search/transparency').then(r => r.data)
+
+export const searchMultiSource = (query: string, platforms?: string[]) =>
+  api.post('/search/multi-source', { query, platforms }).then(r => r.data)
+
+export const getInvestigationCandidates = (id: string) =>
+  api.get(`/investigations/${id}/discovery/candidates`).then(r => r.data)
+
+export const getInvestigationGenealogy = (id: string) =>
+  api.get(`/investigations/${id}/genealogy`).then(r => r.data)
+
+export const getInvestigationPropagation = (id: string) =>
+  api.get(`/investigations/${id}/propagation`).then(r => r.data)
+
+export const getInvestigationAlerts = (id: string) =>
+  api.get(`/investigations/${id}/alerts`).then(r => r.data)
+
+export const getInvestigationReports = (id: string) =>
+  api.get(`/investigations/${id}/reports`).then(r => r.data)
+
+export const generateInvestigationReport = (id: string) =>
+  api.post(`/investigations/${id}/report`).then(r => r.data)
+
 // ── Legacy Compatibility Wrappers ──────────────────────────────────────────
 export const detect = (req: DetectionRequest): Promise<DetectionResult> =>
   api.post<DetectionResult>('/v1/detect/', req).then(r => r.data)

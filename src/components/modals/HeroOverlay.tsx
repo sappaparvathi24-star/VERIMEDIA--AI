@@ -1,129 +1,172 @@
 import { useStore } from '../../store'
 
-const SCENARIOS = [
-  { key: 'normal',        label: 'Normal Share',       color: '#22c55e', desc: 'Legitimate licensed content' },
-  { key: 'deepfake',      label: 'Deepfake',           color: '#dc2626', desc: 'AI face synthesis' },
-  { key: 'manipulated',   label: 'Manipulation',       color: '#ef4444', desc: 'Heavy modification' },
-  { key: 'adversarial',   label: 'Adversarial Noise',  color: '#a855f7', desc: 'ML evasion attack' },
-  { key: 'news',          label: 'News Attribution',   color: '#f59e0b', desc: 'Missing source credit' },
-  { key: 'crop',          label: 'Crop Attack',        color: '#f97316', desc: 'Watermark removal' },
-  { key: 'blur',          label: 'Blur/Filter',        color: '#6366f1', desc: 'Visual obfuscation' },
-  { key: 'scam',          label: 'Scam Repost',        color: '#ef4444', desc: 'Fraudulent reupload' },
-  { key: 'education',     label: 'Education Fair Use', color: '#22c55e', desc: 'Legitimate commentary' },
-  { key: 'insufficient',  label: 'Low Evidence',       color: '#6366f1', desc: 'Ambiguous signals' },
+const FIVE_ENGINES_OVERVIEW = [
+  {
+    num: 'Engine 1',
+    name: 'Media Forensics',
+    icon: '🔬',
+    color: '#22c55e',
+    input: 'Image / Video / Audio',
+    produces: 'SHA-256, Perceptual Hashes, EXIF/Metadata, OCR, ELA, Resampling, Face Landmarks, AV-Sync',
+    principle: 'No single signal is ground truth; ensemble multi-signal corroboration builds certainty.'
+  },
+  {
+    num: 'Engine 2',
+    name: 'Discovery Intelligence',
+    icon: '🌐',
+    color: '#00d4ff',
+    input: 'Target URL / Media Hash / Query',
+    produces: 'Provider-agnostic Discovery Orchestrator, normalized observation streams, Sybil defense',
+    principle: 'Multi-source decoupled architecture abstracting YouTube, Reddit, X, TikTok, Web crawlers.'
+  },
+  {
+    num: 'Engine 3 (Hero)',
+    name: 'Provenance & Origin',
+    icon: '🌳',
+    color: '#38bdf8',
+    input: 'Observation Pool & Perceptual Matches',
+    produces: 'D3 Lineage Tree, Transformation Pipeline (Re-encode, Crop, Caption) & Earliest Source ID',
+    principle: 'Epistemic Demarcation: Earliest observed timestamp ≠ proven legal ownership.'
+  },
+  {
+    num: 'Engine 4',
+    name: 'Propagation Intelligence',
+    icon: '📡',
+    color: '#a855f7',
+    input: 'Platform Timestamps & Reposts',
+    produces: 'Content Genealogy Graph, Viral Velocity (shares/min), Platform Propagation Vectors',
+    principle: 'Turns flat search results into multi-generational viral lineage trees.'
+  },
+  {
+    num: 'Engine 5',
+    name: 'Evidence Reasoning',
+    icon: '⚖️',
+    color: '#fbbf24',
+    input: 'Combined Forensic, Discovery & Provenance Findings',
+    produces: 'Explainable AI Reasoning Dossier, Supporting/Contradicting Evidence, IBM AI Governance Audit',
+    principle: 'Transparent calculus with epistemic boundaries and verifiable audit trail.'
+  },
 ]
 
 export function HeroOverlay() {
-  const { setShowHeroOverlay } = useStore()
+  const { setShowHeroOverlay, setActiveTab } = useStore()
 
   return (
     <div className="modal-backdrop" style={{ zIndex: 200 }}>
       <div
         className="vm-card"
         style={{
-          width: 'min(820px, 95vw)',
-          maxHeight: '90vh',
+          width: 'min(920px, 95vw)',
+          maxHeight: '92vh',
           overflow: 'auto',
-          padding: '36px',
+          padding: '32px',
           border: '1px solid #2a3f55',
           position: 'relative',
+          background: '#0d1117'
         }}
       >
         {/* Header */}
-        <div style={{ marginBottom: 28, textAlign: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 12 }}>
+        <div style={{ marginBottom: 24, textAlign: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 8 }}>
             <div style={{
-              width: 44, height: 44, borderRadius: '50%',
+              width: 44, height: 44, borderRadius: 12,
               background: 'linear-gradient(135deg, #00d4ff22, #0ea5e922)',
               border: '2px solid #00d4ff',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 20,
+              fontSize: 22,
             }}>🛡️</div>
             <div>
-              <h1 style={{ fontSize: 26, fontWeight: 800, color: '#00d4ff', letterSpacing: '-0.02em' }}>
-                VeriMedia AI
+              <h1 style={{ fontSize: 24, fontWeight: 800, color: '#00d4ff', letterSpacing: '-0.02em', margin: 0 }}>
+                VeriMedia AI Engine Architecture
               </h1>
-              <p style={{ fontSize: 11, color: '#8899aa', fontFamily: 'monospace', letterSpacing: '0.15em' }}>
-                DETECTION · VERIFICATION · ENFORCEMENT · v23
+              <p style={{ fontSize: 11, color: '#8899aa', fontFamily: 'monospace', letterSpacing: '0.15em', margin: '4px 0 0 0' }}>
+                THE FIVE MAJOR ENGINES · EXPLAINABLE AI · GOVERNANCE READY
               </p>
             </div>
           </div>
-          <p style={{ fontSize: 14, color: '#cbd5e1', maxWidth: 560, margin: '0 auto', lineHeight: 1.6 }}>
-            AI-powered media intelligence platform. Detect unauthorized content, analyze deepfakes,
-            and automate DMCA enforcement across social platforms in real time.
+          <p style={{ fontSize: 13, color: '#cbd5e1', maxWidth: 640, margin: '0 auto', lineHeight: 1.5 }}>
+            VeriMedia operates as five coordinated, provider-agnostic intelligence engines delivering forensic proof, origin attribution, propagation genealogy, and explainable AI reasoning.
           </p>
         </div>
 
-        {/* Stats bar */}
-        <div style={{
-          display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)',
-          gap: 12, marginBottom: 28,
-        }}>
-          {[
-            { label: 'Platforms', value: '6', color: '#00d4ff' },
-            { label: 'ML Signals', value: '9', color: '#22c55e' },
-            { label: 'Detection', value: '1.4s', color: '#f59e0b' },
-            { label: 'Accuracy', value: '94%', color: '#a855f7' },
-          ].map(s => (
-            <div key={s.label} style={{
-              background: '#0d1117', border: '1px solid #1e2d3d',
-              borderRadius: 8, padding: '12px 8px', textAlign: 'center',
-            }}>
-              <div style={{ fontSize: 22, fontWeight: 800, color: s.color, fontFamily: 'monospace' }}>
-                {s.value}
+        {/* 5 Engines Cards */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 24 }}>
+          {FIVE_ENGINES_OVERVIEW.map(engine => (
+            <div
+              key={engine.num}
+              style={{
+                background: '#080c10',
+                border: '1px solid #1e2d3d',
+                borderRadius: 8,
+                padding: '14px 18px',
+                display: 'grid',
+                gridTemplateColumns: '180px 1fr auto',
+                gap: 16,
+                alignItems: 'center'
+              }}
+            >
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: 16 }}>{engine.icon}</span>
+                  <span style={{ fontSize: 10, fontFamily: 'monospace', fontWeight: 800, color: engine.color }}>{engine.num}</span>
+                </div>
+                <div style={{ fontSize: 13, fontWeight: 800, color: '#f8fafc', marginTop: 2 }}>{engine.name}</div>
               </div>
-              <div style={{ fontSize: 10, color: '#8899aa', marginTop: 2, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                {s.label}
+
+              <div>
+                <div style={{ fontSize: 11, color: '#cbd5e1' }}>
+                  <strong style={{ color: '#8899aa' }}>Produces:</strong> {engine.produces}
+                </div>
+                <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 3, fontStyle: 'italic' }}>
+                  💡 {engine.principle}
+                </div>
               </div>
+
+              <button
+                onClick={() => {
+                  setShowHeroOverlay(false)
+                  if (engine.name.includes('Forensics')) setActiveTab('forensic')
+                  else if (engine.name.includes('Discovery')) setActiveTab('discovery')
+                  else if (engine.name.includes('Provenance')) setActiveTab('origin')
+                  else if (engine.name.includes('Propagation')) setActiveTab('propagation')
+                  else if (engine.name.includes('Reasoning')) setActiveTab('reasoning')
+                }}
+                style={{
+                  background: 'rgba(0, 212, 255, 0.1)',
+                  border: '1px solid rgba(0, 212, 255, 0.3)',
+                  color: '#38bdf8',
+                  padding: '6px 12px',
+                  borderRadius: 6,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                Launch Engine →
+              </button>
             </div>
           ))}
         </div>
 
-        {/* Scenarios */}
-        <div style={{ marginBottom: 28 }}>
-          <p style={{ fontSize: 11, color: '#8899aa', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-            Detection Scenarios
-          </p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
-            {SCENARIOS.map(sc => (
-              <div key={sc.key} style={{
-                background: '#0d1117', border: '1px solid #1e2d3d',
-                borderRadius: 6, padding: '10px 14px',
-                display: 'flex', alignItems: 'center', gap: 10,
-              }}>
-                <div style={{ width: 8, height: 8, borderRadius: '50%', background: sc.color, flexShrink: 0 }} />
-                <div>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: '#e2e8f0' }}>{sc.label}</div>
-                  <div style={{ fontSize: 10, color: '#8899aa' }}>{sc.desc}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* CTA */}
-        <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
+        {/* Close Button */}
+        <div style={{ display: 'flex', justifyContent: 'center' }}>
           <button
-            className="vm-btn vm-btn-primary"
-            style={{ padding: '12px 32px', fontSize: 14 }}
             onClick={() => setShowHeroOverlay(false)}
+            style={{
+              background: 'linear-gradient(135deg, #00d4ff 0%, #0284c7 100%)',
+              color: '#080c10',
+              fontWeight: 800,
+              fontSize: 13,
+              padding: '10px 32px',
+              borderRadius: 8,
+              border: 'none',
+              cursor: 'pointer'
+            }}
           >
-            🚀 Launch Platform
+            Enter VeriMedia Workspace
           </button>
-          <a
-            href="http://localhost:8000/docs"
-            target="_blank"
-            rel="noreferrer"
-            className="vm-btn vm-btn-ghost"
-            style={{ padding: '12px 24px', fontSize: 14 }}
-          >
-            📖 API Docs
-          </a>
         </div>
-
-        <p style={{ textAlign: 'center', marginTop: 16, fontSize: 11, color: '#4a5568' }}>
-          Powered by Claude AI · AES-256 Watermarking · pgvector Embedding Search
-        </p>
       </div>
     </div>
   )

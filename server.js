@@ -1901,6 +1901,46 @@ app.get('/api/search/health', (req, res) => {
   res.json(getDiscoveryHealth());
 });
 
+app.get('/api/providers', (req, res) => {
+  const health = getDiscoveryHealth();
+  const transparency = getFullDiscoveryTransparency(health.providers);
+  res.json({
+    status: 'ok',
+    providers: health.providers,
+    transparency,
+    checkedAt: new Date().toISOString()
+  });
+});
+
+app.get('/api/providers/:provider/health', (req, res) => {
+  const health = getDiscoveryHealth();
+  const provKey = req.params.provider.toLowerCase();
+  const found = health.providers[provKey] || Object.values(health.providers).find(p => p.name?.toLowerCase() === provKey);
+  if (found) {
+    res.json({ status: 'ok', provider: found, timestamp: new Date().toISOString() });
+  } else {
+    res.status(404).json({ error: `Provider ${req.params.provider} not found` });
+  }
+});
+
+app.post('/api/providers/:provider/test', async (req, res) => {
+  const provKey = req.params.provider.toLowerCase();
+  const health = getDiscoveryHealth();
+  const found = health.providers[provKey] || Object.values(health.providers).find(p => p.name?.toLowerCase() === provKey);
+  if (!found) {
+    return res.status(404).json({ error: `Provider ${req.params.provider} not found` });
+  }
+  res.json({
+    status: 'ok',
+    testedProvider: req.params.provider,
+    currentStatus: found.status,
+    message: found.status === 'AVAILABLE' || found.status === 'CONNECTED' 
+      ? `Provider ${req.params.provider} is reachable and responding.`
+      : `Provider is currently in state ${found.status}. Check API credentials in environment.`,
+    checkedAt: new Date().toISOString()
+  });
+});
+
 app.get('/api/search/transparency', (req, res) => {
   const health = getDiscoveryHealth();
   const transparency = getFullDiscoveryTransparency(health.providers);
