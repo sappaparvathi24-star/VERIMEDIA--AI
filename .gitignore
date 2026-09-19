@@ -28,6 +28,15 @@ frontend/.vite/
 # Docker
 *.log
 
+# Database
+data/*.db*
+data/*.sqlite*
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
 # Models (large files)
 backend/models/*.pkl
 backend/models/*.onnx

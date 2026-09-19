@@ -78,12 +78,12 @@ export function SystemPanel() {
 
       {/* API info */}
       <div style={{ marginTop: 20, padding: 14, background: '#0d1117', border: '1px solid #1e2d3d', borderRadius: 8 }}>
-        <p style={{ fontSize: 10, color: '#4a5568', marginBottom: 8 }}>QUICK LINKS</p>
+        <p style={{ fontSize: 10, color: '#4a5568', marginBottom: 8 }}>QUICK ENDPOINTS</p>
         {[
-          { label: 'API Documentation', url: 'http://localhost:8000/docs' },
-          { label: 'API ReDoc',         url: 'http://localhost:8000/redoc' },
-          { label: 'Health Endpoint',   url: 'http://localhost:8000/api/v1/health' },
-          { label: 'MinIO Console',     url: 'http://localhost:9001' },
+          { label: 'System Health Check', url: '/health' },
+          { label: 'API v1 Health Endpoint', url: '/api/v1/health' },
+          { label: 'Active Investigations Index', url: '/api/investigations' },
+          { label: 'Enforcement Cases Index', url: '/api/v1/cases/' },
         ].map(link => (
           <a key={link.label} href={link.url} target="_blank" rel="noreferrer" style={{
             display: 'flex', alignItems: 'center', gap: 8,

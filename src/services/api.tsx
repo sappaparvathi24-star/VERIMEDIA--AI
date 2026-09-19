@@ -1,5 +1,6 @@
 // VeriMedia AI — Typed API Client for Provenance & Media Investigations
 import axios from 'axios'
+import { getToken } from '../lib/supabaseClient'
 import type {
   DetectionRequest, DetectionResult,
   DMCARequest, DMCANotice,
@@ -13,6 +14,15 @@ const api = axios.create({
   baseURL: `${BASE}/api`,
   timeout: 30_000,
   headers: { 'Content-Type': 'application/json' },
+})
+
+// Attach Bearer token automatically to every API request
+api.interceptors.request.use(async (config) => {
+  const token = await getToken()
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`
+  }
+  return config
 })
 
 // ── Investigations & Provenance API ──────────────────────────────────────────
@@ -43,11 +53,15 @@ export const getWhatWeKnow = (id: string) =>
 export const getWhatRemainsUnknown = (id: string) =>
   api.get(`/investigations/${id}/what-remains-unknown`).then(r => r.data)
 
-export const uploadArtifactFile = (investigationId: string, file: File) => {
+export const uploadArtifactFile = async (investigationId: string, file: File) => {
+  const token = await getToken()
   const formData = new FormData()
   formData.append('file', file)
   return axios.post(`${BASE}/api/investigations/${investigationId}/artifacts/upload`, formData, {
-    headers: { 'Content-Type': 'multipart/form-data' }
+    headers: {
+      'Content-Type': 'multipart/form-data',
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    }
   }).then(r => r.data)
 }
 
@@ -71,15 +85,30 @@ export const getHealth = (): Promise<HealthStatus> =>
   api.get<HealthStatus>('/health').then(r => r.data)
 
 // ── Gemini Intelligence API ──────────────────────────────────────────────────
-export const askGeminiCopilot = (prompt: string, history?: Array<{ role: string; content: string }>) =>
-  axios.post(`${BASE}/chat`, { prompt, messages: history }).then(r => r.data)
+export const askGeminiCopilot = async (prompt: string, history?: Array<{ role: string; content: string }>) => {
+  const token = await getToken()
+  return axios.post(`${BASE}/chat`, { prompt, messages: history }, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {}
+  }).then(r => r.data)
+}
 
-export const analyzeForensicsGemini = (payload: any) =>
-  axios.post(`${BASE}/analyze`, payload).then(r => r.data)
+export const analyzeForensicsGemini = async (payload: any) => {
+  const token = await getToken()
+  return axios.post(`${BASE}/analyze`, payload, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {}
+  }).then(r => r.data)
+}
 
-export const decomposeClaimGemini = (statement: string) =>
-  axios.post(`${BASE}/claims/decompose`, { statement }).then(r => r.data)
+export const decomposeClaimGemini = async (statement: string) => {
+  const token = await getToken()
+  return axios.post(`${BASE}/claims/decompose`, { statement }, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {}
+  }).then(r => r.data)
+}
 
-export const generateDMCANoticeGemini = (payload: any) =>
-  axios.post(`${BASE}/dmca/generate`, payload).then(r => r.data)
-
+export const generateDMCANoticeGemini = async (payload: any) => {
+  const token = await getToken()
+  return axios.post(`${BASE}/dmca/generate`, payload, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {}
+  }).then(r => r.data)
+}

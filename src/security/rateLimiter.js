@@ -2,7 +2,24 @@
 // Implements 12_SECURITY_SPEC.md §9: Route-Specific Protection
 import { logAuditEvent } from '../audit/auditService.js';
 
-class RateLimitBucket {
+/**
+ * Shared rate limit configuration by route classification per 12_SECURITY_SPEC.md §9.
+ * Stricter thresholds for resource-heavy / high-risk operations (uploads, reports, auth)
+ * and looser thresholds for high-volume reads and general queries.
+ */
+export const rateLimitConfig = {
+  auth: { maxRequests: 20, windowMs: 60 * 1000 },          // Credential stuffing defense
+  uploads: { maxRequests: 30, windowMs: 60 * 1000 },       // Stricter: heavy multipart file uploads & hashing
+  reports: { maxRequests: 30, windowMs: 60 * 1000 },       // Stricter: PDF/HTML generation & crypto dossier signing
+  analysis: { maxRequests: 40, windowMs: 60 * 1000 },      // Moderate: compute-heavy perceptual and ML runs
+  monitoring: { maxRequests: 40, windowMs: 60 * 1000 },    // Moderate: recurring scheduled scan triggers
+  chat: { maxRequests: 60, windowMs: 60 * 1000 },          // Standard: interactive conversational queries
+  discovery: { maxRequests: 60, windowMs: 60 * 1000 },     // Standard: external search proxy federation
+  reads: { maxRequests: 150, windowMs: 60 * 1000 },        // Looser: read-only timeline, genealogy & claims queries
+  general: { maxRequests: 150, windowMs: 60 * 1000 }       // Looser: health, metadata & basic operational endpoints
+};
+
+export class RateLimitBucket {
   constructor({ name, maxRequests, windowMs }) {
     this.name = name;
     this.maxRequests = maxRequests;
@@ -60,8 +77,38 @@ class RateLimitBucket {
   }
 }
 
+// Global registry of bucket instances by route class name
+const bucketRegistry = new Map();
+
+export function getOrCreateBucket(routeClass = 'discovery') {
+  if (bucketRegistry.has(routeClass)) {
+    return bucketRegistry.get(routeClass);
+  }
+  const config = rateLimitConfig[routeClass] || rateLimitConfig.general;
+  const bucket = new RateLimitBucket({ name: routeClass, ...config });
+  bucketRegistry.set(routeClass, bucket);
+  return bucket;
+}
+
+/**
+ * Functional sliding-window rate checker for programmatic API checks
+ * @param {string} clientIp - Client IP address
+ * @param {string} routeClass - Classification from rateLimitConfig ('uploads', 'analysis', 'discovery', etc.)
+ * @returns {boolean} true if allowed, false if rate limited
+ */
+export function checkRateLimit(clientIp, routeClass = 'discovery') {
+  if (!clientIp) return false;
+  const bucket = getOrCreateBucket(routeClass);
+  const result = bucket.check(`${routeClass}:${clientIp}`);
+  return result.allowed;
+}
+
+/**
+ * Express middleware factory creating route-specific rate limiters
+ */
 export function createRateLimiter({ name, maxRequests, windowMs = 60 * 1000 }) {
   const bucket = new RateLimitBucket({ name, maxRequests, windowMs });
+  bucketRegistry.set(name, bucket);
 
   return (req, res, next) => {
     // Determine client identifier
@@ -108,12 +155,13 @@ export function createRateLimiter({ name, maxRequests, windowMs = 60 * 1000 }) {
   };
 }
 
-// Pre-configured rate limiters per 12_SECURITY_SPEC.md §9
-export const authLimiter = createRateLimiter({ name: 'auth', maxRequests: 20, windowMs: 60 * 1000 });
-export const uploadLimiter = createRateLimiter({ name: 'uploads', maxRequests: 30, windowMs: 60 * 1000 });
-export const analysisLimiter = createRateLimiter({ name: 'analysis', maxRequests: 40, windowMs: 60 * 1000 });
-export const chatLimiter = createRateLimiter({ name: 'chat', maxRequests: 60, windowMs: 60 * 1000 });
-export const discoveryLimiter = createRateLimiter({ name: 'discovery', maxRequests: 60, windowMs: 60 * 1000 });
-export const monitoringLimiter = createRateLimiter({ name: 'monitoring', maxRequests: 40, windowMs: 60 * 1000 });
-export const reportLimiter = createRateLimiter({ name: 'reports', maxRequests: 30, windowMs: 60 * 1000 });
-export const generalLimiter = createRateLimiter({ name: 'general', maxRequests: 150, windowMs: 60 * 1000 });
+// Pre-configured route-class rate limiters using shared rateLimitConfig (12_SECURITY_SPEC.md §9)
+export const authLimiter = createRateLimiter({ name: 'auth', ...rateLimitConfig.auth });
+export const uploadLimiter = createRateLimiter({ name: 'uploads', ...rateLimitConfig.uploads });
+export const analysisLimiter = createRateLimiter({ name: 'analysis', ...rateLimitConfig.analysis });
+export const chatLimiter = createRateLimiter({ name: 'chat', ...rateLimitConfig.chat });
+export const discoveryLimiter = createRateLimiter({ name: 'discovery', ...rateLimitConfig.discovery });
+export const monitoringLimiter = createRateLimiter({ name: 'monitoring', ...rateLimitConfig.monitoring });
+export const reportLimiter = createRateLimiter({ name: 'reports', ...rateLimitConfig.reports });
+export const readsLimiter = createRateLimiter({ name: 'reads', ...rateLimitConfig.reads });
+export const generalLimiter = createRateLimiter({ name: 'general', ...rateLimitConfig.general });

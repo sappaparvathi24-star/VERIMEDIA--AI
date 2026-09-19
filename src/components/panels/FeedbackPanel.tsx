@@ -91,7 +91,7 @@ function FeedItem({ result, onClick }: { result: DetectionResult; onClick: () =>
         <span style={{ fontSize: 10, color: '#4a5568' }}>{result.content_type}</span>
         <span style={{ fontSize: 10, color: '#4a5568' }}>·</span>
         <span style={{ fontSize: 10, color: '#4a5568', fontFamily: 'monospace' }}>
-          {result.processing_ms.toFixed(0)}ms
+          {(result.processing_ms || 0).toFixed(0)}ms
         </span>
         {result.case_id && (
           <>

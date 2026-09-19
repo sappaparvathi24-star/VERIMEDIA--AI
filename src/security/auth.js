@@ -13,6 +13,23 @@ const revokedTokens = new Set();
 const apiKeyCache = new Map();
 
 /**
+ * Sanitize filename or relative path to prevent directory traversal attacks
+ */
+export function sanitizePath(inputPath = '') {
+  if (!inputPath || typeof inputPath !== 'string') return '';
+  // Remove null bytes
+  let clean = inputPath.replace(/\0/g, '');
+  // Extract basename or replace directory separators with underscores
+  clean = clean.replace(/\\/g, '/');
+  // Strip relative parent traversal segments
+  clean = clean.replace(/\.\.\//g, '').replace(/\.\./g, '');
+  // Replace forward slashes with underscores if nested
+  clean = clean.replace(/\//g, '_');
+  // Trim leading/trailing whitespace and invalid chars
+  return clean.replace(/^_+|_+$/g, '');
+}
+
+/**
  * Hash password with PBKDF2
  */
 export function hashPassword(password, salt = 'vm_pw_salt') {

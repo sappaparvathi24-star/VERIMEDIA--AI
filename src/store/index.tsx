@@ -25,6 +25,7 @@ interface AppState {
   showDMCAModal: boolean
   showMonitoringModal: boolean
   showHeroOverlay: boolean
+  showCommandPalette: boolean
   selectedCaseId: string | null
 
   // Stats
@@ -43,6 +44,7 @@ interface AppState {
   setShowDMCAModal: (v: boolean) => void
   setShowMonitoringModal: (v: boolean) => void
   setShowHeroOverlay: (v: boolean) => void
+  setShowCommandPalette: (v: boolean) => void
   setSelectedCaseId: (id: string | null) => void
   updateStats: (r: DetectionResult) => void
   clearResults: () => void
@@ -56,11 +58,12 @@ export const useStore = create<AppState>((set, get) => ({
   cases: [],
   casesLoading: false,
   health: null,
-  activeTab: 'feed',
+  activeTab: 'scanner',
   showEvidenceModal: false,
   showDMCAModal: false,
   showMonitoringModal: false,
-  showHeroOverlay: true,
+  showHeroOverlay: false,
+  showCommandPalette: false,
   selectedCaseId: null,
   stats: { total: 0, threats: 0, dmca: 0, clean: 0 },
 
@@ -76,6 +79,7 @@ export const useStore = create<AppState>((set, get) => ({
   setShowDMCAModal: (v) => set({ showDMCAModal: v }),
   setShowMonitoringModal: (v) => set({ showMonitoringModal: v }),
   setShowHeroOverlay: (v) => set({ showHeroOverlay: v }),
+  setShowCommandPalette: (v) => set({ showCommandPalette: v }),
   setSelectedCaseId: (id) => set({ selectedCaseId: id }),
   updateStats: (r) => set(s => {
     const d = r.ai_analysis.decision

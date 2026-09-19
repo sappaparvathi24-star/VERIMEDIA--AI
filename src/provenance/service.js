@@ -20,6 +20,10 @@ class ProvenanceService {
     seedProvenanceData(this.store);
   }
 
+  async hydrate() {
+    await this.store.hydrate();
+  }
+
   getInvestigations() {
     return Array.from(this.store.investigations.values());
   }

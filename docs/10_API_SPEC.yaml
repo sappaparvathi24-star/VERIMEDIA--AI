@@ -1,0 +1,187 @@
+openapi: 3.0.3
+info:
+  title: VeriMedia AI Unified Forensic & Provenance API
+  version: 1.2.0
+  description: >
+    Production REST API for VeriMedia AI — Deepfake forensics, perceptual hashing,
+    claim decomposition, multi-source provenance discovery, lineage reconstruction,
+    and evidentiary dossier generation.
+servers:
+  - url: /
+    description: Current Environment Host
+paths:
+  /health:
+    get:
+      summary: Health check and Gemini connectivity
+      responses:
+        '200':
+          description: Operational health status
+  /api/health:
+    get:
+      summary: API health endpoint
+      responses:
+        '200':
+          description: Operational health status
+  /api/investigations:
+    get:
+      summary: List all media provenance investigations
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: List of investigation dossiers
+    post:
+      summary: Create a new media investigation dossier
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - title
+              properties:
+                title:
+                  type: string
+                description:
+                  type: string
+      responses:
+        '201':
+          description: Created investigation
+  /api/investigations/{id}/artifacts:
+    post:
+      summary: Register and analyze a media artifact
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '201':
+          description: Registered artifact with cryptographic & perceptual fingerprints
+  /api/investigations/{id}/analyze:
+    post:
+      summary: Run automated forensic analysis on investigation artifacts
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Forensic analysis findings and observations
+  /api/investigations/{id}/reasoning:
+    get:
+      summary: Fuse multi-source evidence into probabilistic reasoning
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Fused reasoning chain with independence group collapse
+  /api/investigations/{id}/storyline:
+    get:
+      summary: Chronological 7-stage media provenance storyline
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Evidentiary media storyline
+  /api/investigations/{id}/report:
+    post:
+      summary: Generate immutable evidentiary report snapshot
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Signed investigation dossier snapshot
+  /api/investigations/{id}/report/export/html:
+    get:
+      summary: Export formatted high-resolution HTML dossier
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Printable HTML forensic dossier
+  /api/claims/{id}/assess:
+    post:
+      summary: Epistemic evaluation of an extracted claim
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Claim assessment with supporting, contradicting, and limitation notes
+  /api/search/multi-source:
+    post:
+      summary: Federated open web OSINT search across indexed platforms
+      responses:
+        '200':
+          description: Multi-source discovery results
+  /chat:
+    post:
+      summary: Interactive forensic copilot chat (Gemini-backed)
+      responses:
+        '200':
+          description: AI response with citations
+
+  # --------------------------------------------------------------------------
+  # Legacy Compatibility Endpoints (Deprecated)
+  # --------------------------------------------------------------------------
+  /api/v1/detect/:
+    post:
+      deprecated: true
+      summary: "[DEPRECATED] Legacy perceptual detection endpoint"
+      description: >
+        Deprecated in favor of `/api/investigations/{id}/analyze`.
+        Will be sunset on 2026-12-31. Returns `X-API-Deprecated: true` header.
+      responses:
+        '200':
+          description: Perceptual match results
+  /api/v1/cases/:
+    get:
+      deprecated: true
+      summary: "[DEPRECATED] Legacy surveillance cases feed"
+      description: >
+        Deprecated in favor of `/api/investigations`.
+        Will be sunset on 2026-12-31. Returns `X-API-Deprecated: true` header.
+      responses:
+        '200':
+          description: Legacy case records list
+  /api/v1/enforce/dmca:
+    post:
+      deprecated: true
+      summary: "[DEPRECATED] Legacy DMCA takedown generator"
+      description: >
+        Deprecated in favor of `/api/investigations/{id}/report`.
+        Will be sunset on 2026-12-31. Returns `X-API-Deprecated: true` header.
+      responses:
+        '200':
+          description: Generated DMCA notice

@@ -201,5 +201,5 @@ export interface GraphEdge {
   width: number
 }
 
-export type TabId = 'feed' | 'trends' | 'origin' | 'forensic' | 'cases' | 'system'
+export type TabId = 'scanner' | 'propagation' | 'forensic' | 'origin' | 'cases' | 'trends' | 'system' | 'feed'
 export type ScenarioKey = Scenario

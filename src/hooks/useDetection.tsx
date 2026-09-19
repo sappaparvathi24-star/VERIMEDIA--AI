@@ -21,8 +21,10 @@ export function useDetection() {
       updateStats(result)
       setShowEvidenceModal(true)
       return result
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Detection failed'
+    } catch (err: any) {
+      const serverMsg = err?.response?.data?.error || err?.response?.data?.message
+      const msg = serverMsg || (err instanceof Error ? err.message : 'Detection failed. Please try again.')
+      console.error('Detection error:', err)
       setScanError(msg)
       return null
     } finally {

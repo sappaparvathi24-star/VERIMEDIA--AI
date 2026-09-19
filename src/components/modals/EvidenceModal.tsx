@@ -259,7 +259,7 @@ export function EvidenceModal({ result }: Props) {
                 {Math.round(authorship.confidence * 100)}%
               </p>
               <p style={{ fontSize: 11, color: '#8899aa', marginTop: 4 }}>
-                {authorship.origin_node} · Δ{authorship.embedding_distance.toFixed(3)}
+                {authorship.origin_node || 'Origin'} · Δ{(authorship.embedding_distance ?? 0).toFixed(3)}
               </p>
             </div>
           </div>

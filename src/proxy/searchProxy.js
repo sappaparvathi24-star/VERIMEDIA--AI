@@ -2,15 +2,13 @@
 // Stateless pass-through proxy with 10-min caching, rate limiting, and 0 fabrication.
 import https from 'https';
 import http from 'http';
+import { checkRateLimit } from '../security/rateLimiter.js';
+
+export { checkRateLimit };
 
 // In-memory 10-minute cache
 const cache = new Map();
 const CACHE_TTL_MS = 10 * 60 * 1000;
-
-// Simple sliding-window rate limiter per client IP
-const rateLimits = new Map();
-const RATE_LIMIT_WINDOW_MS = 60 * 1000;
-const MAX_REQUESTS_PER_WINDOW = 60;
 
 // Google CSE daily quota tracker (resets at UTC midnight)
 let googleCseDailyCount = 0;
@@ -27,20 +25,6 @@ function checkGoogleQuota() {
 
 function incrementGoogleQuota() {
   googleCseDailyCount++;
-}
-
-export function checkRateLimit(clientIp) {
-  const now = Date.now();
-  const entry = rateLimits.get(clientIp) || { count: 0, resetAt: now + RATE_LIMIT_WINDOW_MS };
-  if (now > entry.resetAt) {
-    entry.count = 1;
-    entry.resetAt = now + RATE_LIMIT_WINDOW_MS;
-    rateLimits.set(clientIp, entry);
-    return true;
-  }
-  entry.count++;
-  rateLimits.set(clientIp, entry);
-  return entry.count <= MAX_REQUESTS_PER_WINDOW;
 }
 
 export function getCached(key) {

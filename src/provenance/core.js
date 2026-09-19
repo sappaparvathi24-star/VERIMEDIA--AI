@@ -258,34 +258,10 @@ export class ProvenanceStore {
     this.monitoringJobs = new Map();
     this.alerts = new Map();
     this.reportAuditRecords = new Map();
+  }
 
-    // Hydrate existing records from SQLite if present
-    try {
-      const storedInvs = persistence.loadInvestigations();
-      for (const inv of storedInvs) {
-        this.investigations.set(inv.id, inv);
-      }
-      const storedArts = persistence.loadArtifacts();
-      for (const art of storedArts) {
-        this.artifacts.set(art.id, art);
-      }
-      const storedRuns = persistence.loadAnalysisRuns();
-      for (const run of storedRuns) {
-        this.analysisRuns.set(run.id, run);
-      }
-      const storedObs = persistence.loadObservations();
-      for (const obs of storedObs) {
-        this.observations.set(obs.id, obs);
-      }
-      const storedEvs = persistence.loadEvidence();
-      for (const ev of storedEvs) {
-        this.evidence.set(ev.id, ev);
-      }
-      const storedFindings = persistence.loadFindings();
-      for (const fnd of storedFindings) {
-        this.findings.set(fnd.id, fnd);
-      }
-    } catch (_) {}
+  async hydrate() {
+    await persistence.hydrateAll(this);
   }
 
   clear() {

@@ -45,7 +45,7 @@ export function OriginPanel() {
           {[
             { label: 'Confidence',        value: `${Math.round(authorship.confidence * 100)}%`, color: '#00d4ff' },
             { label: 'Origin Node',       value: authorship.origin_node,                        color: '#22c55e' },
-            { label: 'Embedding Δ',       value: authorship.embedding_distance.toFixed(4),      color: '#f59e0b' },
+            { label: 'Embedding Δ',       value: (authorship?.embedding_distance ?? 0).toFixed(4), color: '#f59e0b' },
             { label: 'Visual Similarity', value: `${Math.round(similarity * 100)}%`,            color: '#a855f7' },
           ].map(item => (
             <div key={item.label} style={{ background: '#080c10', borderRadius: 6, padding: '10px 12px' }}>

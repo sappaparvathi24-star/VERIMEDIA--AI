@@ -1,7 +1,6 @@
 import { useState, useRef } from 'react'
-import { useDetection } from '../../hooks/useDetection'
 import { useStore } from '../../store'
-import { createInvestigation, uploadArtifactFile } from '../../services/api'
+import { useDetection } from '../../hooks/useDetection'
 import { Tooltip } from '../ui/Tooltip'
 import type { Platform, ContentType, Scenario } from '../../types'
 
@@ -12,25 +11,24 @@ const CATEGORIZED_SCENARIOS: {
   {
     category: 'AUTHENTIC',
     scenarios: [
-      { key: 'normal', label: 'Authentic', color: '#22c55e', icon: '✅', tooltip: 'Authentic original content with intact signatures and verified provenance' },
-      { key: 'education', label: 'Fair Use', color: '#10b981', icon: '🎓', tooltip: 'Educational breakdown with commentary under fair use exemptions' },
+      { key: 'normal', label: 'Authentic Original', color: '#22c55e', icon: '✅', tooltip: 'Authentic original content with intact signatures and verified provenance' },
+      { key: 'education', label: 'Fair Use Review', color: '#10b981', icon: '🎓', tooltip: 'Educational breakdown with commentary under fair use exemptions' },
     ]
   },
   {
     category: 'SYNTHETIC & AI',
     scenarios: [
-      { key: 'deepfake', label: 'Deepfake AI', color: '#ef4444', icon: '🤖', tooltip: 'AI synthesized video/audio with neural face-swap or voice clone' },
-      { key: 'scam', label: 'Scam Repost', color: '#f87171', icon: '⚠️', tooltip: 'Unauthorized clip re-upload driving unauthorized promotional links' },
+      { key: 'deepfake', label: 'Deepfake AI Video', color: '#ef4444', icon: '🤖', tooltip: 'AI synthesized video/audio with neural face-swap or voice clone' },
+      { key: 'scam', label: 'Scam Repost Link', color: '#f87171', icon: '⚠️', tooltip: 'Unauthorized clip re-upload driving unauthorized promotional links' },
     ]
   },
   {
-    category: 'TAMPERED & EDITED',
+    category: 'TAMPERED',
     scenarios: [
       { key: 'crop', label: 'Crop Removal', color: '#f97316', icon: '✂️', tooltip: 'Spatially cropped media with removed branding/watermarks' },
       { key: 'manipulated', label: 'Frame Edit', color: '#f43f5e', icon: '🎞️', tooltip: 'Frame-edited or re-compressed video with altered audio track' },
       { key: 'news', label: 'Unattributed', color: '#f59e0b', icon: '📰', tooltip: 'Syndicated news re-upload lacking primary creator attribution' },
       { key: 'blur', label: 'Blur / Filter', color: '#818cf8', icon: '💧', tooltip: 'Spatial blur & compression noise applied to alter visual hashes' },
-      { key: 'entertainment', label: 'Viral Edit', color: '#fb923c', icon: '🔥', tooltip: 'Viral social media edit re-posted for high engagement' },
     ]
   },
   {
@@ -48,34 +46,34 @@ const PLATFORMS: Platform[] = ['YouTube', 'Instagram', 'TikTok', 'X / Twitter', 
 const CONTENT_TYPES: ContentType[] = ['sports', 'news', 'entertainment', 'education', 'unknown']
 
 const USERNAMES: Record<Scenario, string> = {
-  normal:        'official_sports_clips',
-  education:     'edu_highlights',
-  news:          'news_reposter',
-  crop:          'sports_clips_4u',
-  blur:          'blurred_sports',
-  entertainment: 'viral_clips_now',
-  manipulated:   'reuploader_hd',
-  scam:          'legit_clips_real',
-  insufficient:  'random_user_xyz',
-  deepfake:      'ai_generated_news',
-  adversarial:   'adversarial_actor',
+  normal: 'verified_creator',
+  crop: 'clipper_vids',
+  blur: 'anon_uploads',
+  manipulated: 'deep_edits_daily',
+  deepfake: 'ai_generated_news',
+  adversarial: 'stealth_content',
+  news: 'repost_syndicate',
+  entertainment: 'viral_moments',
+  education: 'study_breakdown',
+  scam: 'crypto_giveaway_bot',
+  insufficient: 'low_res_leak',
 }
 
 const CAPTIONS: Record<Scenario, string> = {
-  normal:        'Amazing goal! Full match highlights 🔥 #sports',
-  education:     'Educational breakdown of this iconic play [commentary]',
-  news:          'Breaking: watch this incredible moment! No credit listed',
-  crop:          'Check out this clip! (watermark removed) 🏆',
-  blur:          'Super viral clip!!! watch till end 😱',
-  entertainment: 'OMG look at this!! 😂 viral moment #trending',
-  manipulated:   'Crazy moment from last night\'s game! #football',
-  scam:          'FREE TICKETS if you share this! Not affiliated',
-  insufficient:  'just some random content lol',
-  deepfake:      'BREAKING: exclusive leaked interview with the player!',
-  adversarial:   'Totally original content I filmed myself',
+  normal: 'Highlights from last night match with verified broadcast feed',
+  crop: 'Insane clip without watermark - link in bio!',
+  blur: 'Leaked raw footage filtered to bypass automated scanner',
+  manipulated: 'Re-edited ending scene with custom voiceover track',
+  deepfake: 'BREAKING: exclusive leaked interview with the player!',
+  adversarial: 'Exclusive clip with perturbed spatial signature pattern',
+  news: 'Unattributed news re-upload across multiple social channels',
+  entertainment: 'Viral video remix taking social media by storm',
+  education: 'Detailed fair-use breakdown analyzing the key plays',
+  scam: 'DOUBLE YOUR COINS NOW! Offical stream replay link below',
+  insufficient: 'Corrupted 144p clip snippet uploaded via proxy',
 }
 
-export function ControlBar() {
+export function ScannerBar() {
   const { isScanning, scanError, setScanError } = useStore()
   const { runDetection } = useDetection()
 
@@ -87,36 +85,12 @@ export function ControlBar() {
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isUploading, setIsUploading] = useState(false)
+  const [uploadedArtifact, setUploadedArtifact] = useState<{
+    id: string
+    filename: string
+    sha256?: string
+  } | null>(null)
   const [uploadMessage, setUploadMessage] = useState<string | null>(null)
-  const [uploadedArtifact, setUploadedArtifact] = useState<{ artifactId: string; investigationId: string; filename: string } | null>(null)
-
-  async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setIsUploading(true)
-    setUploadMessage(`Processing ${file.name}...`)
-    try {
-      const inv = await createInvestigation({ title: `Upload: ${file.name}` })
-      const res = await uploadArtifactFile(inv.id, file)
-      const sha = res?.extractedMetadata?.sha256 || ''
-      const artId = res?.artifact?.id
-      if (artId) {
-        setUploadedArtifact({
-          artifactId: artId,
-          investigationId: inv.id,
-          filename: file.name
-        })
-      }
-      setUploadMessage(`Uploaded ${file.name}! Real artifact pipeline active. SHA: ${sha.slice(0, 16)}...`)
-      setTimeout(() => setUploadMessage(null), 8000)
-    } catch (err: any) {
-      setUploadMessage(`Upload failed: ${err.message}`)
-      setTimeout(() => setUploadMessage(null), 6000)
-    } finally {
-      setIsUploading(false)
-      if (fileInputRef.current) fileInputRef.current.value = ''
-    }
-  }
 
   function onScenarioChange(sc: Scenario) {
     setScenario(sc)
@@ -132,6 +106,44 @@ export function ControlBar() {
     setCaption(CAPTIONS[sc])
   }
 
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setIsUploading(true)
+    setUploadMessage(null)
+    setScanError(null)
+
+    try {
+      const formData = new FormData()
+      formData.append('media', file)
+
+      const res = await fetch('/api/artifacts/register', {
+        method: 'POST',
+        body: formData
+      })
+
+      if (!res.ok) {
+        throw new Error(`Artifact registration failed with status ${res.status}`)
+      }
+
+      const data = await res.json()
+      if (data.status === 'registered' && data.artifact) {
+        setUploadedArtifact(data.artifact)
+        setUploadMessage(`Media artifact registered: ${data.artifact.filename} (SHA-256: ${(data.artifact.sha256 || '').slice(0, 12)}...)`)
+      } else {
+        throw new Error('Invalid response structure from artifact register endpoint')
+      }
+    } catch (err: unknown) {
+      console.error('File upload error:', err)
+      const msg = err instanceof Error ? err.message : String(err)
+      setScanError(`Artifact registration error: ${msg}`)
+    } finally {
+      setIsUploading(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
   async function handleScan() {
     await runDetection({
       platform,
@@ -139,8 +151,7 @@ export function ControlBar() {
       caption,
       content_type: contentType,
       scenario,
-      artifactId: uploadedArtifact?.artifactId,
-      investigationId: uploadedArtifact?.investigationId
+      artifactId: uploadedArtifact ? uploadedArtifact.id : undefined
     })
   }
 
@@ -149,28 +160,29 @@ export function ControlBar() {
   return (
     <div style={{
       background: '#0d1117',
-      borderBottom: '1px solid #1e2d3d',
-      padding: '14px 20px',
-      flexShrink: 0,
+      border: '1px solid #1e2d3d',
+      borderRadius: 12,
+      padding: '16px 20px',
+      marginBottom: 16,
+      boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)',
       display: 'flex',
       flexDirection: 'column',
-      gap: 12
+      gap: 14
     }}>
-      {/* Top Row: Quick Presets + Scenario Chips */}
+      {/* Top Row: Presets & Active Scenario */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
-        {/* Quick Presets */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 10, color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+          <span style={{ fontSize: 10, color: '#64748b', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
             Quick Presets:
           </span>
           <button
             onClick={() => applyPreset('deepfake', 'YouTube', 'news')}
             style={{
-              padding: '3px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600,
+              padding: '4px 12px', borderRadius: 6, fontSize: 11, fontWeight: 600,
               background: scenario === 'deepfake' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(30, 41, 59, 0.6)',
               border: `1px solid ${scenario === 'deepfake' ? '#ef4444' : '#334155'}`,
               color: scenario === 'deepfake' ? '#f87171' : '#cbd5e1', cursor: 'pointer', transition: 'all 0.15s',
-              display: 'flex', alignItems: 'center', gap: 5
+              display: 'flex', alignItems: 'center', gap: 6
             }}
           >
             <span>🤖</span> Deepfake Video
@@ -179,39 +191,38 @@ export function ControlBar() {
           <button
             onClick={() => applyPreset('crop', 'TikTok', 'sports')}
             style={{
-              padding: '3px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600,
+              padding: '4px 12px', borderRadius: 6, fontSize: 11, fontWeight: 600,
               background: scenario === 'crop' ? 'rgba(249, 115, 22, 0.2)' : 'rgba(30, 41, 59, 0.6)',
               border: `1px solid ${scenario === 'crop' ? '#f97316' : '#334155'}`,
               color: scenario === 'crop' ? '#fb923c' : '#cbd5e1', cursor: 'pointer', transition: 'all 0.15s',
-              display: 'flex', alignItems: 'center', gap: 5
+              display: 'flex', alignItems: 'center', gap: 6
             }}
           >
-            <span>✂️</span> Crop & Watermark Removal
+            <span>✂️</span> Crop & Watermarks
           </button>
 
           <button
             onClick={() => applyPreset('normal', 'X / Twitter', 'sports')}
             style={{
-              padding: '3px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600,
+              padding: '4px 12px', borderRadius: 6, fontSize: 11, fontWeight: 600,
               background: scenario === 'normal' ? 'rgba(34, 197, 94, 0.2)' : 'rgba(30, 41, 59, 0.6)',
               border: `1px solid ${scenario === 'normal' ? '#22c55e' : '#334155'}`,
               color: scenario === 'normal' ? '#4ade80' : '#cbd5e1', cursor: 'pointer', transition: 'all 0.15s',
-              display: 'flex', alignItems: 'center', gap: 5
+              display: 'flex', alignItems: 'center', gap: 6
             }}
           >
             <span>✅</span> Authentic Source
           </button>
         </div>
 
-        {/* Selected Scenario Badge */}
         {selectedSc && (
           <div style={{
             display: 'flex', alignItems: 'center', gap: 6,
-            padding: '3px 10px', borderRadius: 20,
-            background: `${selectedSc.color}15`,
+            padding: '4px 12px', borderRadius: 20,
+            background: `${selectedSc.color}18`,
             border: `1px solid ${selectedSc.color}40`
           }}>
-            <span style={{ fontSize: 12 }}>{selectedSc.icon}</span>
+            <span style={{ fontSize: 13 }}>{selectedSc.icon}</span>
             <span style={{ fontSize: 11, color: selectedSc.color, fontWeight: 700, fontFamily: 'monospace' }}>
               SCENARIO: {selectedSc.label.toUpperCase()}
             </span>
@@ -219,10 +230,10 @@ export function ControlBar() {
         )}
       </div>
 
-      {/* Scenario Category Chips */}
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+      {/* Scenario Categories */}
+      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center' }}>
         {CATEGORIZED_SCENARIOS.map(cat => (
-          <div key={cat.category} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <div key={cat.category} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
             <span style={{ fontSize: 9, color: '#475569', fontWeight: 800, letterSpacing: '0.1em', marginRight: 2 }}>
               {cat.category}:
             </span>
@@ -254,23 +265,23 @@ export function ControlBar() {
         ))}
       </div>
 
-      {/* Main Scan Bar Row */}
+      {/* Input Controls Bar */}
       <div style={{
         display: 'flex',
         gap: 10,
         alignItems: 'center',
         flexWrap: 'wrap',
         background: '#0f172a',
-        padding: '8px 12px',
+        padding: '10px 14px',
         borderRadius: 8,
         border: '1px solid #1e293b'
       }}>
-        {/* Platform Selector */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#1e293b', padding: '0 8px', borderRadius: 6, border: '1px solid #334155' }}>
+        {/* Platform Dropdown */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#1e293b', padding: '0 10px', borderRadius: 6, border: '1px solid #334155' }}>
           <span style={{ fontSize: 12 }}>🌐</span>
           <select
             className="vm-select"
-            style={{ width: 120, border: 'none', background: 'transparent', padding: '7px 4px', fontSize: 12, fontWeight: 600, color: '#f8fafc' }}
+            style={{ width: 130, border: 'none', background: 'transparent', padding: '8px 4px', fontSize: 12, fontWeight: 600, color: '#f8fafc' }}
             value={platform}
             onChange={e => setPlatform(e.target.value as Platform)}
           >
@@ -279,11 +290,11 @@ export function ControlBar() {
         </div>
 
         {/* Content Type */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#1e293b', padding: '0 8px', borderRadius: 6, border: '1px solid #334155' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#1e293b', padding: '0 10px', borderRadius: 6, border: '1px solid #334155' }}>
           <span style={{ fontSize: 12 }}>📁</span>
           <select
             className="vm-select"
-            style={{ width: 110, border: 'none', background: 'transparent', padding: '7px 4px', fontSize: 12, fontWeight: 600, color: '#f8fafc' }}
+            style={{ width: 115, border: 'none', background: 'transparent', padding: '8px 4px', fontSize: 12, fontWeight: 600, color: '#f8fafc' }}
             value={contentType}
             onChange={e => setContentType(e.target.value as ContentType)}
           >
@@ -294,16 +305,16 @@ export function ControlBar() {
         {/* Username */}
         <input
           className="vm-input"
-          style={{ flex: '0 0 160px', background: '#1e293b', border: '1px solid #334155', borderRadius: 6, padding: '7px 10px', fontSize: 12 }}
+          style={{ flex: '0 0 160px', background: '#1e293b', border: '1px solid #334155', borderRadius: 6, padding: '8px 12px', fontSize: 12 }}
           value={username}
           onChange={e => setUsername(e.target.value)}
           placeholder="@username"
         />
 
-        {/* Caption Input */}
+        {/* Caption */}
         <input
           className="vm-input"
-          style={{ flex: 1, minWidth: 220, background: '#1e293b', border: '1px solid #334155', borderRadius: 6, padding: '7px 10px', fontSize: 12 }}
+          style={{ flex: 1, minWidth: 200, background: '#1e293b', border: '1px solid #334155', borderRadius: 6, padding: '8px 12px', fontSize: 12 }}
           value={caption}
           onChange={e => setCaption(e.target.value)}
           placeholder="Media title or post caption..."
@@ -312,15 +323,17 @@ export function ControlBar() {
         <input
           type="file"
           ref={fileInputRef}
-          onChange={handleFileSelected}
+          onChange={handleFileUpload}
           style={{ display: 'none' }}
           accept="image/*,video/*,audio/*"
         />
 
-        {/* File Upload CTA */}
-        <Tooltip content="Upload local image/audio/video file to calculate SHA-256 and register artifact" position="top">
+        {/* File Upload Button */}
+        <Tooltip content="Upload local media file to calculate SHA-256 and run real forensic pipeline" position="top">
           <button
             className="vm-btn"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isUploading}
             style={{
               flexShrink: 0,
               background: 'rgba(56, 189, 248, 0.1)',
@@ -328,35 +341,33 @@ export function ControlBar() {
               color: '#38bdf8',
               fontSize: 12,
               fontWeight: 600,
-              padding: '7px 12px',
+              padding: '8px 14px',
               borderRadius: 6,
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               gap: 6
             }}
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isUploading}
           >
-            {isUploading ? '⌛ Hashing...' : '📁 Upload Artifact'}
+            <span>📁</span> {isUploading ? 'Hashing...' : 'Upload Media'}
           </button>
         </Tooltip>
 
-        {/* Run Detection CTA Button */}
-        <Tooltip content={uploadedArtifact ? `Run real forensic pipeline on uploaded media ${uploadedArtifact.filename}` : "Run detection pipeline on selected platform and scenario"} position="top">
+        {/* Run Detection Trigger */}
+        <Tooltip content={uploadedArtifact ? `Run real forensic pipeline on uploaded file ${uploadedArtifact.filename}` : "Run multi-signal ML deepfake detection pipeline"} position="top">
           <button
             className="vm-btn"
             style={{
               flexShrink: 0,
-              minWidth: 160,
+              minWidth: 170,
               justifyContent: 'center',
               background: 'linear-gradient(135deg, #00d4ff 0%, #0284c7 100%)',
               color: '#000',
               fontWeight: 800,
               fontSize: 12,
-              padding: '8px 18px',
+              padding: '9px 20px',
               borderRadius: 6,
-              boxShadow: '0 0 15px rgba(0, 212, 255, 0.35)',
+              boxShadow: '0 0 16px rgba(0, 212, 255, 0.35)',
               border: 'none',
               cursor: 'pointer'
             }}
@@ -382,9 +393,9 @@ export function ControlBar() {
           display: 'inline-flex',
           alignItems: 'center',
           gap: 8,
-          padding: '4px 10px',
-          background: 'rgba(56,189,248,0.12)',
-          border: '1px solid rgba(56,189,248,0.3)',
+          padding: '6px 12px',
+          background: 'rgba(56, 189, 248, 0.12)',
+          border: '1px solid rgba(56, 189, 248, 0.3)',
           borderRadius: 6,
           color: '#38bdf8',
           fontSize: 11,
@@ -393,15 +404,7 @@ export function ControlBar() {
           <span>🔬 Active Artifact: {uploadedArtifact.filename}</span>
           <button
             onClick={() => setUploadedArtifact(null)}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: '#8899aa',
-              cursor: 'pointer',
-              fontSize: 11,
-              padding: '0 4px'
-            }}
-            title="Clear loaded media"
+            style={{ background: 'transparent', border: 'none', color: '#f87171', cursor: 'pointer', fontWeight: 'bold' }}
           >
             ✕
           </button>
@@ -429,41 +432,9 @@ export function ControlBar() {
           border: '1px solid rgba(239,68,68,0.35)',
           borderRadius: 6,
           color: '#f87171',
-          fontSize: 12,
-          fontFamily: 'monospace',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 12
+          fontSize: 12
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span>⚠️</span>
-            <span>{scanError}</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <button
-              onClick={handleScan}
-              disabled={isScanning}
-              className="vm-btn vm-btn-danger"
-              style={{ padding: '3px 10px', fontSize: 11 }}
-            >
-              ↻ Try Again
-            </button>
-            <button
-              onClick={() => setScanError(null)}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: '#8899aa',
-                cursor: 'pointer',
-                fontSize: 13,
-                padding: '2px 6px'
-              }}
-              title="Dismiss error"
-            >
-              ✕
-            </button>
-          </div>
+          ⚠️ {scanError}
         </div>
       )}
     </div>

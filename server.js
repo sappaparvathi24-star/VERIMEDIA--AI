@@ -49,11 +49,35 @@ import {
   AuditAction,
   AuditObjectType
 } from './src/audit/auditService.js';
+import { persistence } from './src/db/persistence.js';
+import {
+  authenticate,
+  investigationAccessGuard,
+  entityAccessGuard,
+  logAudit
+} from './src/middleware/auth.js';
 
 dotenv.config();
 
 // Seed default auth entities (organizations and users per 12_SECURITY_SPEC.md §5-6)
 seedDefaultAuthEntities();
+
+// Asynchronously hydrate store from Supabase PostgreSQL if configured
+await provenanceService.hydrate();
+
+// Periodic snapshotting loop to Supabase (every 10 seconds)
+setInterval(() => {
+  persistence.snapshotAll(provenanceService.store);
+}, 10 * 1000).unref?.();
+
+// Graceful shutdown flush
+const gracefulShutdown = async () => {
+  console.log('🔄 [Server] Flushing final state snapshot to database...');
+  await persistence.snapshotAll(provenanceService.store);
+  process.exit(0);
+};
+process.on('SIGINT', gracefulShutdown);
+process.on('SIGTERM', gracefulShutdown);
 
 const multiSourceDiscovery = new MultiSourceDiscoveryManager();
 
@@ -628,13 +652,32 @@ VeriMedia AI Rights Enforcement System on behalf of ${rightsHolder}`;
   });
 }
 
-app.post('/dmca-reasoning', handleDMCA);
-app.post('/dmca/generate', handleDMCA);
+// ---------------------------------------------------------------------------
+// Legacy & Compatibility Endpoints (Slated for Deprecation / v1 Support)
+// Canonical endpoints are located under /api/investigations/* and /api/claims/*
+// ---------------------------------------------------------------------------
+
+function applyLegacyDeprecationHeaders(res, canonicalEndpoint) {
+  res.setHeader('X-API-Deprecated', 'true');
+  res.setHeader('X-API-Sunset', '2026-12-31T23:59:59Z');
+  res.setHeader('Warning', `299 - "This endpoint is part of the legacy rights-enforcement API family and is deprecated. Migrate to ${canonicalEndpoint}."`);
+}
+
+app.post('/dmca-reasoning', (req, res, next) => {
+  applyLegacyDeprecationHeaders(res, '/api/investigations/:id/report');
+  handleDMCA(req, res, next);
+});
+
+app.post('/dmca/generate', (req, res, next) => {
+  applyLegacyDeprecationHeaders(res, '/api/investigations/:id/report');
+  handleDMCA(req, res, next);
+});
 
 // ---------------------------------------------------------------------------
-// API v1 compatibility endpoints for frontend services
+// API v1 compatibility endpoints for frontend services (Deprecated)
 // ---------------------------------------------------------------------------
 app.post('/api/v1/detect/', (req, res) => {
+  applyLegacyDeprecationHeaders(res, '/api/investigations/:id/analyze');
   const {
     scenario = 'normal',
     platform = 'YouTube',
@@ -692,7 +735,7 @@ app.post('/api/v1/detect/', (req, res) => {
         content_type,
         scenario: 'real_pipeline',
         similarity: Number(highestSimilarity.toFixed(2)),
-        fingerprint_hash: artifact.perceptualHash || artifact.sha256.slice(0, 16),
+        fingerprint_hash: artifact.perceptualHash || (artifact.sha256 ? artifact.sha256.slice(0, 16) : 'N/A'),
         is_demo: false,
         mode: 'REAL_PIPELINE',
         disclaimer: null,
@@ -883,40 +926,131 @@ app.post('/api/v1/detect/', (req, res) => {
 });
 
 app.get('/api/v1/cases/', (req, res) => {
+  applyLegacyDeprecationHeaders(res, '/api/investigations');
   res.json([
     {
-      id: 'VM-98210',
+      id: 'case_1',
+      case_id: 'VM-98210',
       workTitle: 'Global Championship Final Highlights',
       platform: 'TikTok',
-      infringingUrl: 'https://tiktok.com/@sportsclip/video/7238192',
-      status: 'TAKEDOWN_SUBMITTED',
+      username: 'sportsclip',
+      severity: 'CRITICAL',
+      decision: 'EMERGENCY_TAKEDOWN',
+      content_type: 'sports',
+      status: 'dmca_filed',
+      timestamp: new Date(Date.now() - 3600000).toISOString(),
+      dmca_filed: true,
       similarity: 0.96,
+      infringingUrl: 'https://tiktok.com/@sportsclip/video/7238192',
       is_demo: true,
       mode: 'SAMPLE_DATA',
-      disclaimer: 'SAMPLE DATA — Illustrative demonstration case record',
-      created_at: new Date(Date.now() - 3600000).toISOString()
+      disclaimer: 'SAMPLE DATA — Illustrative demonstration case record'
     },
     {
-      id: 'VM-98209',
+      id: 'case_2',
+      case_id: 'VM-98209',
       workTitle: 'Exclusive Interview Series Ep 4',
       platform: 'YouTube',
-      infringingUrl: 'https://youtube.com/watch?v=mock_video_id',
-      status: 'RESOLVED_REMOVED',
+      username: 'viral_reup',
+      severity: 'HIGH',
+      decision: 'TAKEDOWN',
+      content_type: 'entertainment',
+      status: 'resolved',
+      timestamp: new Date(Date.now() - 86400000).toISOString(),
+      dmca_filed: true,
       similarity: 0.89,
+      infringingUrl: 'https://youtube.com/watch?v=mock_video_id',
       is_demo: true,
       mode: 'SAMPLE_DATA',
-      disclaimer: 'SAMPLE DATA — Illustrative demonstration case record',
-      created_at: new Date(Date.now() - 86400000).toISOString()
+      disclaimer: 'SAMPLE DATA — Illustrative demonstration case record'
+    },
+    {
+      id: 'case_3',
+      case_id: 'VM-98208',
+      workTitle: 'Breaking News Special Report',
+      platform: 'X / Twitter',
+      username: 'news_mirror',
+      severity: 'MEDIUM',
+      decision: 'ATTRIBUTION',
+      content_type: 'news',
+      status: 'under_review',
+      timestamp: new Date(Date.now() - 172800000).toISOString(),
+      dmca_filed: false,
+      similarity: 0.74,
+      infringingUrl: 'https://x.com/news_mirror/status/1782391',
+      is_demo: true,
+      mode: 'SAMPLE_DATA',
+      disclaimer: 'SAMPLE DATA — Illustrative demonstration case record'
     }
   ]);
 });
 
 app.post('/api/v1/enforce/dmca', (req, res) => {
+  applyLegacyDeprecationHeaders(res, '/api/investigations/:id/report');
+  const {
+    case_id = `VM-${Date.now().toString(36).toUpperCase()}`,
+    platform = 'YouTube',
+    username = 'unknown_user',
+    caption = '',
+    content_type = 'media',
+    analysis = {}
+  } = req.body || {};
+
+  const matchScore = analysis.similarity ?? 0.95;
+  const integrityScore = analysis.integrity_score ?? 0.40;
+  const decision = analysis.decision ?? 'TAKEDOWN';
+  const scenario = analysis.scenario ?? 'unauthorized_reupload';
+
+  const subject = `DMCA Takedown Notice: Copyright Infringement on ${platform} (${case_id})`;
+  const body = `DMCA TAKEDOWN NOTICE (17 U.S.C. § 512)
+Case ID: ${case_id}
+Date: ${new Date().toUTCString()}
+
+To: Designated Copyright Agent — ${platform}
+
+I, the undersigned, certify under penalty of perjury that I am authorized to act on behalf of the owner of an exclusive right that is allegedly infringed.
+
+1. IDENTIFICATION OF COPYRIGHTED WORK:
+Exclusive broadcast media and proprietary digital asset catalog (Work ID: ${case_id}).
+
+2. IDENTIFICATION OF INFRINGING MATERIAL:
+Account: @${username}
+Platform: ${platform}
+Caption / Description: ${caption || 'N/A'}
+Content Category: ${content_type}
+
+3. TECHNICAL FORENSIC EVIDENCE:
+- Perceptual Hash Similarity: ${(matchScore * 100).toFixed(1)}%
+- Media Integrity Rating: ${(integrityScore * 100).toFixed(1)}%
+- Automated Decision: ${decision}
+- Forensic Findings: Frame-by-frame perceptual vector match exceeds copyright threshold.
+
+4. GOOD FAITH STATEMENT:
+I have a good faith belief that use of the material in the manner complained of is not authorized by the copyright owner, its agent, or the law.
+
+5. ACCURACY STATEMENT:
+The information in this notification is accurate, and under penalty of perjury, that the complaining party is authorized to act on behalf of the owner of an exclusive right that is allegedly infringed.
+
+Authorized Representative
+VeriMedia AI Automated Rights Enforcement System
+support@verimedia.ai`;
+
   res.json({
+    case_id,
+    subject,
+    body,
+    evidence_summary: `Perceptual match: ${(matchScore * 100).toFixed(0)}%, Integrity: ${(integrityScore * 100).toFixed(0)}%`,
+    evidence_json: analysis,
+    claimant_name: 'VeriMedia AI Rights Management',
+    organization: 'VeriMedia Global Rights Operations',
+    original_asset_id: `ASSET-${case_id}`,
+    detection_timestamp: new Date().toISOString(),
+    match_score: matchScore,
+    manipulation_details: `Integrity assessed at ${(integrityScore * 100).toFixed(0)}% (${scenario})`,
+    action_recommendation: decision,
+    source: 'fallback',
     status: 'queued',
-    notice_id: `DMCA-${Date.now()}`,
-    platform: req.body.platform || 'General',
-    created_at: new Date().toISOString()
+    notice_id: `DMCA-${Date.now()}`
   });
 });
 
@@ -1408,8 +1542,8 @@ app.post('/api/investigations/:id/claims', generalLimiter, requireAuth, authoriz
 });
 
 // Get a single claim
-app.get('/api/claims/:id', requireAuth, (req, res) => {
-  const claim = provenanceService.getClaim(req.params.id);
+app.get('/api/claims/:id', requireAuth, entityAccessGuard('getClaim'), (req, res) => {
+  const claim = req.resource || provenanceService.getClaim(req.params.id);
   if (!claim) {
     return res.status(404).json({ error: 'Claim not found', id: req.params.id });
   }
@@ -1417,7 +1551,7 @@ app.get('/api/claims/:id', requireAuth, (req, res) => {
 });
 
 // Update a claim
-app.patch('/api/claims/:id', requireAuth, (req, res) => {
+app.patch('/api/claims/:id', requireAuth, entityAccessGuard('getClaim'), (req, res) => {
   try {
     const updated = provenanceService.updateClaim(req.params.id, req.body);
     if (!updated) {
@@ -1430,7 +1564,7 @@ app.patch('/api/claims/:id', requireAuth, (req, res) => {
 });
 
 // Assess a claim (deterministic epistemic assessment)
-app.post('/api/claims/:id/assess', analysisLimiter, requireAuth, (req, res) => {
+app.post('/api/claims/:id/assess', analysisLimiter, requireAuth, entityAccessGuard('getClaim'), (req, res) => {
   try {
     const result = provenanceService.assessClaim(req.params.id, req.body);
     res.json(result);
@@ -1440,7 +1574,7 @@ app.post('/api/claims/:id/assess', analysisLimiter, requireAuth, (req, res) => {
 });
 
 // Get evidence associated with a claim (supporting, contradicting, contextualizing)
-app.get('/api/claims/:id/evidence', requireAuth, (req, res) => {
+app.get('/api/claims/:id/evidence', requireAuth, entityAccessGuard('getClaim'), (req, res) => {
   try {
     const evidence = provenanceService.getClaimEvidence(req.params.id);
     res.json(evidence);
@@ -1488,9 +1622,13 @@ app.post('/api/claims/:id/decompose', (req, res) => {
 // ---------------------------------------------------------------------------
 
 // Trigger a new discovery job on an investigation artifact
-app.post('/api/investigations/:id/discovery/jobs', discoveryLimiter, requireAuth, authorizeChain(provenanceService), async (req, res) => {
+const handleDiscoveryJobCreation = async (req, res) => {
   try {
-    const investigation = provenanceService.getInvestigation(req.params.id);
+    const invId = req.params.id || req.body.investigationId;
+    if (!invId) {
+      return res.status(400).json({ error: 'investigationId is required' });
+    }
+    const investigation = provenanceService.getInvestigation(invId);
     if (!investigation) {
       return res.status(404).json({ error: 'Investigation not found' });
     }
@@ -1507,7 +1645,7 @@ app.post('/api/investigations/:id/discovery/jobs', discoveryLimiter, requireAuth
     }
 
     const result = await provenanceService.runDiscovery({
-      investigationId: req.params.id,
+      investigationId: invId,
       artifactId: targetArtifactId,
       queryStrategy: queryStrategy || 'ALL',
       candidateUrls: candidateUrls || [],
@@ -1519,7 +1657,11 @@ app.post('/api/investigations/:id/discovery/jobs', discoveryLimiter, requireAuth
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
-});
+};
+
+app.post('/api/investigations/:id/discovery/jobs', discoveryLimiter, requireAuth, authorizeChain(provenanceService), handleDiscoveryJobCreation);
+app.post('/api/discovery/jobs', discoveryLimiter, requireAuth, handleDiscoveryJobCreation);
+app.post('/api/v1/discovery/jobs', discoveryLimiter, requireAuth, handleDiscoveryJobCreation);
 
 // List all discovery jobs for an investigation
 app.get('/api/investigations/:id/discovery/jobs', requireAuth, authorizeChain(provenanceService), (req, res) => {
@@ -1532,9 +1674,9 @@ app.get('/api/investigations/:id/discovery/jobs', requireAuth, authorizeChain(pr
 });
 
 // Get a single discovery job with its candidates
-app.get('/api/discovery/jobs/:id', requireAuth, (req, res) => {
+app.get('/api/discovery/jobs/:id', requireAuth, entityAccessGuard('getDiscoveryJob'), (req, res) => {
   try {
-    const job = provenanceService.getDiscoveryJob(req.params.id);
+    const job = req.resource || provenanceService.getDiscoveryJob(req.params.id);
     if (!job) {
       return res.status(404).json({ error: 'Discovery job not found' });
     }
@@ -1556,9 +1698,9 @@ app.get('/api/investigations/:id/discovery/candidates', requireAuth, authorizeCh
 });
 
 // Get a single candidate details
-app.get('/api/discovery/candidates/:id', requireAuth, (req, res) => {
+app.get('/api/discovery/candidates/:id', requireAuth, entityAccessGuard('getDiscoveryCandidate'), (req, res) => {
   try {
-    const candidate = provenanceService.getDiscoveryCandidate(req.params.id);
+    const candidate = req.resource || provenanceService.getDiscoveryCandidate(req.params.id);
     if (!candidate) {
       return res.status(404).json({ error: 'Candidate appearance not found' });
     }
@@ -1570,7 +1712,7 @@ app.get('/api/discovery/candidates/:id', requireAuth, (req, res) => {
 });
 
 // Traceability chain for candidate appearance: Candidate -> Evidence -> Observation -> AnalysisRun
-app.get('/api/discovery/candidates/:id/trace', requireAuth, (req, res) => {
+app.get('/api/discovery/candidates/:id/trace', requireAuth, entityAccessGuard('getDiscoveryCandidate'), (req, res) => {
   try {
     const trace = provenanceService.traceCandidate(req.params.id);
     res.json(trace);
@@ -2034,22 +2176,30 @@ app.get('/api/investigations/:id/monitoring/jobs', requireAuth, authorizeChain(p
 });
 
 // Create a new monitoring job
-app.post('/api/investigations/:id/monitoring/jobs', monitoringLimiter, requireAuth, authorizeChain(provenanceService), (req, res) => {
+const handleMonitoringJobCreation = (req, res) => {
   try {
+    const invId = req.params.id || req.body.investigationId;
+    if (!invId) {
+      return res.status(400).json({ error: 'investigationId is required' });
+    }
     const payload = {
       ...req.body,
-      investigationId: req.params.id
+      investigationId: invId
     };
     const job = provenanceService.createMonitoringJob(payload);
     res.status(201).json(job);
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
-});
+};
+
+app.post('/api/investigations/:id/monitoring/jobs', monitoringLimiter, requireAuth, authorizeChain(provenanceService), handleMonitoringJobCreation);
+app.post('/api/monitoring/jobs', monitoringLimiter, requireAuth, handleMonitoringJobCreation);
+app.post('/api/v1/monitoring/jobs', monitoringLimiter, requireAuth, handleMonitoringJobCreation);
 
 // Get a monitoring job by ID
-app.get('/api/monitoring/jobs/:id', requireAuth, (req, res) => {
-  const job = provenanceService.getMonitoringJob(req.params.id);
+app.get('/api/monitoring/jobs/:id', requireAuth, entityAccessGuard('getMonitoringJob'), (req, res) => {
+  const job = req.resource || provenanceService.getMonitoringJob(req.params.id);
   if (!job) {
     return res.status(404).json({ error: 'Monitoring job not found' });
   }
@@ -2057,7 +2207,7 @@ app.get('/api/monitoring/jobs/:id', requireAuth, (req, res) => {
 });
 
 // Update a monitoring job
-app.patch('/api/monitoring/jobs/:id', requireAuth, (req, res) => {
+app.patch('/api/monitoring/jobs/:id', requireAuth, entityAccessGuard('getMonitoringJob'), (req, res) => {
   try {
     const updated = provenanceService.updateMonitoringJob(req.params.id, req.body);
     if (!updated) {
@@ -2070,7 +2220,7 @@ app.patch('/api/monitoring/jobs/:id', requireAuth, (req, res) => {
 });
 
 // Execute a monitoring job scan
-app.post('/api/monitoring/jobs/:id/run', monitoringLimiter, requireAuth, async (req, res) => {
+app.post('/api/monitoring/jobs/:id/run', monitoringLimiter, requireAuth, entityAccessGuard('getMonitoringJob'), async (req, res) => {
   try {
     const result = await provenanceService.runMonitoringJob(req.params.id, req.body);
     
@@ -2101,8 +2251,8 @@ app.get('/api/investigations/:id/alerts', requireAuth, authorizeChain(provenance
 });
 
 // Get a specific alert
-app.get('/api/alerts/:id', requireAuth, (req, res) => {
-  const alert = provenanceService.getAlert(req.params.id);
+app.get('/api/alerts/:id', requireAuth, entityAccessGuard('getAlert'), (req, res) => {
+  const alert = req.resource || provenanceService.getAlert(req.params.id);
   if (!alert) {
     return res.status(404).json({ error: 'Alert not found' });
   }
@@ -2110,7 +2260,7 @@ app.get('/api/alerts/:id', requireAuth, (req, res) => {
 });
 
 // Update an alert status (review, dismiss, resolve)
-app.patch('/api/alerts/:id', requireAuth, (req, res) => {
+app.patch('/api/alerts/:id', requireAuth, entityAccessGuard('getAlert'), (req, res) => {
   try {
     const updated = provenanceService.updateAlert(req.params.id, req.body);
     if (!updated) {
@@ -2123,7 +2273,7 @@ app.patch('/api/alerts/:id', requireAuth, (req, res) => {
 });
 
 // Acknowledge an alert
-app.post('/api/alerts/:id/acknowledge', requireAuth, (req, res) => {
+app.post('/api/alerts/:id/acknowledge', requireAuth, entityAccessGuard('getAlert'), (req, res) => {
   try {
     const status = req.body?.status || 'REVIEWED';
     const updated = provenanceService.acknowledgeAlert(req.params.id, status);
@@ -2189,38 +2339,61 @@ app.get('/api/investigations/:id/reports', requireAuth, authorizeChain(provenanc
 });
 
 // Export report as HTML or JSON
-app.get('/api/investigations/:id/report/export/:format', reportLimiter, requireAuth, authorizeChain(provenanceService), (req, res) => {
+const handleReportExport = (req, res) => {
   try {
     const { format } = req.params;
-    const exportResult = provenanceService.exportReport(req.params.id, format, req.query);
+    const invId = req.params.id || req.query.investigationId || req.query.id;
+    if (!invId) {
+      return res.status(400).send('Investigation ID is required for report export');
+    }
+    const exportResult = provenanceService.exportReport(invId, format, req.query);
     
     logAuditEvent({
-      investigationId: req.params.id,
+      investigationId: invId,
       actor: req.user?.email,
       action: AuditAction.REPORT_EXPORT,
       objectType: AuditObjectType.REPORT,
-      objectId: `export_${req.params.id}_${format}`,
+      objectId: `export_${invId}_${format}`,
       afterState: { format },
       req
     });
 
     res.setHeader('Content-Type', exportResult.contentType);
     if (format.toLowerCase() === 'json') {
-      res.setHeader('Content-Disposition', `attachment; filename="investigation_${req.params.id}_report.json"`);
+      res.setHeader('Content-Disposition', `attachment; filename="investigation_${invId}_report.json"`);
     }
     res.send(exportResult.data);
   } catch (err) {
     res.status(404).send(`Error generating export: ${err.message}`);
   }
-});
+};
+
+app.get('/api/investigations/:id/report/export/:format', reportLimiter, requireAuth, authorizeChain(provenanceService), handleReportExport);
+app.get('/api/report/export/:format', reportLimiter, requireAuth, handleReportExport);
+app.get('/report/export/:format', reportLimiter, requireAuth, handleReportExport);
 
 // Get a specific report record by ID
-app.get('/api/reports/:id', requireAuth, (req, res) => {
-  const record = provenanceService.getReportRecord(req.params.id);
+app.get('/api/reports/:id', requireAuth, entityAccessGuard('getReportRecord'), (req, res) => {
+  const record = req.resource || provenanceService.getReportRecord(req.params.id);
   if (!record) {
     return res.status(404).json({ error: 'Report record not found' });
   }
   res.json(record);
+});
+
+// Centralized JSON Error Handling Middleware
+app.use((err, req, res, next) => {
+  if (err && err.message && err.message.includes('CORS policy violation')) {
+    return res.status(403).json({
+      error: err.message,
+      code: 'CORS_FORBIDDEN'
+    });
+  }
+  console.error('[API Error]', err);
+  res.status(err.status || 500).json({
+    error: err.message || 'Internal Server Error',
+    code: err.code || 'INTERNAL_ERROR'
+  });
 });
 
 // ---------------------------------------------------------------------------
