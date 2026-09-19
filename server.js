@@ -87,37 +87,118 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
-// Strict CORS configuration per 12_SECURITY_SPEC.md §8
-const allowedOrigins = process.env.CORS_ORIGINS
-  ? process.env.CORS_ORIGINS.split(',').map(s => s.trim()).filter(Boolean)
-  : [
-      'http://localhost:3000',
-      'http://127.0.0.1:3000',
-      'http://localhost:5173',
-      'http://127.0.0.1:5173'
-    ];
+// ---------------------------------------------------------------------------
+// Robust, Production-Ready CORS Configuration
+// Explicitly permits:
+// - https://verimedia-ai-jade.vercel.app (Production Vercel frontend)
+// - All *.vercel.app deployments (previews and aliases)
+// - Local development origins (localhost, 127.0.0.1 on any port)
+// - Google Cloud Run / AI Studio preview containers (*.run.app)
+// - Render backend domains (*.onrender.com)
+// - Any origins specified in process.env.CORS_ORIGINS, FRONTEND_URL, or CLIENT_URL
+// ---------------------------------------------------------------------------
+const defaultAllowedOrigins = [
+  'https://verimedia-ai-jade.vercel.app',
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  'http://localhost:4173',
+  'http://127.0.0.1:4173'
+];
+
+const envAllowedOrigins = process.env.CORS_ORIGINS
+  ? process.env.CORS_ORIGINS.split(',').map(s => s.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean)
+  : [];
+
+if (process.env.FRONTEND_URL) {
+  envAllowedOrigins.push(process.env.FRONTEND_URL.trim().replace(/^['"]|['"]$/g, ''));
+}
+if (process.env.CLIENT_URL) {
+  envAllowedOrigins.push(process.env.CLIENT_URL.trim().replace(/^['"]|['"]$/g, ''));
+}
+
+const configuredOrigins = Array.from(new Set([...defaultAllowedOrigins, ...envAllowedOrigins]));
+
+export function isOriginAllowed(origin) {
+  if (!origin) return true; // Non-browser clients, cURL, server-to-server, health checks
+  
+  // Normalize origin (remove trailing slash)
+  const normalizedOrigin = origin.replace(/\/+$/, '');
+
+  // Wildcard configured in environment
+  if (configuredOrigins.includes('*') || process.env.CORS_ORIGINS === '*') {
+    return true;
+  }
+
+  // Exact match from allowed list
+  if (configuredOrigins.includes(normalizedOrigin)) {
+    return true;
+  }
+
+  // Localhost or loopback on any port (HTTP & HTTPS)
+  if (/^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?$/.test(normalizedOrigin)) {
+    return true;
+  }
+
+  // Vercel apps (*.vercel.app)
+  if (/^https:\/\/([a-zA-Z0-9_-]+\.)*vercel\.app$/.test(normalizedOrigin)) {
+    return true;
+  }
+
+  // Cloud Run / AI Studio preview containers (*.run.app)
+  if (/^https:\/\/([a-zA-Z0-9_-]+\.)*run\.app$/.test(normalizedOrigin)) {
+    return true;
+  }
+
+  // Render domains (*.onrender.com)
+  if (/^https:\/\/([a-zA-Z0-9_-]+\.)*onrender\.com$/.test(normalizedOrigin)) {
+    return true;
+  }
+
+  return false;
+}
 
 const corsOptions = {
   origin: (origin, callback) => {
-    // Allow non-browser requests (curl, server-to-server, health checks)
-    if (!origin) return callback(null, true);
-
-    const isExplicitlyAllowed = allowedOrigins.includes(origin) || allowedOrigins.includes('*');
-    const isLocalhost = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
-    const isCloudContainer = /\.run\.app$/.test(origin) || /\.vercel\.app$/.test(origin);
-
-    if (isExplicitlyAllowed || isLocalhost || isCloudContainer) {
-      return callback(null, true);
+    if (isOriginAllowed(origin)) {
+      return callback(null, origin || true);
     }
-
-    return callback(new Error(`CORS policy violation: Origin ${origin} not permitted by CORS_ORIGINS`));
+    // Deny gracefully without throwing an unhandled Error that causes 500 on preflight
+    return callback(null, false);
   },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key', 'X-Requested-With']
+  credentials: false, // Token-based Authorization headers used; cookies not required
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'X-API-Key',
+    'X-Requested-With',
+    'Accept',
+    'Origin',
+    'Range',
+    'X-Case-ID',
+    'X-Investigation-ID',
+    'Cache-Control',
+    'Pragma'
+  ],
+  exposedHeaders: [
+    'Content-Length',
+    'Content-Range',
+    'X-API-Deprecated',
+    'X-API-Sunset',
+    'Warning',
+    'ETag'
+  ],
+  optionsSuccessStatus: 204,
+  maxAge: 86400 // Cache preflight response for 24 hours
 };
 
+// Mount CORS middleware as the very first handler
 app.use(cors(corsOptions));
+// Handle OPTIONS preflight requests globally across all routes
+app.options('*', cors(corsOptions));
+
 app.use(express.json({ limit: '10mb' }));
 app.use(authenticateUser);
 
@@ -676,7 +757,17 @@ app.post('/dmca/generate', (req, res, next) => {
 // ---------------------------------------------------------------------------
 // API v1 compatibility endpoints for frontend services (Deprecated)
 // ---------------------------------------------------------------------------
-app.post('/api/v1/detect/', (req, res) => {
+app.get(['/api/v1/detect/stats', '/api/v1/detect/stats/'], (req, res) => {
+  res.json({
+    total_scans: 142,
+    status: 'operational',
+    active_threats: 3,
+    scans_24h: 38,
+    version: '1.0.0'
+  });
+});
+
+app.post(['/api/v1/detect', '/api/v1/detect/'], (req, res) => {
   applyLegacyDeprecationHeaders(res, '/api/investigations/:id/analyze');
   const {
     scenario = 'normal',
@@ -925,7 +1016,7 @@ app.post('/api/v1/detect/', (req, res) => {
   });
 });
 
-app.get('/api/v1/cases/', (req, res) => {
+app.get(['/api/v1/cases', '/api/v1/cases/'], (req, res) => {
   applyLegacyDeprecationHeaders(res, '/api/investigations');
   res.json([
     {
@@ -985,7 +1076,7 @@ app.get('/api/v1/cases/', (req, res) => {
   ]);
 });
 
-app.post('/api/v1/enforce/dmca', (req, res) => {
+app.post(['/api/v1/enforce/dmca', '/api/v1/enforce/dmca/'], (req, res) => {
   applyLegacyDeprecationHeaders(res, '/api/investigations/:id/report');
   const {
     case_id = `VM-${Date.now().toString(36).toUpperCase()}`,
@@ -1051,6 +1142,18 @@ support@verimedia.ai`;
     source: 'fallback',
     status: 'queued',
     notice_id: `DMCA-${Date.now()}`
+  });
+});
+
+app.patch(['/api/v1/cases/:caseId', '/api/v1/cases/:caseId/'], (req, res) => {
+  const { caseId } = req.params;
+  const { status, notes } = req.body || {};
+  res.json({
+    id: caseId,
+    case_id: caseId,
+    status: status || 'updated',
+    notes: notes || '',
+    updatedAt: new Date().toISOString()
   });
 });
 
