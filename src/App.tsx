@@ -17,7 +17,9 @@ export default function App() {
     <ErrorBoundary fallbackTitle="VeriMedia Application Error">
       <AuthGate>
         {viewMode === 'simple' ? (
-          <SimpleView />
+          <div style={{ height: '100vh', width: '100vw', overflowY: 'auto' }}>
+            <SimpleView />
+          </div>
         ) : (
           <div style={{ height: '100vh', width: '100vw', overflow: 'hidden' }}>
             <Dashboard />

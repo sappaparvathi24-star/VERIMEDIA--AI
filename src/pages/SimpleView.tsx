@@ -254,13 +254,11 @@ export function SimpleView() {
       const job = await pollForensicJob(jobId, 60_000, 1500)
       const jobResult = job?.result ?? {}
 
-      // Heuristic: if Gemini ran, the result will have an `authenticity` field with a string label
-      const geminiConfigured = !!(
-        jobResult.authenticity &&
-        typeof jobResult.authenticity === 'string' &&
-        jobResult.authenticity !== 'INCONCLUSIVE' ||
-        jobResult.summary
-      )
+      // The backend sets source: 'LLM_VISION_OPINION' when and only when Gemini
+      // actually ran and returned a valid structure (service.js line 1015).
+      // Every other path leaves source as null. This is the only reliable signal
+      // the frontend can use — GEMINI_API_KEY is a server-side env var.
+      const geminiConfigured = jobResult.source === 'LLM_VISION_OPINION'
 
       setAnalysis({ jobResult, artifactId, investigationId, previewUrl, geminiConfigured })
       setPhase('result')
@@ -326,7 +324,7 @@ export function SimpleView() {
 
   // ----- Render -----
   return (
-    <div className="min-h-screen bg-white" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
+    <div className="min-h-full bg-white" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
       {/* Top bar */}
       <header className="border-b border-gray-100 px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -344,7 +342,7 @@ export function SimpleView() {
         </button>
       </header>
 
-      <main className="max-w-2xl mx-auto px-4 py-12">
+      <main className="max-w-2xl mx-auto px-4 py-12 pb-24">
 
         {/* ── Step 1: Upload ── */}
         {phase === 'upload' && (
@@ -396,13 +394,15 @@ export function SimpleView() {
                 )}
 
                 <div className="p-6 flex flex-col gap-4">
+                  {confidenceSource && (
+                    <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                      ⚠ {confidenceSource}
+                    </p>
+                  )}
+
                   <div className="flex items-start gap-3 flex-wrap">
                     <VerdictBadge authenticity={authenticity || (jobResult?.status === 'SKIPPED' ? 'SKIPPED' : null)} />
                   </div>
-
-                  {confidenceSource && (
-                    <p className="text-xs text-gray-400 italic">{confidenceSource}</p>
-                  )}
 
                   {summary && (
                     <p className="text-sm text-gray-700 leading-relaxed">{summary}</p>
@@ -428,7 +428,7 @@ export function SimpleView() {
                   </button>
 
                   {showTechnical && (
-                    <pre className="text-xs text-gray-500 bg-gray-50 rounded-xl p-4 overflow-auto max-h-96 border border-gray-100 whitespace-pre-wrap break-words">
+                    <pre className="text-xs text-gray-500 bg-gray-50 rounded-xl p-4 overflow-auto max-h-56 border border-gray-100 whitespace-pre-wrap break-words">
                       {JSON.stringify(jobResult, null, 2)}
                     </pre>
                   )}
