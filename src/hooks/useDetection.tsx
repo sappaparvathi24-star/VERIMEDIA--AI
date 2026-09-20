@@ -11,7 +11,7 @@ export function useDetection() {
     setShowEvidenceModal,
   } = useStore()
 
-  const runDetection = useCallback(async (req: DetectionRequest) => {
+  const runDetection = useCallback(async (req: DetectionRequest, openModal: boolean = false) => {
     setScanning(true)
     setScanError(null)
     try {
@@ -19,7 +19,9 @@ export function useDetection() {
       setCurrentResult(result)
       addResult(result)
       updateStats(result)
-      setShowEvidenceModal(true)
+      if (openModal) {
+        setShowEvidenceModal(true)
+      }
       return result
     } catch (err: any) {
       const serverMsg = err?.response?.data?.error || err?.response?.data?.message

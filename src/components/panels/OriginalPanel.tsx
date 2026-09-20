@@ -1,18 +1,82 @@
 import { useState } from 'react'
 import { useStore } from '../../store'
+import { useDetection } from '../../hooks/useDetection'
 import { D3ProvenanceTree } from '../charts/D3ProvenanceTree'
+import type { Scenario } from '../../types'
+
+const PRESETS: { key: Scenario; label: string; icon: string }[] = [
+  { key: 'deepfake', label: 'Synthetic Deepfake Lineage', icon: '🤖' },
+  { key: 'crop', label: 'Cropped & Re-encoded Repost', icon: '✂️' },
+  { key: 'normal', label: 'Original Authentic Stream', icon: '✅' },
+  { key: 'adversarial', label: 'Adversarial Noise Mutation', icon: '⚡' },
+]
 
 export function OriginPanel() {
-  const { currentResult } = useStore()
+  const { currentResult, isScanning } = useStore()
+  const { runDetection } = useDetection()
   const [activeSubTab, setActiveSubTab] = useState<'tree' | 'transformations' | 'metrics' | 'custody'>('tree')
+
+  const handleRunPreset = (preset: Scenario) => {
+    runDetection({
+      platform: 'YouTube',
+      username: 'investigation_target',
+      caption: `Provenance genealogy audit: ${preset}`,
+      content_type: 'news',
+      scenario: preset,
+    })
+  }
 
   if (!currentResult) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', background: '#080c10' }}>
-        <div style={{ textAlign: 'center', color: '#4a5568' }}>
-          <div style={{ fontSize: 36, marginBottom: 10 }}>🔗</div>
-          <p style={{ fontSize: 13, fontWeight: 700, color: '#f8fafc' }}>No Active Origin Data</p>
-          <p style={{ fontSize: 11 }}>Run a detection or media scan to trace content provenance and lineage</p>
+      <div style={{ padding: '24px 20px', overflowY: 'auto', height: '100%', background: '#080c10', color: '#f8fafc', display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{
+          padding: '24px',
+          borderRadius: 12,
+          background: 'linear-gradient(135deg, rgba(13,17,23,0.95) 0%, rgba(15,23,42,0.85) 100%)',
+          border: '1px solid #1e2d3d',
+          textAlign: 'center',
+          maxWidth: 680,
+          margin: '20px auto',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 16
+        }}>
+          <div style={{ fontSize: 42 }}>🌳</div>
+          <div>
+            <h3 style={{ fontSize: 18, fontWeight: 800, color: '#f8fafc', margin: '0 0 6px 0' }}>
+              Engine 3 — Provenance & Origin Intelligence
+            </h3>
+            <p style={{ fontSize: 13, color: '#94a3b8', margin: 0 }}>
+              Trace structural transformation lineage, parent-child derivation trees, and root authorship nodes across cross-platform media networks.
+            </p>
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
+            {PRESETS.map(p => (
+              <button
+                key={p.key}
+                onClick={() => handleRunPreset(p.key)}
+                disabled={isScanning}
+                style={{
+                  background: '#0d1117',
+                  border: '1px solid #334155',
+                  color: '#38bdf8',
+                  padding: '8px 14px',
+                  borderRadius: 8,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6
+                }}
+              >
+                <span>{p.icon}</span>
+                <span>{p.label}</span>
+              </button>
+            ))}
+          </div>
         </div>
       </div>
     )

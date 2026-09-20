@@ -4,6 +4,7 @@ import type {
   DetectionResult, CaseRecord, HealthStatus,
   ScanStats, TabId,
 } from '../types'
+import { DEFAULT_SHOWCASE_RESULT, SAMPLE_CASES } from './initialData'
 
 interface AppState {
   // Detection
@@ -51,11 +52,11 @@ interface AppState {
 }
 
 export const useStore = create<AppState>((set, get) => ({
-  results: [],
-  currentResult: null,
+  results: [DEFAULT_SHOWCASE_RESULT],
+  currentResult: DEFAULT_SHOWCASE_RESULT,
   isScanning: false,
   scanError: null,
-  cases: [],
+  cases: SAMPLE_CASES,
   casesLoading: false,
   health: null,
   activeTab: 'scanner',
@@ -65,7 +66,7 @@ export const useStore = create<AppState>((set, get) => ({
   showHeroOverlay: false,
   showCommandPalette: false,
   selectedCaseId: null,
-  stats: { total: 0, threats: 0, dmca: 0, clean: 0 },
+  stats: { total: 1, threats: 1, dmca: 1, clean: 0 },
 
   setCurrentResult: (r) => set({ currentResult: r }),
   addResult: (r) => set(s => ({ results: [r, ...s.results].slice(0, 200) })),

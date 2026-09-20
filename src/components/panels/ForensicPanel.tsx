@@ -1,5 +1,17 @@
+import { useState, useRef } from 'react'
 import { useStore } from '../../store'
+import { useDetection } from '../../hooks/useDetection'
 import { Tooltip } from '../ui/Tooltip'
+import { registerMediaArtifact } from '../../services/api'
+import type { Scenario } from '../../types'
+
+const PRESETS: { key: Scenario; label: string; icon: string }[] = [
+  { key: 'deepfake', label: 'AI Deepfake', icon: '🤖' },
+  { key: 'crop', label: 'Cropped / Modified', icon: '✂️' },
+  { key: 'normal', label: 'Authentic 4K Master', icon: '✅' },
+  { key: 'adversarial', label: 'Adversarial Noise', icon: '⚡' },
+  { key: 'manipulated', label: 'Frame Edit', icon: '🎞️' },
+]
 
 const SIGNALS = [
   { key: 'jpeg_artifact',      label: 'Error Level Analysis (ELA)', invert: false, desc: 'Compression grid residual variance' },
@@ -21,15 +33,123 @@ function getSignalColor(anomaly: number): string {
 }
 
 export function ForensicPanel() {
-  const { currentResult } = useStore()
+  const { currentResult, isScanning, setScanError } = useStore()
+  const { runDetection } = useDetection()
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [isUploading, setIsUploading] = useState(false)
+
+  const handleRunPreset = (preset: Scenario) => {
+    runDetection({
+      platform: 'YouTube',
+      username: 'investigation_target',
+      caption: `Forensic audit scenario: ${preset}`,
+      content_type: 'news',
+      scenario: preset,
+    })
+  }
+
+  const handleFileUpload = async (file: File) => {
+    setIsUploading(true)
+    setScanError(null)
+    try {
+      const data = await registerMediaArtifact(file)
+      if (data && (data.artifact || data.success)) {
+        const art = data.artifact || data
+        await runDetection({
+          platform: 'YouTube',
+          username: 'uploaded_evidence',
+          caption: file.name,
+          content_type: 'news',
+          scenario: 'normal',
+          artifactId: art.id
+        })
+      }
+    } catch (err: unknown) {
+      console.error('File upload error in forensic panel:', err)
+      setScanError(err instanceof Error ? err.message : 'Upload failed')
+    } finally {
+      setIsUploading(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
 
   if (!currentResult) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', background: '#080c10' }}>
-        <div style={{ textAlign: 'center', color: '#64748b', maxWidth: 360 }}>
-          <div style={{ fontSize: 32, marginBottom: 8 }}>🔬</div>
-          <p style={{ fontSize: 13, fontWeight: 700, color: '#f8fafc', margin: '0 0 4px 0' }}>No Active Scan</p>
-          <p style={{ fontSize: 12, margin: 0 }}>Drop an image above or select a scenario to run a forensic audit.</p>
+      <div style={{ padding: '24px 20px', overflowY: 'auto', height: '100%', background: '#080c10', color: '#f8fafc', display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{
+          padding: '24px',
+          borderRadius: 12,
+          background: 'linear-gradient(135deg, rgba(13,17,23,0.95) 0%, rgba(15,23,42,0.85) 100%)',
+          border: '1px solid #1e2d3d',
+          textAlign: 'center',
+          maxWidth: 680,
+          margin: '20px auto',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 16
+        }}>
+          <div style={{ fontSize: 42 }}>🔬</div>
+          <div>
+            <h3 style={{ fontSize: 18, fontWeight: 800, color: '#f8fafc', margin: '0 0 6px 0' }}>
+              Engine 1 — Multi-Signal Media Forensics
+            </h3>
+            <p style={{ fontSize: 13, color: '#94a3b8', margin: 0 }}>
+              Select a benchmark scenario or upload a media file to inspect ELA compression, PRNU sensor noise, EXIF headers, and facial synthesis markers.
+            </p>
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
+            {PRESETS.map(p => (
+              <button
+                key={p.key}
+                onClick={() => handleRunPreset(p.key)}
+                disabled={isScanning}
+                style={{
+                  background: '#0d1117',
+                  border: '1px solid #334155',
+                  color: '#38bdf8',
+                  padding: '8px 14px',
+                  borderRadius: 8,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6
+                }}
+              >
+                <span>{p.icon}</span>
+                <span>{p.label}</span>
+              </button>
+            ))}
+          </div>
+
+          <div style={{ width: '100%', borderTop: '1px solid #1e2d3d', paddingTop: 16 }}>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*,video/*,audio/*"
+              style={{ display: 'none' }}
+              onChange={e => e.target.files?.[0] && handleFileUpload(e.target.files[0])}
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isUploading || isScanning}
+              style={{
+                background: '#00d4ff',
+                color: '#080c10',
+                border: 'none',
+                padding: '10px 20px',
+                borderRadius: 8,
+                fontSize: 12,
+                fontWeight: 800,
+                cursor: 'pointer'
+              }}
+            >
+              {isUploading ? 'Uploading & Analyzing...' : '📁 Upload Local Media for Instant Forensic Audit'}
+            </button>
+          </div>
         </div>
       </div>
     )
