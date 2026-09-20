@@ -10,8 +10,12 @@ export class YouTubeDiscoveryProvider {
     this.authRequired = true;
   }
 
+  getApiKey() {
+    return this.apiKey || process.env.YOUTUBE_API_KEY || null;
+  }
+
   isConfigured() {
-    return Boolean(this.apiKey);
+    return Boolean(this.getApiKey());
   }
 
   status() {
@@ -29,7 +33,8 @@ export class YouTubeDiscoveryProvider {
 
   async search(signals, opts = {}) {
     const query = typeof signals === 'string' ? signals : signals?.query || signals?.[0]?.term;
-    if (!this.isConfigured()) {
+    const apiKey = this.getApiKey();
+    if (!apiKey) {
       return {
         providerId: this.id,
         status: 'UNAVAILABLE',
@@ -48,7 +53,7 @@ export class YouTubeDiscoveryProvider {
     }
 
     try {
-      const response = await searchYouTube(query, this.apiKey);
+      const response = await searchYouTube(query, apiKey);
       if (!response.available) {
         return {
           providerId: this.id,

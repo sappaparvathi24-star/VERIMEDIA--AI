@@ -12,8 +12,15 @@ export class GoogleImagesDiscoveryProvider {
     this.authRequired = true;
   }
 
+  getCredentials() {
+    const apiKey = this.apiKey || process.env.GOOGLE_CSE_API_KEY || process.env.GOOGLE_SEARCH_API_KEY || null;
+    const cx = this.cx || process.env.GOOGLE_CSE_CX || process.env.GOOGLE_SEARCH_ENGINE_ID || null;
+    return { apiKey, cx };
+  }
+
   isConfigured() {
-    return Boolean(this.apiKey && this.cx);
+    const { apiKey, cx } = this.getCredentials();
+    return Boolean(apiKey && cx);
   }
 
   status() {
@@ -31,7 +38,8 @@ export class GoogleImagesDiscoveryProvider {
 
   async search(signals, opts = {}) {
     const query = typeof signals === 'string' ? signals : signals?.query || signals?.[0]?.term;
-    if (!this.isConfigured()) {
+    const { apiKey, cx } = this.getCredentials();
+    if (!apiKey || !cx) {
       return {
         providerId: this.id,
         status: 'UNAVAILABLE',
@@ -50,7 +58,7 @@ export class GoogleImagesDiscoveryProvider {
     }
 
     try {
-      const response = await searchGoogleImages(query, this.apiKey, this.cx);
+      const response = await searchGoogleImages(query, apiKey, cx);
       if (!response.available) {
         return {
           providerId: this.id,

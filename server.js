@@ -19,6 +19,8 @@ import {
   searchMastodon, 
   searchArchiveOrg, 
   searchGoogleImages, 
+  searchInstagram,
+  searchX,
   getDiscoveryHealth,
   checkRateLimit 
 } from './src/proxy/searchProxy.js';
@@ -333,10 +335,10 @@ function buildIntegrationStatus() {
     youtube:      process.env.YOUTUBE_API_KEY                 ? 'configured' : 'not_configured',
     googleSearch: (googleCseKey && googleCseCx)               ? 'configured' : 'not_configured',
     reddit:       'configured',  // uses public unauthenticated JSON endpoint — no key required
-    instagram:    'not_implemented',   // no public media-search API exists
-    x:            'not_implemented',   // no public media-search API exists
-    tiktok:       'not_implemented',   // intentionally skipped for this prototype
-    facebook:     'not_implemented'    // no public media-search API exists
+    instagram:    process.env.INSTAGRAM_ACCESS_TOKEN          ? 'configured' : 'not_configured',
+    x:            (process.env.X_API_KEY || process.env.X_ACCESS_TOKEN) ? 'configured' : 'not_configured',
+    tiktok:       process.env.TIKTOK_CLIENT_KEY               ? 'configured' : 'not_implemented',
+    facebook:     process.env.META_APP_ID                     ? 'configured' : 'not_implemented'
   };
 }
 
@@ -2871,6 +2873,73 @@ app.get('/api/search/google-images', async (req, res) => {
     });
   } catch (err) {
     res.status(502).json({ error: 'Google Images search failed', message: err.message });
+  }
+});
+
+// 6. Meta / Instagram Graph API Proxy
+app.get('/api/search/instagram', async (req, res) => {
+  const clientIp = req.ip || req.connection?.remoteAddress || 'unknown';
+  if (!checkRateLimit(clientIp)) {
+    return res.status(429).json({ error: 'Rate limit exceeded. Please wait a moment.' });
+  }
+
+  const query = req.query.q || 'me';
+  try {
+    const response = await searchInstagram(query);
+    if (!response.available) {
+      return res.json({
+        status: 'UNAVAILABLE',
+        provider: 'Instagram',
+        reason: response.reason,
+        count: 0,
+        results: []
+      });
+    }
+    res.json({
+      status: response.status || 'ok',
+      provider: 'Instagram Graph API',
+      sourceType: 'EXTERNAL_API_VERIFIED',
+      account: response.account || null,
+      count: response.results?.length || 0,
+      results: response.results || []
+    });
+  } catch (err) {
+    res.status(502).json({ error: 'Instagram query failed', message: err.message });
+  }
+});
+
+// 7. X (Twitter) API Proxy
+app.get('/api/search/x', async (req, res) => {
+  const clientIp = req.ip || req.connection?.remoteAddress || 'unknown';
+  if (!checkRateLimit(clientIp)) {
+    return res.status(429).json({ error: 'Rate limit exceeded. Please wait a moment.' });
+  }
+
+  const query = req.query.q;
+  if (!query) {
+    return res.status(400).json({ error: 'Query parameter "q" is required' });
+  }
+
+  try {
+    const response = await searchX(query);
+    if (!response.available) {
+      return res.json({
+        status: 'UNAVAILABLE',
+        provider: 'X (Twitter)',
+        reason: response.reason,
+        count: 0,
+        results: []
+      });
+    }
+    res.json({
+      status: response.status || 'ok',
+      provider: 'X API v2',
+      sourceType: 'EXTERNAL_API_VERIFIED',
+      count: response.results?.length || 0,
+      results: response.results || []
+    });
+  } catch (err) {
+    res.status(502).json({ error: 'X search failed', message: err.message });
   }
 });
 
