@@ -190,7 +190,14 @@ Return STRICT JSON only (no markdown, no extra commentary):
       const parsed = JSON.parse(res.text);
       return {
         ...parsed,
-        engine: `Gemini Vision (${res.model})`
+        source: 'LLM_VISION_OPINION',
+        engine: `Gemini Vision (${res.model || 'multimodal'})`,
+        limitations: [
+          'LLM vision judgments represent subjective probabilistic visual interpretations, not a calibrated deepfake detection model with validated false positive/negative rates.',
+          'Uncalibrated confidence and trust scores cannot be interpreted as definitive mathematical probabilities of manipulation.',
+          'Adversarial perturbations, diffusion noise patterns, and refined inpainting can deceive multimodal LLMs.',
+          'Definitive authenticity verification requires end-to-end cryptographic provenance (C2PA / hardware digital signatures).'
+        ]
       };
     }
   } catch (err) {

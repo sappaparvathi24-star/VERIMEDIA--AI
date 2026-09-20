@@ -697,6 +697,85 @@ class ProvenanceService {
 
     const filename = art.filename || 'uploaded_image.jpg';
 
+    // Check for video/audio MIME types — return explicit SKIPPED without silent fall-through
+    const isVideoOrAudio = (mimeType && (mimeType.startsWith('video/') || mimeType.startsWith('audio/'))) ||
+      (art.mimeType && (art.mimeType.startsWith('video/') || art.mimeType.startsWith('audio/'))) ||
+      art.type === 'VIDEO' || art.type === 'AUDIO';
+
+    if (isVideoOrAudio) {
+      if (buffer) {
+        storeArtifactMedia(artifactId, {
+          buffer,
+          mimeType,
+          filename,
+          originalName: art.metadata?.originalName || filename
+        });
+      }
+
+      const run = this.store.createAnalysisRun({
+        investigationId,
+        artifactId,
+        method: 'VIDEO_AUDIO_FORENSIC_ENGINE',
+        status: 'SKIPPED',
+        metadata: {
+          mimeType,
+          reason: 'video/audio forensic analysis not implemented'
+        }
+      });
+
+      const skippedPayload = {
+        isAnalyzed: true,
+        analyzedAt: new Date().toISOString(),
+        isRealAnalysis: false,
+        status: 'SKIPPED',
+        reason: 'video/audio forensic analysis not implemented',
+        source: null,
+        authenticity: null,
+        trustScore: null,
+        manipulationProbability: null,
+        confidence: null,
+        verdict: 'Analysis Skipped — Video/Audio Forensics Not Implemented',
+        summary: 'Forensic evaluation was skipped because video and audio forensic pipelines (frame extraction, spectral analysis, voice cloning detection) are not implemented.',
+        action: 'MANUAL_REVIEW_REQUIRED',
+        riskLevel: 'UNKNOWN',
+        limitations: [
+          'Video and audio forensic pipelines are currently not implemented.',
+          'Classical signal checks (spectral analysis, frame-consistency) require specialized processing not present in this runtime.',
+          'No automated authenticity, manipulation, or synthetic voice determination could be performed.'
+        ],
+        visualFindings: [
+          `Media type ${mimeType} is not supported by the physical image forensic analyzer.`,
+          'Automated frame extraction and acoustic spectral decomposition were skipped.'
+        ],
+        signals: {
+          spatial_diff: null,
+          noise_score: null,
+          face_landmark: null,
+          edge_consistency: null,
+          color_diff: null,
+          color_histogram: null,
+          frame_diff: null,
+          temporal_diff: null,
+          watermark_detected: null,
+          lipsync: null
+        }
+      };
+
+      art.metadata = {
+        ...(art.metadata || {}),
+        forensicAnalysis: skippedPayload,
+        status: 'SKIPPED'
+      };
+
+      return {
+        run,
+        observations: [],
+        evidence: null,
+        finding: null,
+        forensicAnalysis: skippedPayload
+      };
+    }
+
     // 1. Store media buffer in memory store for direct image display & serving
     const storedMedia = storeArtifactMedia(artifactId, {
       buffer,
@@ -808,19 +887,19 @@ class ProvenanceService {
     }
 
     // 8. Create Corroborating Evidence Object
-    const isAuthentic = visionResult
-      ? visionResult.authenticity === 'GENUINE' && !elaResult.hasCompressionAnomaly
-      : !elaResult.hasCompressionAnomaly;
+    const isAuthentic = visionResult && visionResult.authenticity
+      ? (visionResult.authenticity === 'GENUINE' && !elaResult.hasCompressionAnomaly)
+      : null;
 
     const ev = this.store.createEvidence({
       observationIds: obsList.map(o => o.id),
       independenceGroupId: `IG-IMAGE-FORENSICS-${artifactId}`,
       evidenceType: 'MULTI_SPECTRAL_FORENSIC_EVIDENCE',
       description: visionResult
-        ? `Multimodal Vision & ELA Forensic Audit: ${visionResult.verdict}`
-        : `Physical Forensic Analysis: ELA ${elaResult.status} with ${(statsResult?.width || 0)}x${(statsResult?.height || 0)} resolution.`,
-      confidence: visionResult?.confidence || elaResult.confidence || 0.85,
-      polarity: isAuthentic ? 'REFUTING' : 'SUPPORTING'
+        ? `Multimodal Vision & ELA Forensic Audit: ${visionResult.verdict || visionResult.authenticity}`
+        : `Physical Forensic Analysis: ELA ${elaResult.status} with ${(statsResult?.width || 0)}x${(statsResult?.height || 0)} resolution (Authenticity: Inconclusive without model evaluation).`,
+      confidence: visionResult?.confidence || (elaResult.status === 'COMPLETED' ? elaResult.confidence : null),
+      polarity: isAuthentic === true ? 'REFUTING' : (isAuthentic === false ? 'SUPPORTING' : 'INCONCLUSIVE')
     });
 
     // 9. Synthesize Forensic Finding
@@ -828,14 +907,23 @@ class ProvenanceService {
       investigationId,
       title: visionResult
         ? `Forensic Image Audit: ${visionResult.authenticity} (${filename})`
-        : `Forensic Image Ingestion: ${filename}`,
+        : `Forensic Image Ingestion: ${filename} [INCONCLUSIVE]`,
       summary: visionResult
-        ? visionResult.summary
-        : `Physical pixel & ELA forensic analysis completed for ${filename}.`,
-      status: isAuthentic ? 'VERIFIED_GENUINE' : 'FLAGGED_ANOMALOUS',
-      confidence: visionResult?.confidence || 0.88,
+        ? (visionResult.summary || visionResult.verdict || `Multimodal vision evaluation completed for ${filename}.`)
+        : `Physical pixel & ELA forensic analysis completed for ${filename}. Multimodal vision inspection was inconclusive/unavailable, so authenticity is not certified.`,
+      status: visionResult
+        ? (isAuthentic === true ? 'VERIFIED_GENUINE' : (isAuthentic === false ? 'FLAGGED_ANOMALOUS' : 'OBSERVED'))
+        : 'INCONCLUSIVE',
+      confidence: visionResult?.confidence || null,
       evidenceIds: [ev.id],
       limitations: [
+        ...(visionResult ? [
+          'LLM vision evaluations reflect qualitative semantic inference rather than a calibrated binary classifier with certified TPR/FPR operating thresholds.',
+          'Confidence scores are qualitative model estimates and not formal mathematical probabilities of authenticity.'
+        ] : [
+          'Authenticity is marked INCONCLUSIVE because multimodal AI vision was not completed or failed to return a validated structure.',
+          'Physical ELA and metadata metrics alone cannot certify that an image is genuine or manipulated.'
+        ]),
         ...(elaResult.limitations || []),
         ...(exifResult.limitations || []),
         'Visual and statistical models evaluate probabilistic anomaly cues; full chain-of-custody requires cryptographic origin provenance.'
@@ -843,36 +931,62 @@ class ProvenanceService {
     });
 
     // 10. Update Artifact with live display URLs and forensic payload
+    const commonLimitations = [
+      'LLM vision evaluations reflect qualitative semantic inference rather than a calibrated binary classifier with certified TPR/FPR operating thresholds.',
+      'Uncalibrated trust scores must not be presented as formal mathematical probabilities of authenticity.',
+      'Adversarial perturbations, diffusion noise patterns, and refined inpainting can deceive multimodal LLMs.',
+      'Comprehensive media integrity verification requires cryptographic provenance (C2PA) and multi-channel corroboration.'
+    ];
+
     const forensicPayload = {
       isAnalyzed: true,
       analyzedAt: new Date().toISOString(),
       isRealAnalysis: true,
-      authenticity: visionResult?.authenticity || (isAuthentic ? 'GENUINE' : 'MANIPULATED'),
-      trustScore: visionResult?.trust_score ?? (isAuthentic ? 92 : 35),
-      manipulationProbability: visionResult?.manipulation_probability ?? (isAuthentic ? 0.08 : 0.72),
-      confidence: visionResult?.confidence ?? 0.88,
-      verdict: visionResult?.verdict || (isAuthentic ? 'Authentic Photographic Capture' : 'Forensic Compression Discrepancy Detected'),
-      summary: visionResult?.summary || (isAuthentic ? 'Uniform pixel error levels and natural scene illumination verified.' : 'Localized compression variance detected across JPEG blocks.'),
-      subjectDescription: visionResult?.subject_description || 'User-uploaded photographic media',
+      status: visionResult ? 'COMPLETED' : 'INCONCLUSIVE',
+      reason: visionResult
+        ? null
+        : 'Gemini multimodal vision analysis was unavailable or encountered an execution failure; physical forensics (ELA & EXIF) executed only.',
+      source: visionResult ? 'LLM_VISION_OPINION' : null,
+      authenticity: visionResult?.authenticity || null,
+      trustScore: typeof visionResult?.trust_score === 'number' ? visionResult.trust_score : null,
+      manipulationProbability: typeof visionResult?.manipulation_probability === 'number' ? visionResult.manipulation_probability : null,
+      confidence: typeof visionResult?.confidence === 'number' ? visionResult.confidence : null,
+      verdict: visionResult?.verdict || (elaResult?.hasCompressionAnomaly ? 'Forensic Compression Discrepancy Detected via ELA' : 'Authenticity Inconclusive — Vision Model Not Available'),
+      summary: visionResult?.summary || (elaResult?.hasCompressionAnomaly ? 'Localized compression variance detected across JPEG blocks. Authenticity cannot be certified without vision model verification.' : 'Uniform pixel error levels observed. Authenticity cannot be certified without vision model verification.'),
+      subjectDescription: visionResult?.subject_description || null,
       visualFindings: visionResult?.visual_findings || [
         `Image dimensions: ${statsResult?.width || 0}x${statsResult?.height || 0} (${statsResult?.format || mimeType})`,
         `Mean luminance: ${statsResult?.meanLuminance || 'N/A'}, Variance: ${statsResult?.meanVariance || 'N/A'}`,
         `ELA Mean Error: ${elaResult?.meanError ?? 0} (Compression Anomaly: ${elaResult?.hasCompressionAnomaly ? 'YES' : 'NO'})`
       ],
-      signals: visionResult?.signals || {
-        spatial_diff: elaResult?.hasCompressionAnomaly ? 0.65 : 0.10,
-        noise_score: isAuthentic ? 0.12 : 0.58,
-        color_diff: 0.12,
-        face_landmark: 0.0,
-        jpeg_artifact: elaResult?.meanError ? Math.min(1.0, elaResult.meanError / 30) : 0.15,
-        edge_consistency: isAuthentic ? 0.90 : 0.55,
-        temporal_mismatch: 0.0,
-        watermark_detected: 0.0
+      signals: visionResult?.signals ? {
+        spatial_diff: typeof visionResult.signals.spatial_diff === 'number' ? visionResult.signals.spatial_diff : null,
+        noise_score: typeof visionResult.signals.noise_score === 'number' ? visionResult.signals.noise_score : null,
+        color_diff: null,
+        face_landmark: typeof visionResult.signals.face_landmark === 'number' ? visionResult.signals.face_landmark : null,
+        jpeg_artifact: elaResult?.status === 'COMPLETED' ? Number((Math.min(1.0, (elaResult.meanError || 0) / 30)).toFixed(2)) : null,
+        edge_consistency: typeof visionResult.signals.edge_consistency === 'number' ? visionResult.signals.edge_consistency : null,
+        temporal_mismatch: null,
+        watermark_detected: null
+      } : {
+        spatial_diff: elaResult?.hasCompressionAnomaly ? 0.65 : null,
+        noise_score: null,
+        color_diff: null,
+        face_landmark: null,
+        jpeg_artifact: elaResult?.status === 'COMPLETED' ? Number((Math.min(1.0, (elaResult.meanError || 0) / 30)).toFixed(2)) : null,
+        edge_consistency: null,
+        temporal_mismatch: null,
+        watermark_detected: null
       },
-      detectedAnomalies: visionResult?.detected_anomalies || (elaResult?.hasCompressionAnomaly ? ['JPEG compression grid anomaly detected in high-frequency regions'] : ['None detected - natural optical physics confirmed']),
-      riskLevel: visionResult?.risk_level || (isAuthentic ? 'LOW' : 'HIGH'),
-      recommendedAction: visionResult?.recommended_action || (isAuthentic ? 'ALLOW' : 'REQUEST_ATTRIBUTION'),
-      dmcaNeeded: visionResult?.dmca_needed ?? !isAuthentic,
+      detectedAnomalies: visionResult?.detected_anomalies || (elaResult?.hasCompressionAnomaly ? ['JPEG compression grid anomaly detected in high-frequency regions'] : []),
+      riskLevel: visionResult?.risk_level || (elaResult?.hasCompressionAnomaly ? 'HIGH' : 'UNKNOWN'),
+      recommendedAction: visionResult?.recommended_action || (elaResult?.hasCompressionAnomaly ? 'REVIEW_REQUIRED' : 'INCONCLUSIVE_REVIEW'),
+      dmcaNeeded: visionResult?.dmca_needed ?? Boolean(elaResult?.hasCompressionAnomaly),
+      limitations: visionResult?.limitations || (visionResult ? commonLimitations : [
+        'Multimodal AI vision model was not executed or returned no valid output.',
+        'No numeric trust score or authenticity verdict is fabricated.',
+        ...commonLimitations
+      ]),
       ela: elaResult,
       exif: exifResult,
       stats: statsResult,
@@ -887,6 +1001,10 @@ class ProvenanceService {
       dataUrl: storedMedia?.dataUrl || null,
       previewUrl: `/api/artifacts/${art.id}/file`
     };
+
+    if (typeof this.store.storeArtifact === 'function') {
+      this.store.storeArtifact(art);
+    }
 
     return {
       run,

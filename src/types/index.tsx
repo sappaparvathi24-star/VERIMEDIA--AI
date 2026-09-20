@@ -11,63 +11,67 @@ export type Urgency = 'low' | 'medium' | 'high' | 'critical'
 export type CaseStatus = 'open' | 'under_review' | 'dmca_filed' | 'resolved' | 'closed'
 
 export interface MLSignals {
-  match_score: number
-  spatial_diff: number
-  color_diff: number
-  frame_diff: number
-  temporal_diff: number
-  noise_score: number
-  watermark_detected: number
+  match_score?: number | null
+  spatial_diff?: number | null
+  color_diff?: number | null
+  frame_diff?: number | null
+  temporal_diff?: number | null
+  noise_score?: number | null
+  watermark_detected?: number | null
+  face_landmark?: number | null
+  jpeg_artifact?: number | null
+  edge_consistency?: number | null
+  temporal_mismatch?: number | null
 }
 
 export interface MLPrediction {
   label: MLLabel
-  manipulation_probability: number
-  trust_score: number
-  confidence: number
+  manipulation_probability?: number | null
+  trust_score?: number | null
+  confidence?: number | null
   signals: MLSignals
 }
 
 export interface IntegritySignals {
-  jpeg_artifact: number
-  noise_pattern: number
-  edge_consistency: number
-  metadata_coherence: number
-  color_histogram: number
-  face_landmark: number
-  lipsync: number
-  temporal_mismatch: number
-  watermark_presence: number
+  jpeg_artifact?: number | null
+  noise_pattern?: number | null
+  edge_consistency?: number | null
+  metadata_coherence?: number | null
+  color_histogram?: number | null
+  face_landmark?: number | null
+  lipsync?: number | null
+  temporal_mismatch?: number | null
+  watermark_presence?: number | null
 }
 
 export interface IntegrityResult {
-  score: number
+  score?: number | null
   flags: string[]
   signals: IntegritySignals
 }
 
 export interface TrustResult {
-  trust_score: number
-  risk_tier: 'safe' | 'suspect' | 'high_risk'
+  trust_score?: number | null
+  risk_tier: 'safe' | 'suspect' | 'high_risk' | 'unknown'
   verdict: string
-  factors: Record<string, number>
+  factors: Record<string, number | null>
 }
 
 export interface AuthorshipConfidence {
-  confidence: number
-  reason: string
-  origin_node: string
-  embedding_distance: number
+  confidence?: number | null
+  reason?: string
+  origin_node?: string
+  embedding_distance?: number | null
 }
 
 export interface PropagationSignal {
-  total_scans: number
-  velocity: number
-  urgency: Urgency
-  indicator: string
-  ppm: number
-  anomaly_flag: boolean
-  anomaly_score: number
+  total_scans?: number | null
+  velocity?: number | null
+  urgency?: Urgency
+  indicator?: string
+  ppm?: number | null
+  anomaly_flag?: boolean
+  anomaly_score?: number | null
 }
 
 export interface AIAnalysis {
@@ -96,27 +100,31 @@ export interface DetectionResult {
   ml: MLPrediction
   integrity: IntegrityResult
   trust: TrustResult
-  authorship: AuthorshipConfidence
-  propagation: PropagationSignal
+  authorship?: AuthorshipConfidence | null
+  propagation?: PropagationSignal | null
   ai_analysis: AIAnalysis
   timestamp: string
   case_id: string | null
   processing_ms: number
   is_demo?: boolean
   mode?: string
-  disclaimer?: string
+  disclaimer?: string | null
   visual_findings?: string[]
-  subject_description?: string
+  subject_description?: string | null
   detected_anomalies?: string[]
   forensics?: {
     engine?: string
-    authenticity?: string
-    trustScore?: number
-    manipulationProbability?: number
-    confidence?: number
+    status?: string
+    reason?: string | null
+    source?: string | null
+    limitations?: string[]
+    authenticity?: string | null
+    trustScore?: number | null
+    manipulationProbability?: number | null
+    confidence?: number | null
     verdict?: string
-    summary?: string
-    subjectDescription?: string
+    summary?: string | null
+    subjectDescription?: string | null
     visualFindings?: string[]
     detectedAnomalies?: string[]
     recommendedAction?: string

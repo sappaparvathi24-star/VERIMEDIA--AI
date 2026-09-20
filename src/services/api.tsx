@@ -105,6 +105,43 @@ export const uploadArtifactFile = async (investigationId: string, file: File) =>
   }).then(r => r.data)
 }
 
+export const uploadArtifactAsync = async (file: File, investigationId?: string) => {
+  const token = await getToken()
+  const formData = new FormData()
+  formData.append('file', file)
+  if (investigationId) {
+    formData.append('investigationId', investigationId)
+  }
+
+  return axios.post(`${BASE}/api/artifacts/upload`, formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    }
+  }).then(r => r.data)
+}
+
+export const getForensicJob = async (jobId: string) => {
+  return axios.get(`${BASE}/api/jobs/${jobId}`).then(r => r.data)
+}
+
+export const listForensicJobs = async (params?: { investigationId?: string; artifactId?: string; status?: string }) => {
+  return axios.get(`${BASE}/api/jobs`, { params }).then(r => r.data)
+}
+
+export const pollForensicJob = async (jobId: string, maxWaitMs = 30000, intervalMs = 1000) => {
+  const startTime = Date.now()
+  while (Date.now() - startTime < maxWaitMs) {
+    const data = await getForensicJob(jobId)
+    const job = data?.job || data
+    if (job?.status === 'COMPLETED' || job?.status === 'SKIPPED' || job?.status === 'FAILED') {
+      return job
+    }
+    await new Promise(resolve => setTimeout(resolve, intervalMs))
+  }
+  throw new Error(`Forensic job ${jobId} timed out after ${maxWaitMs}ms`)
+}
+
 // ── Discovery & Provider Health API ──────────────────────────────────────────
 export const getProviders = () =>
   api.get('/providers').then(r => r.data)

@@ -365,9 +365,9 @@ export function OriginPanel() {
             </p>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
               {[
-                { label: 'Authorship Confidence', value: `${Math.round(authorship.confidence * 100)}%`, color: '#00d4ff' },
-                { label: 'Origin Node Target', value: authorship.origin_node || 'Source A (Observed)', color: '#22c55e' },
-                { label: 'Embedding Vector Δ', value: (authorship?.embedding_distance ?? 0.042).toFixed(4), color: '#f59e0b' },
+                { label: 'Authorship Confidence', value: authorship?.confidence != null ? `${Math.round(authorship.confidence * 100)}%` : 'N/A (Not asserted)', color: '#00d4ff' },
+                { label: 'Origin Node Target', value: authorship?.origin_node || (artifact ? artifact.filename : 'Uploaded Media Artifact'), color: '#22c55e' },
+                { label: 'Embedding Vector Δ', value: authorship?.embedding_distance != null ? authorship.embedding_distance.toFixed(4) : 'N/A', color: '#f59e0b' },
                 { label: 'Visual Similarity', value: `${Math.round(similarity * 100)}%`, color: '#a855f7' },
               ].map(item => (
                 <div key={item.label} style={{ background: '#080c10', borderRadius: 6, padding: '12px 14px', border: '1px solid #1e2d3d' }}>

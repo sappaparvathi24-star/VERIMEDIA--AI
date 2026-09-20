@@ -297,7 +297,7 @@ export function CommandPalette() {
         id: `scan-res-${r.job_id}-${idx}`,
         category: 'RECENT SCANS',
         title: `${r.platform}: ${r.caption || r.job_id}`,
-        subtitle: `Job #${r.job_id} · @${r.username} · ML Conf: ${Math.round(r.ml.confidence * 100)}%`,
+        subtitle: `Job #${r.job_id} · @${r.username} · ML Conf: ${r.ml.confidence != null ? `${Math.round(r.ml.confidence * 100)}%` : 'N/A'}`,
         icon: decision === 'ALLOW' ? '✅' : '🚨',
         badge: decision,
         badgeColor: color,

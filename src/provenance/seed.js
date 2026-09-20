@@ -8,11 +8,13 @@ export function seedProvenanceData(store) {
     title: 'Global Championship Final Highlights (Rights Enforcement)',
     description: 'Investigation into multi-platform unauthorized syndication and deepfake audio manipulation of broadcast championship footage.',
     status: 'ACTIVE',
-    isDemo: false,
+    isDemo: true,
     metadata: {
+      isDemo: true,
+      demoNotice: 'DEMO SCENARIO — SIMULATED BENCHMARK CASE',
       forensicConfidence: 0.94,
       priority: 'HIGH',
-      tags: ['sports', 'broadcast', 'copyright']
+      tags: ['sports', 'broadcast', 'copyright', 'demo']
     }
   });
 
@@ -27,7 +29,7 @@ export function seedProvenanceData(store) {
     dimensions: { width: 1920, height: 1080 },
     duration: 180.0,
     isReference: true,
-    isDemo: false
+    isDemo: true
   });
 
   const infringingArt = store.createArtifact({
@@ -41,7 +43,7 @@ export function seedProvenanceData(store) {
     dimensions: { width: 1080, height: 1080 },
     duration: 58.0,
     isReference: false,
-    isDemo: false
+    isDemo: true
   });
 
   const broadcastSource = store.createSource({
@@ -178,7 +180,7 @@ export function seedProvenanceData(store) {
       'AUDIO_TRACK_REPLACEMENT',
       'SPATIAL_CROPPING'
     ],
-    isDemo: false
+    isDemo: true
   });
 
   store.createDiscoveryCandidate({
@@ -214,7 +216,7 @@ export function seedProvenanceData(store) {
       'Does not prevent secondary offline redistribution.'
     ],
     transformationIndicators: [],
-    isDemo: false
+    isDemo: true
   });
 
   // ── DEMO CASE: Synthetic Benchmark Demonstration ─────────────────────────

@@ -20,7 +20,18 @@ function Bar({ value, color }: { value: number; color: string }) {
   )
 }
 
-function Signal({ label, value, invert = false }: { label: string; value: number; invert?: boolean }) {
+function Signal({ label, value, invert = false }: { label: string; value?: number | null; invert?: boolean }) {
+  if (value == null) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+        <span style={{ width: 140, fontSize: 11, color: '#94a3b8', flexShrink: 0 }}>{label}</span>
+        <div style={{ flex: 1, height: 4, background: '#1e293b', borderRadius: 2 }} />
+        <span style={{ fontSize: 10, fontFamily: 'monospace', color: '#64748b', width: 36, textAlign: 'right', fontWeight: 600 }}>
+          N/A
+        </span>
+      </div>
+    )
+  }
   const displayVal = invert ? 1 - value : value
   const color = displayVal < 0.35 ? '#22c55e' : displayVal < 0.65 ? '#f59e0b' : '#ef4444'
   return (
@@ -202,16 +213,16 @@ export function EvidenceModal({ result }: Props) {
               {/* Metric Cards */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 16 }}>
                 {[
-                  { label: 'Similarity',    value: result.similarity,      color: '#00d4ff'  },
-                  { label: 'Integrity',     value: integrity.score,         color: '#22c55e'  },
-                  { label: 'Trust Score',   value: trust.trust_score,       color: '#f59e0b'  },
-                  { label: 'AI Confidence', value: ai_analysis.confidence,  color: '#a855f7'  },
+                  { label: 'Similarity',    display: result.similarity != null ? `${Math.round(result.similarity * 100)}%` : 'N/A', color: '#00d4ff'  },
+                  { label: 'Integrity',     display: integrity.score != null ? `${Math.round(integrity.score * 100)}%` : 'N/A', color: '#22c55e'  },
+                  { label: 'Trust Score',   display: trust.trust_score != null ? `${Math.round(trust.trust_score)}` : 'Inconclusive', color: '#f59e0b'  },
+                  { label: 'AI Confidence', display: ai_analysis.confidence != null ? `${Math.round(ai_analysis.confidence * 100)}%` : 'N/A', color: '#a855f7'  },
                 ].map(item => (
                   <div key={item.label} style={{
                     background: '#0d1117', border: '1px solid #1e2d3d', borderRadius: 6, padding: '8px 12px',
                   }}>
-                    <div style={{ fontSize: 18, fontWeight: 800, color: item.color, fontFamily: 'monospace' }}>
-                      {Math.round(item.value * 100)}%
+                    <div style={{ fontSize: 16, fontWeight: 800, color: item.color, fontFamily: 'monospace' }}>
+                      {item.display}
                     </div>
                     <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                       {item.label}
@@ -265,6 +276,51 @@ export function EvidenceModal({ result }: Props) {
                   Recommended Action: {ai_analysis.action}
                 </div>
               </div>
+
+              {/* Forensics Epistemic Limitations & Source */}
+              {result?.forensics && (
+                <div style={{
+                  background: '#0d1117', border: '1px solid #1e293b',
+                  borderRadius: 8, padding: 14, marginTop: 14,
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' }}>
+                      Forensic Audit Limitations & Attribution
+                    </div>
+                    {result.forensics.source && (
+                      <span style={{
+                        fontSize: 10, fontFamily: 'monospace', fontWeight: 700,
+                        padding: '2px 8px', borderRadius: 4,
+                        background: 'rgba(56, 189, 248, 0.1)', color: '#38bdf8',
+                        border: '1px solid rgba(56, 189, 248, 0.3)'
+                      }}>
+                        SOURCE: {result.forensics.source}
+                      </span>
+                    )}
+                  </div>
+
+                  {result.forensics.status === 'INCONCLUSIVE' && (
+                    <div style={{
+                      padding: '8px 10px', background: 'rgba(245, 158, 11, 0.1)',
+                      border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: 6,
+                      fontSize: 11, color: '#f59e0b', marginBottom: 8
+                    }}>
+                      ⚠️ <strong>Authenticity Status: INCONCLUSIVE</strong> — {result.forensics.reason || 'Vision inference model unavailable; numeric trust scores and definitive verdicts are withheld.'}
+                    </div>
+                  )}
+
+                  {result.forensics.limitations && result.forensics.limitations.length > 0 && (
+                    <div style={{ fontSize: 11, color: '#64748b', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {result.forensics.limitations.map((lim, idx) => (
+                        <div key={idx} style={{ display: 'flex', gap: 6 }}>
+                          <span style={{ color: '#475569' }}>•</span>
+                          <span>{lim}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </>
           )}
         </div>

@@ -124,7 +124,7 @@ export function PropagationGraph() {
 
       // ACTIVE SCAN TOPOLOGY
       const { propagation, platform } = currentResult
-      const urgency = propagation.urgency || 'low'
+      const urgency = propagation?.urgency || 'low'
       const urgencyColor = urgency === 'critical' ? '#dc2626' : urgency === 'high' ? '#ef4444' : urgency === 'medium' ? '#f59e0b' : '#22c55e'
 
       // Platform nodes around center
@@ -212,9 +212,9 @@ export function PropagationGraph() {
       ctx.textAlign = 'left'
       ctx.font = '800 11px monospace'
       ctx.fillStyle = '#38bdf8'
-      ctx.fillText(`VELOCITY: ${propagation.velocity || 42} shares/min`, 16, 28)
+      ctx.fillText(`VELOCITY: ${propagation?.velocity != null ? `${propagation.velocity} shares/min` : 'N/A'}`, 16, 28)
       ctx.fillStyle = '#94a3b8'
-      ctx.fillText(`PPM INDEX: ${propagation.ppm || 120} ppm`, 16, 44)
+      ctx.fillText(`PPM INDEX: ${propagation?.ppm != null ? `${propagation.ppm} ppm` : 'N/A'}`, 16, 44)
       ctx.fillStyle = urgencyColor
       ctx.fillText(`URGENCY: ${urgency.toUpperCase()}`, 16, 60)
 

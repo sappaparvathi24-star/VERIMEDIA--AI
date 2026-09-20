@@ -76,7 +76,7 @@ export function ForensicViewer({ result: propResult, compact = false }: Forensic
   const trustScore = result?.forensics?.trustScore ?? result?.trust?.trust_score ?? 18
   const isManipulated = (result?.forensics?.authenticity === 'MANIPULATED') ||
     (result?.ml?.label === 'TAMPERED') ||
-    (result?.integrity?.score !== undefined && result.integrity.score < 0.5)
+    (typeof result?.integrity?.score === 'number' && result.integrity.score < 0.5)
 
   const signals = result?.integrity?.signals || {
     jpeg_artifact: 0.84,
@@ -727,20 +727,23 @@ export function ForensicViewer({ result: propResult, compact = false }: Forensic
                 <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider font-mono">
                   Ensemble Signal Weights
                 </div>
-                {Object.entries(signals).slice(0, 5).map(([key, val]) => (
-                  <div key={key} className="space-y-1">
-                    <div className="flex justify-between text-[11px]">
-                      <span className="text-slate-300 capitalize">{key.replace('_', ' ')}</span>
-                      <span className="font-mono text-slate-400">{(val * 100).toFixed(0)}%</span>
+                {Object.entries(signals).slice(0, 5).map(([key, val]) => {
+                  const numVal = typeof val === 'number' ? val : null
+                  return (
+                    <div key={key} className="space-y-1">
+                      <div className="flex justify-between text-[11px]">
+                        <span className="text-slate-300 capitalize">{key.replace('_', ' ')}</span>
+                        <span className="font-mono text-slate-400">{numVal != null ? `${(numVal * 100).toFixed(0)}%` : 'N/A'}</span>
+                      </div>
+                      <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full ${numVal == null ? 'bg-slate-700' : (numVal > 0.6 ? 'bg-rose-500' : numVal > 0.3 ? 'bg-amber-500' : 'bg-emerald-500')}`}
+                          style={{ width: numVal != null ? `${numVal * 100}%` : '0%' }}
+                        />
+                      </div>
                     </div>
-                    <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
-                      <div
-                        className={`h-full rounded-full ${val > 0.6 ? 'bg-rose-500' : val > 0.3 ? 'bg-amber-500' : 'bg-emerald-500'}`}
-                        style={{ width: `${val * 100}%` }}
-                      />
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
 

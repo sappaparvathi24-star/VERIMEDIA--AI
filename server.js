@@ -24,6 +24,7 @@ import { MultiSourceDiscoveryManager } from './src/matching/providers/index.js';
 import { getFullDiscoveryTransparency } from './src/matching/discoveryTransparency.js';
 import { computeAverageHash, hashSimilarity } from './src/forensics/perceptualHash.js';
 import { getArtifactMedia, storeArtifactMedia } from './src/forensics/imageForensics.js';
+import { ForensicJobQueue } from './src/jobs/forensicQueue.js';
 import {
   authenticateUser,
   requireAuth,
@@ -247,6 +248,12 @@ async function callGemini(contents, config = {}) {
   }
   return null;
 }
+
+// In-process asynchronous forensic task scheduler & queue
+const forensicJobQueue = new ForensicJobQueue({
+  provenanceService,
+  callGeminiFn: callGemini
+});
 
 // ---------------------------------------------------------------------------
 // Health check endpoints
@@ -851,7 +858,44 @@ const handleV1Detect = async (req, res) => {
       }
     });
 
-    if (mimeType.startsWith('image/')) {
+    if (mimeType.startsWith('video/') || mimeType.startsWith('audio/')) {
+      const skippedAnalysis = {
+        isAnalyzed: true,
+        analyzedAt: new Date().toISOString(),
+        isRealAnalysis: false,
+        status: 'SKIPPED',
+        reason: 'video/audio forensic analysis not implemented',
+        authenticity: null,
+        trustScore: null,
+        manipulationProbability: null,
+        confidence: null,
+        verdict: 'Analysis Skipped — Video/Audio Forensics Not Implemented',
+        summary: 'Forensic evaluation was skipped because video and audio forensic pipelines are not implemented.',
+        action: 'MANUAL_REVIEW_REQUIRED',
+        riskLevel: 'UNKNOWN',
+        limitations: [
+          'Video and audio forensic pipelines are not implemented in this version.',
+          'No automated authenticity, frame extraction, or spectral voice checks could be performed.'
+        ],
+        signals: {
+          spatial_diff: null,
+          noise_score: null,
+          face_landmark: null,
+          edge_consistency: null,
+          color_diff: null,
+          color_histogram: null,
+          frame_diff: null,
+          temporal_diff: null,
+          watermark_detected: null,
+          lipsync: null
+        }
+      };
+      artifact.metadata = {
+        ...(artifact.metadata || {}),
+        forensicAnalysis: skippedAnalysis,
+        status: 'SKIPPED'
+      };
+    } else if (mimeType.startsWith('image/')) {
       try {
         await provenanceService.runImageForensicAnalysis({
           investigationId: invId,
@@ -867,6 +911,7 @@ const handleV1Detect = async (req, res) => {
     }
     artifactId = artifact.id;
     investigationId = invId;
+    artifact = provenanceService.getArtifact(artifact.id) || artifact;
   } else if (artifactId) {
     artifact = provenanceService.getArtifact(artifactId);
   } else if (investigationId) {
@@ -878,6 +923,11 @@ const handleV1Detect = async (req, res) => {
     const invId = artifact.investigationId || investigationId;
     const inv = invId ? provenanceService.getInvestigation(invId) : null;
     const forensic = artifact.metadata?.forensicAnalysis || null;
+
+    // Check if media is video or audio
+    const isVideoOrAudio = (artifact.mimeType && (artifact.mimeType.startsWith('video/') || artifact.mimeType.startsWith('audio/'))) ||
+      artifact.type === 'VIDEO' || artifact.type === 'AUDIO';
+    const isSkipped = forensic?.status === 'SKIPPED' || isVideoOrAudio;
 
     // Calculate real perceptual and hash similarity against other artifacts in store
     const allArtifacts = provenanceService.getArtifacts().filter(a => a.id !== artifact.id);
@@ -899,41 +949,48 @@ const handleV1Detect = async (req, res) => {
       }
     }
 
-    const isAuthentic = forensic ? forensic.authenticity === 'GENUINE' : (artifact.metadata?.exif ? true : false);
-    const hasAnomaly = forensic ? (forensic.authenticity !== 'GENUINE' || forensic.ela?.hasCompressionAnomaly) : false;
-    const integrityScore = forensic ? (forensic.trustScore / 100) : (hasAnomaly ? 0.42 : 0.88);
-    const isThreat = highestSimilarity > 0.80 || hasAnomaly;
+    const isThreat = highestSimilarity > 0.80 || (forensic?.riskLevel === 'HIGH' || forensic?.riskLevel === 'CRITICAL');
     const decision = isThreat
       ? (highestSimilarity > 0.95 ? 'EMERGENCY_TAKEDOWN' : 'TAKEDOWN')
-      : (highestSimilarity > 0.60 ? 'REVIEW REQUIRED' : 'ALLOW');
+      : (highestSimilarity > 0.60 ? 'REVIEW REQUIRED' : (isSkipped ? 'SKIPPED' : (forensic?.status === 'INCONCLUSIVE' ? 'INCONCLUSIVE' : 'ALLOW')));
 
-    const signals = forensic?.signals || {
+    // Genuinely computed signals or explicitly null/absent
+    const signals = {
       match_score: Number(highestSimilarity.toFixed(2)),
-      spatial_diff: hasAnomaly ? 0.65 : 0.08,
-      color_diff: 0.12,
-      frame_diff: 0.05,
-      temporal_diff: 0.04,
-      noise_score: hasAnomaly ? 0.68 : 0.12,
-      watermark_detected: 0.0
+      spatial_diff: typeof forensic?.signals?.spatial_diff === 'number'
+        ? forensic.signals.spatial_diff
+        : (forensic?.ela?.status === 'COMPLETED' ? Number(Math.min(1.0, (forensic.ela.meanError || 0) / 40).toFixed(2)) : null),
+      color_diff: null,
+      frame_diff: null,
+      temporal_diff: null,
+      noise_score: typeof forensic?.signals?.noise_score === 'number' ? forensic.signals.noise_score : null,
+      watermark_detected: null
     };
 
     const integritySignals = {
-      jpeg_artifact: forensic?.ela?.meanError ? Math.min(1.0, forensic.ela.meanError / 30) : 0.15,
-      noise_pattern: hasAnomaly ? 0.68 : 0.20,
-      edge_consistency: isAuthentic ? 0.90 : 0.50,
-      metadata_coherence: artifact.metadata?.exif ? 0.95 : 0.60,
-      color_histogram: 0.85,
-      face_landmark: signals.face_landmark || 0.0,
-      lipsync: 0.0,
-      temporal_mismatch: signals.temporal_mismatch || 0.0,
-      watermark_presence: signals.watermark_detected || 0.0
+      jpeg_artifact: forensic?.ela?.status === 'COMPLETED' && typeof forensic.ela.meanError === 'number'
+        ? Number(Math.min(1.0, forensic.ela.meanError / 30).toFixed(2))
+        : null,
+      noise_pattern: null,
+      edge_consistency: typeof forensic?.signals?.edge_consistency === 'number' ? forensic.signals.edge_consistency : null,
+      metadata_coherence: artifact.metadata?.exif ? 1.0 : null,
+      color_histogram: null,
+      face_landmark: typeof forensic?.signals?.face_landmark === 'number' ? forensic.signals.face_landmark : null,
+      lipsync: null,
+      temporal_mismatch: null,
+      watermark_presence: null
     };
 
     const visualFindings = forensic?.visualFindings || [
       `Dimensions: ${artifact.dimensions?.width || 'N/A'}x${artifact.dimensions?.height || 'N/A'} (${artifact.mimeType})`,
       `SHA-256 fingerprint: ${artifact.sha256 ? artifact.sha256.slice(0, 16) : 'N/A'}...`,
-      artifact.metadata?.exif ? 'EXIF hardware and capture timestamp recorded.' : 'Metadata stripped.'
+      artifact.metadata?.exif ? 'EXIF hardware and capture metadata recorded.' : 'Metadata unverified or stripped.'
     ];
+
+    const trustScore = typeof forensic?.trustScore === 'number' ? forensic.trustScore : null;
+    const integrityScore = trustScore != null
+      ? Number((trustScore / 100).toFixed(2))
+      : (forensic?.ela?.status === 'COMPLETED' ? (forensic.ela.hasCompressionAnomaly ? 0.35 : 0.85) : null);
 
     return res.json({
       job_id: `DET-REAL-${Date.now().toString(36)}`,
@@ -946,7 +1003,7 @@ const handleV1Detect = async (req, res) => {
       fingerprint_hash: artifact.perceptualHash || (artifact.sha256 ? artifact.sha256.slice(0, 16) : 'N/A'),
       is_demo: false,
       mode: 'REAL_PIPELINE',
-      disclaimer: null,
+      disclaimer: isSkipped ? 'video/audio forensic analysis not implemented' : (forensic?.reason || null),
       artifact: {
         id: artifact.id,
         filename: artifact.filename,
@@ -961,13 +1018,17 @@ const handleV1Detect = async (req, res) => {
         matchedReferenceId: matchedRef ? matchedRef.id : null
       },
       visual_findings: visualFindings,
-      subject_description: forensic?.subjectDescription || 'User-submitted media asset',
-      detected_anomalies: forensic?.detectedAnomalies || (hasAnomaly ? ['Compression grid discrepancy'] : ['None detected - natural optical physics confirmed']),
+      subject_description: forensic?.subjectDescription || null,
+      detected_anomalies: forensic?.detectedAnomalies || [],
       ml: {
-        label: isThreat ? (forensic?.authenticity || 'TAMPERED') : (highestSimilarity > 0.60 ? 'SUSPICIOUS' : 'SAFE'),
-        manipulation_probability: forensic?.manipulationProbability ?? (hasAnomaly ? 0.78 : (1 - integrityScore)),
-        trust_score: forensic?.trustScore ?? Math.round(integrityScore * 100),
-        confidence: forensic?.confidence ?? Number(Math.max(0.75, highestSimilarity).toFixed(2)),
+        label: highestSimilarity > 0.80
+          ? 'TAMPERED'
+          : (isSkipped ? 'SKIPPED' : (forensic?.authenticity || (forensic?.status === 'INCONCLUSIVE' ? 'INCONCLUSIVE' : 'UNKNOWN'))),
+        manipulation_probability: typeof forensic?.manipulationProbability === 'number' ? forensic.manipulationProbability : null,
+        trust_score: trustScore,
+        confidence: typeof forensic?.confidence === 'number'
+          ? forensic.confidence
+          : (highestSimilarity > 0.5 ? Number(highestSimilarity.toFixed(2)) : null),
         signals
       },
       integrity: {
@@ -976,47 +1037,42 @@ const handleV1Detect = async (req, res) => {
         signals: integritySignals
       },
       trust: {
-        trust_score: forensic?.trustScore ?? Math.round(integrityScore * 100),
-        risk_tier: isThreat ? 'high_risk' : (highestSimilarity > 0.60 ? 'suspect' : 'safe'),
-        verdict: forensic?.verdict || (isThreat ? 'Infringement / Manipulation Indicated' : 'Authentic Photographic Capture Verified'),
+        trust_score: trustScore,
+        risk_tier: isThreat ? 'high_risk' : (highestSimilarity > 0.60 ? 'suspect' : (isSkipped ? 'unknown' : (trustScore != null ? (trustScore >= 70 ? 'safe' : 'suspect') : 'unknown'))),
+        verdict: isSkipped
+          ? 'Analysis Skipped — Video/Audio Forensics Not Implemented'
+          : (forensic?.verdict || (highestSimilarity > 0.80 ? 'Perceptual Duplicate Reference Detected' : 'Authenticity Inconclusive — Vision Model Not Available')),
         factors: {
           perceptual_match: highestSimilarity,
           forensic_integrity: integrityScore
         }
       },
-      authorship: {
-        confidence: Number((integrityScore * 0.9).toFixed(2)),
-        reason: artifact.metadata?.exif ? 'EXIF metadata present and inspected' : 'No embedded EXIF metadata',
-        origin_node: inv ? inv.title : 'Uploaded Media Artifact',
-        embedding_distance: 1 - highestSimilarity
-      },
-      propagation: {
-        total_scans: 1,
-        velocity: 1.0,
-        urgency: isThreat ? 'high' : 'low',
-        indicator: isThreat ? 'VIRAL_TAKEDOWN_REQUIRED' : 'STABLE',
-        ppm: 12,
-        anomaly_flag: hasAnomaly,
-        anomaly_score: hasAnomaly ? 0.85 : 0.10
-      },
+      authorship: null,
+      propagation: null,
       ai_analysis: {
-        threat_type: isThreat ? (forensic?.authenticity || 'Copyright Infringement & Forensic Anomaly') : 'Authentic Media',
+        threat_type: highestSimilarity > 0.80
+          ? 'Perceptual Match / Copyright Infringement'
+          : (isSkipped ? 'Media Forensics Skipped (Video/Audio Not Implemented)' : (forensic?.authenticity || 'Forensic Analysis Inconclusive')),
         decision,
-        severity: isThreat ? (forensic?.riskLevel || 'HIGH') : 'LOW',
-        risk_label: isThreat ? 'HIGH_RISK' : 'SAFE',
-        confidence: forensic?.confidence ?? Number(Math.max(0.75, highestSimilarity).toFixed(2)),
+        severity: isThreat ? (highestSimilarity > 0.95 ? 'CRITICAL' : 'HIGH') : (highestSimilarity > 0.60 ? 'MEDIUM' : (isSkipped ? 'UNKNOWN' : (forensic?.riskLevel || 'LOW'))),
+        risk_label: isThreat ? 'CONFIRMED_INFRINGEMENT' : (highestSimilarity > 0.60 ? 'POTENTIAL_DERIVATIVE' : (isSkipped ? 'UNANALYZED_MEDIA' : (forensic?.status === 'INCONCLUSIVE' ? 'INCONCLUSIVE' : 'ORIGINAL_OR_AUTHENTIC'))),
+        confidence: typeof forensic?.confidence === 'number'
+          ? forensic.confidence
+          : (highestSimilarity > 0.5 ? Number(highestSimilarity.toFixed(2)) : null),
         reasoning_points: forensic?.visualFindings ? [
           ...forensic.visualFindings.slice(0, 3),
           highestSimilarity > 0.80 ? `Perceptual hash match (${Math.round(highestSimilarity * 100)}%) against reference media.` : 'No duplicate reference hash match found in active repository.'
         ] : [
           highestSimilarity > 0.80 ? `Perceptual hash match (${Math.round(highestSimilarity * 100)}%) against existing reference.` : 'No duplicate match found.',
-          hasAnomaly ? 'Compression grid discrepancies observed via ELA.' : 'Error Level Analysis reveals standard uniform compression.'
+          isSkipped ? 'Video and audio forensic processing is not implemented in this version.' : (forensic?.ela?.status === 'COMPLETED'
+            ? (forensic.ela.hasCompressionAnomaly ? 'Compression grid discrepancies observed via ELA.' : 'Error Level Analysis reveals standard uniform compression.')
+            : 'Error Level Analysis not applicable or skipped.')
         ],
-        action: isThreat ? (forensic?.recommendedAction || 'Submit DMCA takedown') : 'No enforcement action required',
-        recommended_action: isThreat ? 'File expedited takedown notice' : 'Retain in archive',
+        action: isThreat ? 'Submit DMCA takedown' : (isSkipped ? 'video/audio forensic analysis not implemented — manual review required' : (forensic?.recommendedAction || 'No enforcement action required')),
+        recommended_action: isThreat ? 'File expedited takedown notice' : (isSkipped ? 'Forensic pipeline skipped for video/audio. Manual verification required.' : (forensic?.recommendedAction || 'Retain in archive')),
         origin_traced: Boolean(matchedRef),
-        dmca_needed: isThreat,
-        source: forensic?.engine || 'real-forensic-engine'
+        dmca_needed: highestSimilarity > 0.80 || Boolean(forensic?.dmcaNeeded),
+        source: forensic?.source || forensic?.engine || (highestSimilarity > 0.80 ? 'pHash-matching-engine' : (isSkipped ? 'SKIPPED' : 'INCONCLUSIVE'))
       },
       forensics: forensic,
       timestamp: new Date().toISOString(),
@@ -1426,7 +1482,56 @@ app.post('/api/investigations/:id/artifacts/upload', uploadLimiter, requireAuth,
     });
 
     let forensicAnalysis = null;
-    if (mimeType.startsWith('image/')) {
+    if (mimeType.startsWith('video/') || mimeType.startsWith('audio/')) {
+      forensicAnalysis = {
+        status: 'SKIPPED',
+        reason: 'video/audio forensic analysis not implemented',
+        authenticity: null,
+        trustScore: null,
+        limitations: [
+          'Video and audio forensic pipelines are not implemented in this version.',
+          'Automated frame extraction and audio spectral analysis are unavailable.'
+        ]
+      };
+      artifact.metadata = {
+        ...(artifact.metadata || {}),
+        forensicAnalysis,
+        status: 'SKIPPED'
+      };
+    } else if (req.query.async === 'true') {
+      const job = forensicJobQueue.enqueueJob({
+        investigationId: req.params.id,
+        artifactId: artifact.id,
+        filename,
+        mimeType,
+        buffer,
+        exif
+      });
+
+      logAuditEvent({
+        investigationId: req.params.id,
+        actor: req.user?.email,
+        action: AuditAction.ARTIFACT_CREATE,
+        objectType: AuditObjectType.ARTIFACT,
+        objectId: artifact.id,
+        afterState: { filename, sha256, mimeType, byteSize },
+        req
+      });
+
+      return res.status(202).json({
+        success: true,
+        status: job.status,
+        jobId: job.jobId,
+        pollUrl: job.pollUrl,
+        artifact: {
+          id: artifact.id,
+          filename: artifact.filename,
+          sha256: artifact.sha256,
+          mimeType: artifact.mimeType,
+          byteSize: artifact.byteSize
+        }
+      });
+    } else if (mimeType.startsWith('image/')) {
       try {
         forensicAnalysis = await provenanceService.runImageForensicAnalysis({
           investigationId: req.params.id,
@@ -1545,7 +1650,59 @@ const handleRegisterArtifact = async (req, res) => {
     });
 
     let forensicAnalysis = null;
-    if (mimeType.startsWith('image/')) {
+    if (mimeType.startsWith('video/') || mimeType.startsWith('audio/')) {
+      forensicAnalysis = {
+        status: 'SKIPPED',
+        reason: 'video/audio forensic analysis not implemented',
+        authenticity: null,
+        trustScore: null,
+        limitations: [
+          'Video and audio forensic pipelines are not implemented in this version.',
+          'Automated frame extraction and audio spectral analysis are unavailable.'
+        ]
+      };
+      artifact.metadata = {
+        ...(artifact.metadata || {}),
+        forensicAnalysis,
+        status: 'SKIPPED'
+      };
+    } else if (req.query.async === 'true') {
+      const job = forensicJobQueue.enqueueJob({
+        investigationId: invId,
+        artifactId: artifact.id,
+        filename,
+        mimeType,
+        buffer,
+        exif
+      });
+
+      logAuditEvent({
+        investigationId: invId,
+        actor: req.user?.email || 'analyst@verimedia.ai',
+        action: AuditAction.ARTIFACT_CREATE,
+        objectType: AuditObjectType.ARTIFACT,
+        objectId: artifact.id,
+        afterState: { filename, sha256, mimeType, byteSize },
+        req
+      });
+
+      return res.status(202).json({
+        status: 'registered',
+        success: true,
+        jobId: job.jobId,
+        pollUrl: job.pollUrl,
+        artifact: {
+          id: artifact.id,
+          filename: artifact.filename,
+          sha256: artifact.sha256,
+          perceptualHash: artifact.perceptualHash,
+          mimeType: artifact.mimeType,
+          byteSize: artifact.byteSize,
+          dimensions: artifact.dimensions,
+          metadata: artifact.metadata
+        }
+      });
+    } else if (mimeType.startsWith('image/')) {
       try {
         forensicAnalysis = await provenanceService.runImageForensicAnalysis({
           investigationId: invId,
@@ -1602,6 +1759,167 @@ const handleRegisterArtifact = async (req, res) => {
 app.post(['/api/artifacts/register', '/api/artifacts/register/'], uploadLimiter, upload.any(), handleRegisterArtifact);
 app.post(['/artifacts/register', '/artifacts/register/'], uploadLimiter, upload.any(), handleRegisterArtifact);
 app.post(['/api/v1/artifacts/register', '/api/v1/artifacts/register/'], uploadLimiter, upload.any(), handleRegisterArtifact);
+
+// ── Dedicated Async Media Artifact Upload (Non-blocking In-Process Job Queue) ──
+app.post(['/artifacts/upload', '/artifacts/upload/', '/api/artifacts/upload', '/api/artifacts/upload/', '/api/v1/artifacts/upload', '/api/v1/artifacts/upload/'], uploadLimiter, upload.any(), async (req, res) => {
+  try {
+    const uploadedFile = req.file || (req.files && req.files[0]);
+    if (!uploadedFile) {
+      return res.status(400).json({ error: 'No media file provided in form-data field "file" or "media"' });
+    }
+
+    const buffer = uploadedFile.buffer;
+    const filename = path.basename(uploadedFile.originalname || 'uploaded_artifact.bin');
+    const sha256 = crypto.createHash('sha256').update(buffer).digest('hex');
+    const byteSize = buffer.length;
+
+    let mimeType = uploadedFile.mimetype || 'application/octet-stream';
+    try {
+      const typeInfo = await fileTypeFromBuffer(buffer);
+      if (typeInfo && typeInfo.mime) {
+        mimeType = typeInfo.mime;
+      }
+    } catch (_) {}
+
+    let dimensions = null;
+    let exif = null;
+    let pHash = null;
+
+    if (mimeType.startsWith('image/')) {
+      try {
+        const meta = await sharp(buffer).metadata();
+        if (meta.width && meta.height) {
+          dimensions = { width: meta.width, height: meta.height };
+        }
+      } catch (_) {}
+
+      try {
+        exif = await exifr.parse(buffer);
+      } catch (_) {}
+
+      try {
+        pHash = await computeAverageHash(buffer);
+      } catch (err) {
+        console.warn('[PerceptualHash] Computation notice:', err.message);
+      }
+    }
+
+    let invId = req.body?.investigationId || req.query?.investigationId;
+    if (!invId) {
+      const invs = provenanceService.getInvestigations();
+      if (invs && invs.length > 0) {
+        invId = invs[0].id;
+      } else {
+        const defaultInv = provenanceService.createInvestigation({
+          title: 'Direct Media Forensic Investigation',
+          description: 'Auto-created investigation for media artifact scanner ingest',
+          createdBy: req.user?.email || 'analyst@verimedia.ai',
+          isDemo: false
+        });
+        invId = defaultInv.id;
+      }
+    }
+
+    const artifact = provenanceService.createArtifact({
+      investigationId: invId,
+      filename,
+      mimeType,
+      byteSize,
+      sha256,
+      perceptualHash: pHash,
+      dimensions: dimensions || null,
+      metadata: {
+        ...(exif ? { exif } : {}),
+        originalName: uploadedFile.originalname,
+        uploadedAt: new Date().toISOString(),
+        uploadedBy: req.user?.email || 'analyst@verimedia.ai'
+      }
+    });
+
+    // Store binary media buffer for inspection & serving
+    storeArtifactMedia(artifact.id, {
+      buffer,
+      mimeType,
+      filename,
+      originalName: uploadedFile.originalname
+    });
+
+    // Immediately enqueue async forensic job into in-process queue
+    const jobResult = forensicJobQueue.enqueueJob({
+      investigationId: invId,
+      artifactId: artifact.id,
+      filename,
+      mimeType,
+      buffer,
+      exif
+    });
+
+    logAuditEvent({
+      investigationId: invId,
+      actor: req.user?.email || 'analyst@verimedia.ai',
+      action: AuditAction.ARTIFACT_CREATE,
+      objectType: AuditObjectType.ARTIFACT,
+      objectId: artifact.id,
+      afterState: { filename, sha256, mimeType, byteSize },
+      req
+    });
+
+    // Prompt 6: Return immediately with 202 Accepted and pollable job ID
+    return res.status(202).json({
+      success: true,
+      status: jobResult.status,
+      jobId: jobResult.jobId,
+      pollUrl: `/api/jobs/${jobResult.jobId}`,
+      job: {
+        id: jobResult.jobId,
+        status: jobResult.status,
+        type: jobResult.type,
+        artifactId: artifact.id,
+        investigationId: invId,
+        createdAt: jobResult.createdAt
+      },
+      artifact: {
+        id: artifact.id,
+        filename: artifact.filename,
+        mimeType: artifact.mimeType,
+        byteSize: artifact.byteSize,
+        sha256: artifact.sha256,
+        perceptualHash: artifact.perceptualHash,
+        dimensions: artifact.dimensions
+      }
+    });
+  } catch (err) {
+    console.error('[AsyncMediaUpload] Failure:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Forensic Jobs Polling Endpoints ──
+app.get(['/api/jobs/:id', '/api/v1/jobs/:id', '/jobs/:id'], (req, res) => {
+  const job = forensicJobQueue.getJob(req.params.id);
+  if (!job) {
+    return res.status(404).json({ error: `Forensic job '${req.params.id}' not found` });
+  }
+  res.json({
+    success: true,
+    job
+  });
+});
+
+app.get(['/api/jobs', '/api/v1/jobs', '/jobs'], (req, res) => {
+  const { investigationId, artifactId, status, limit } = req.query;
+  const list = forensicJobQueue.listJobs({
+    investigationId,
+    artifactId,
+    status,
+    limit: limit ? parseInt(limit, 10) : 50
+  });
+  res.json({
+    success: true,
+    jobs: list,
+    count: list.length
+  });
+});
 
 // Serve stored artifact binary media files
 app.get(['/api/artifacts/:id/file', '/api/v1/artifacts/:id/file', '/artifacts/:id/file'], (req, res) => {

@@ -501,6 +501,7 @@ export class ProvenanceStore {
     observationIds = [],
     independenceGroupId,
     evidenceType,
+    title,
     description,
     confidence = 1.0,
     polarity = EvidencePolarity.SUPPORTING,
@@ -508,13 +509,16 @@ export class ProvenanceStore {
     metadata = {}
   }) {
     const evId = id || `EVD-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
+    const evTitle = title || description || evId;
+    const evDesc = description || title || evTitle;
     const ev = {
       id: evId,
       investigationId,
       observationIds: [...observationIds],
       independenceGroupId: independenceGroupId || `IG-${evId}`,
       evidenceType,
-      description,
+      title: evTitle,
+      description: evDesc,
       confidence,
       polarity,
       verified: Boolean(verified),
@@ -536,6 +540,8 @@ export class ProvenanceStore {
     investigationId,
     title,
     summary,
+    statement,
+    category = 'ANALYSIS',
     status = FindingStatus.SUPPORTED,
     confidence = 0.85,
     evidenceIds = [],
@@ -543,11 +549,15 @@ export class ProvenanceStore {
     metadata = {}
   }) {
     const findId = id || `FND-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
+    const findStatement = statement || summary || title || 'Forensic Finding';
+    const findSummary = summary || statement || findStatement;
     const finding = {
       id: findId,
       investigationId,
-      title,
-      summary,
+      title: title || 'Forensic Finding',
+      summary: findSummary,
+      statement: findStatement,
+      category,
       status,
       confidence,
       evidenceIds: [...evidenceIds],
@@ -577,6 +587,31 @@ export class ProvenanceStore {
     const artifact = this.getArtifact(artifactId);
     const artId = artifact ? artifact.id : artifactId;
     const invId = investigationId || (artifact ? artifact.investigationId : null);
+
+    const isVideoOrAudio = (mimeType && (mimeType.startsWith('video/') || mimeType.startsWith('audio/'))) ||
+      (artifact?.mimeType && (artifact.mimeType.startsWith('video/') || artifact.mimeType.startsWith('audio/'))) ||
+      artifact?.type === 'VIDEO' || artifact?.type === 'AUDIO';
+
+    if (isVideoOrAudio) {
+      const run = this.createAnalysisRun({
+        investigationId: invId,
+        artifactId: artId,
+        method: 'VIDEO_AUDIO_FORENSIC_ENGINE',
+        status: 'SKIPPED',
+        metadata: {
+          mimeType,
+          reason: 'video/audio forensic analysis not implemented'
+        }
+      });
+      return {
+        run,
+        observations: [],
+        evidence: null,
+        finding: null,
+        status: 'SKIPPED',
+        reason: 'video/audio forensic analysis not implemented'
+      };
+    }
 
     // 1. Create AnalysisRun
     const run = this.createAnalysisRun({
