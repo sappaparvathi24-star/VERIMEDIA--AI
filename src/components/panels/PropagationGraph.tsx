@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useStore } from '../../store'
 import { Tooltip } from '../ui/Tooltip'
+import { getInvestigationPropagation } from '../../services/api'
 
 const PLATFORM_COLORS: Record<string, string> = {
   'YouTube':    '#ff0000',
@@ -15,6 +16,22 @@ export function PropagationGraph() {
   const { currentResult, setShowEvidenceModal, setShowDMCAModal } = useStore()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [viewMode, setViewMode] = useState<'mesh' | 'genealogy'>('mesh')
+  const [apiPropagation, setApiPropagation] = useState<any>(null)
+  const [propLoading, setPropLoading] = useState(false)
+
+  // Fetch real propagation data whenever investigation changes
+  useEffect(() => {
+    const invId = currentResult?.investigationId
+    if (!invId) { setApiPropagation(null); return }
+    setPropLoading(true)
+    getInvestigationPropagation(invId)
+      .then((data: any) => setApiPropagation(data || null))
+      .catch(() => setApiPropagation(null))
+      .finally(() => setPropLoading(false))
+  }, [currentResult?.investigationId])
+
+  // Merge API propagation data with store result for canvas render
+  const activePropagation = apiPropagation ?? currentResult?.propagation ?? null
 
   useEffect(() => {
     if (viewMode !== 'mesh') return
@@ -49,7 +66,7 @@ export function PropagationGraph() {
 
       const PLATFORMS = ['YouTube', 'Instagram', 'TikTok', 'X / Twitter', 'Facebook', 'Reddit']
 
-      if (!currentResult || !currentResult.propagation) {
+      if (!currentResult || !activePropagation) {
         // IDLE DEMO GRAPH STATE
         ctx.save()
         ctx.fillStyle = 'rgba(100, 116, 139, 0.25)'
@@ -123,7 +140,8 @@ export function PropagationGraph() {
       }
 
       // ACTIVE SCAN TOPOLOGY
-      const { propagation, platform } = currentResult
+      const { platform } = currentResult
+      const propagation = activePropagation
       const urgency = propagation?.urgency || 'low'
       const urgencyColor = urgency === 'critical' ? '#dc2626' : urgency === 'high' ? '#ef4444' : urgency === 'medium' ? '#f59e0b' : '#22c55e'
 
@@ -224,7 +242,7 @@ export function PropagationGraph() {
     render()
 
     return () => cancelAnimationFrame(animId)
-  }, [currentResult, viewMode])
+  }, [currentResult, viewMode, activePropagation])
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', position: 'relative', background: '#080c10' }}>
@@ -244,15 +262,21 @@ export function PropagationGraph() {
           <span style={{ fontSize: 13, fontFamily: 'monospace', color: '#00d4ff', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
             Engine 4 — Propagation Intelligence
           </span>
-          {currentResult?.propagation?.urgency && (
+          {propLoading && (
+            <span style={{ fontSize: 10, color: '#64748b', fontFamily: 'monospace' }}>◌ Loading propagation…</span>
+          )}
+          {!propLoading && activePropagation?.urgency && (
             <span style={{
               padding: '2px 8px', borderRadius: 4, fontSize: 10, fontFamily: 'monospace', fontWeight: 800,
-              background: currentResult.propagation.urgency === 'critical' ? 'rgba(220,38,38,0.2)' : 'rgba(34,197,94,0.15)',
-              color: currentResult.propagation.urgency === 'critical' ? '#dc2626' : '#4ade80',
-              border: `1px solid ${currentResult.propagation.urgency === 'critical' ? '#dc2626' : '#22c55e'}`
+              background: activePropagation.urgency === 'critical' ? 'rgba(220,38,38,0.2)' : 'rgba(34,197,94,0.15)',
+              color: activePropagation.urgency === 'critical' ? '#dc2626' : '#4ade80',
+              border: `1px solid ${activePropagation.urgency === 'critical' ? '#dc2626' : '#22c55e'}`
             }}>
-              {currentResult?.propagation?.urgency?.toUpperCase()} SPREAD
+              {activePropagation.urgency.toUpperCase()} SPREAD
             </span>
+          )}
+          {!propLoading && !activePropagation && currentResult?.investigationId && (
+            <span style={{ fontSize: 10, color: '#f59e0b', fontFamily: 'monospace' }}>NO PROPAGATION DATA — run discovery first</span>
           )}
         </div>
 
