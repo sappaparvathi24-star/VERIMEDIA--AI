@@ -102,6 +102,182 @@ async function runNonFabricationTests() {
   assert.strictEqual(visionAnalysis.signals.color_diff, null, 'Uncomputed color_diff must remain null');
   console.log('✔ [PASS] Test 2: Successful vision execution attaches source: LLM_VISION_OPINION and explicit calibration limitations.');
 
+  // Test 3: Gemini Vision prompt format without pre-set trust_score / confidence (Prompt 10)
+  console.log('3. Testing downstream calibration when model outputs categorical label and justification only...');
+  const categoricalOnlyVisionOutput = {
+    authenticity: 'AI_GENERATED',
+    verdict: 'Synthetic diffusion characteristics observed in background and anatomical regions',
+    summary: 'High-frequency diffusion textures with loss of epidermal pore resolution and unnatural specular reflections.',
+    subject_description: 'Synthetic portrait rendering',
+    visual_findings: [
+      'Nonsensical geometric patterns in background foliage',
+      'Synthetic smoothing across facial cutaneous structures'
+    ],
+    detected_anomalies: [
+      'Prompt leakage artifacts along perimeter',
+      'Hallucinated limb topology'
+    ],
+    risk_level: 'HIGH',
+    recommended_action: 'REQUEST_ATTRIBUTION',
+    dmca_needed: false
+    // Note: NO trust_score, NO confidence, NO manipulation_probability provided by model
+  };
+
+  const mockCategoricalGemini = async () => ({
+    text: JSON.stringify(categoricalOnlyVisionOutput),
+    model: 'gemini-2.5-flash'
+  });
+
+  const resultCategorical = await service.runImageForensicAnalysis({
+    investigationId: inv.id,
+    artifactId: artifact.id,
+    buffer: testBuffer,
+    mimeType: 'image/jpeg',
+    filename: 'test_sample.jpg',
+    callGeminiFn: mockCategoricalGemini
+  });
+
+  const catAnalysis = resultCategorical.forensicAnalysis;
+  assert.strictEqual(catAnalysis.authenticity, 'AI_GENERATED');
+  assert.ok(typeof catAnalysis.trustScore === 'number', 'Trust score must be calibrated downstream (number)');
+  assert.ok(catAnalysis.trustScore <= 25, 'Calibrated trust score for AI_GENERATED should reflect low authenticity');
+  assert.ok(typeof catAnalysis.manipulationProbability === 'number', 'Manipulation probability must be calibrated downstream');
+  assert.ok(catAnalysis.manipulationProbability >= 0.80, 'Calibrated manipulation probability for AI_GENERATED should be >= 0.80');
+  assert.ok(typeof catAnalysis.confidence === 'number', 'Confidence must be calibrated downstream');
+  console.log('✔ [PASS] Test 3: Downstream calibration derives numeric metrics from categorical label and physical signals without prompt anchors.');
+
+  // Test 4: Grounded propagation confidence derivation (Prompt 11)
+  console.log('4. Testing propagation event confidence derivation from backing discovery candidates...');
+  const { analyzePropagation } = await import('../src/provenance/propagation.js');
+
+  const propInv = store.createInvestigation({
+    title: 'Propagation Calibration Test',
+    description: 'Verifying that synthesized propagation events do not use a flat 0.85 constant.'
+  });
+
+  const artExact = store.createArtifact({
+    investigationId: propInv.id,
+    type: 'IMAGE',
+    filename: 'exact.jpg',
+    mimeType: 'image/jpeg',
+    byteSize: 5000
+  });
+
+  const artPerceptual = store.createArtifact({
+    investigationId: propInv.id,
+    type: 'IMAGE',
+    filename: 'perceptual.jpg',
+    mimeType: 'image/jpeg',
+    byteSize: 5000
+  });
+
+  const artText = store.createArtifact({
+    investigationId: propInv.id,
+    type: 'IMAGE',
+    filename: 'text.jpg',
+    mimeType: 'image/jpeg',
+    byteSize: 5000
+  });
+
+  const artUnbacked = store.createArtifact({
+    investigationId: propInv.id,
+    type: 'IMAGE',
+    filename: 'unbacked.jpg',
+    mimeType: 'image/jpeg',
+    byteSize: 5000
+  });
+
+  const src1 = store.createSource({ platform: 'Web', url: 'https://example.com/exact' });
+  const src2 = store.createSource({ platform: 'Reddit', url: 'https://reddit.com/r/pic/perceptual' });
+  const src3 = store.createSource({ platform: 'YouTube', url: 'https://youtube.com/watch?v=text' });
+  const src4 = store.createSource({ platform: 'Twitter', url: 'https://twitter.com/unbacked' });
+
+  // 1. Exact match candidate
+  store.createDiscoveryCandidate({
+    investigationId: propInv.id,
+    sourceId: src1.id,
+    matchedArtifactId: artExact.id,
+    similarityMeasurements: {
+      exactMatch: true,
+      comparisonMethod: 'SHA256_HASH'
+    }
+  });
+
+  // 2. Perceptual match candidate with visualSimilarity: 0.92
+  store.createDiscoveryCandidate({
+    investigationId: propInv.id,
+    sourceId: src2.id,
+    matchedArtifactId: artPerceptual.id,
+    similarityMeasurements: {
+      exactMatch: false,
+      visualSimilarity: 0.92,
+      comparisonMethod: 'PDQ_PERCEPTUAL_HASH'
+    }
+  });
+
+  // 3. Weak semantic text match candidate
+  store.createDiscoveryCandidate({
+    investigationId: propInv.id,
+    sourceId: src3.id,
+    matchedArtifactId: artText.id,
+    similarityMeasurements: {
+      exactMatch: false,
+      similarityStatus: 'TEXT_MATCH_ONLY',
+      comparisonMethod: 'EXTERNAL_API_METADATA_SEARCH'
+    }
+  });
+
+  // Create appearances for all 4 artifacts
+  store.createAppearance({
+    investigationId: propInv.id,
+    artifactId: artExact.id,
+    sourceId: src1.id,
+    publishedAt: '2026-01-01T10:00:00Z'
+  });
+
+  store.createAppearance({
+    investigationId: propInv.id,
+    artifactId: artPerceptual.id,
+    sourceId: src2.id,
+    publishedAt: '2026-01-02T10:00:00Z'
+  });
+
+  store.createAppearance({
+    investigationId: propInv.id,
+    artifactId: artText.id,
+    sourceId: src3.id,
+    publishedAt: '2026-01-03T10:00:00Z'
+  });
+
+  store.createAppearance({
+    investigationId: propInv.id,
+    artifactId: artUnbacked.id,
+    sourceId: src4.id,
+    publishedAt: '2026-01-04T10:00:00Z'
+  });
+
+  // Run propagation analysis (fallback to appearances)
+  const propAnalysis = analyzePropagation(store, propInv.id);
+
+  const exactEvent = propAnalysis.events.find(e => e.artifactId === artExact.id);
+  const perceptualEvent = propAnalysis.events.find(e => e.artifactId === artPerceptual.id);
+  const textEvent = propAnalysis.events.find(e => e.artifactId === artText.id);
+  const unbackedEvent = propAnalysis.events.find(e => e.artifactId === artUnbacked.id);
+
+  assert.strictEqual(exactEvent.confidence, 1.0, 'Exact match must score 1.0 confidence');
+  assert.strictEqual(exactEvent.retrievalMethod, 'EXACT_HASH_MATCH');
+
+  assert.strictEqual(perceptualEvent.confidence, 0.92, 'Perceptual match must score visualSimilarity (0.92)');
+  assert.strictEqual(perceptualEvent.retrievalMethod, 'PERCEPTUAL_FINGERPRINT_MATCH');
+
+  assert.strictEqual(textEvent.confidence, 0.50, 'Text match only must score 0.50 confidence');
+  assert.strictEqual(textEvent.retrievalMethod, 'EXTERNAL_API_METADATA_SEARCH');
+
+  assert.strictEqual(unbackedEvent.confidence, null, 'Unbacked appearance must have null confidence (UNKNOWN)');
+  assert.strictEqual(unbackedEvent.retrievalMethod, 'UNKNOWN');
+
+  console.log('✔ [PASS] Test 4: Propagation appearances derive confidence from backing candidate data; unbacked appearances get null confidence.');
+
   console.log('========================================');
   console.log('Non-Fabrication Test Suite: ALL PASSED');
   console.log('========================================');

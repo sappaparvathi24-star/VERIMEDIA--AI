@@ -176,6 +176,9 @@ export const getInvestigationReports = (id: string) =>
 export const generateInvestigationReport = (id: string) =>
   api.post(`/investigations/${id}/report`).then(r => r.data)
 
+export const getDetectionTrends = (timeRange: string = '24h', platform: string = 'ALL') =>
+  api.get('/analytics/detection-trends', { params: { timeRange, platform } }).then(r => r.data)
+
 // ── Legacy Compatibility Wrappers ──────────────────────────────────────────
 export const detect = (req: DetectionRequest): Promise<DetectionResult> =>
   api.post<DetectionResult>('/v1/detect/', req).then(r => r.data)
@@ -204,7 +207,42 @@ export const getHealth = (): Promise<HealthStatus> =>
 // ── Gemini Intelligence API ──────────────────────────────────────────────────
 export const askGeminiCopilot = async (prompt: string, history?: Array<{ role: string; content: string }>) => {
   const token = await getToken()
-  return axios.post(`${BASE}/chat`, { prompt, messages: history }, {
+  return axios.post(`${BASE}/api/chat`, { prompt, messages: history }, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {}
+  }).then(r => r.data)
+}
+
+export const explainForensicSignalGemini = async (payload: {
+  signalKey: string
+  signalName?: string
+  value?: number | string
+  context?: string
+  mediaType?: string
+}) => {
+  const token = await getToken()
+  return axios.post(`${BASE}/api/gemini/explain`, payload, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {}
+  }).then(r => r.data)
+}
+
+export const generateInvestigationBriefGemini = async (payload: {
+  investigationId: string
+  userNotes?: string
+}) => {
+  const token = await getToken()
+  return axios.post(`${BASE}/api/gemini/investigation-brief`, payload, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {}
+  }).then(r => r.data)
+}
+
+export const analyzeMultimodalGemini = async (payload: {
+  imageBase64: string
+  mimeType?: string
+  prompt?: string
+  filename?: string
+}) => {
+  const token = await getToken()
+  return axios.post(`${BASE}/api/gemini/multimodal-analyze`, payload, {
     headers: token ? { Authorization: `Bearer ${token}` } : {}
   }).then(r => r.data)
 }

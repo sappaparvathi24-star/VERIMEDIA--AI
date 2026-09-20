@@ -1123,6 +1123,7 @@ const handleV1Detect = async (req, res) => {
       forensics: forensic,
       timestamp: new Date().toISOString(),
       case_id: invId || null,
+      investigationId: invId || null,
       processing_ms: 180
     });
   }
@@ -1221,6 +1222,7 @@ const handleV1Detect = async (req, res) => {
     },
     timestamp: new Date().toISOString(),
     case_id: null,
+    investigationId: null,
     processing_ms: 45
   });
 };

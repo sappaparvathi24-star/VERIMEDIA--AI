@@ -20,7 +20,7 @@ export function OriginPanel() {
   const [genealogyLoading, setGenealogyLoading] = useState(false)
 
   useEffect(() => {
-    const invId = currentResult?.investigationId
+    const invId = currentResult?.investigationId || currentResult?.case_id
     if (!invId) {
       setGenealogyData(null)
       return
@@ -36,7 +36,7 @@ export function OriginPanel() {
       })
       .catch(() => setGenealogyData(null))
       .finally(() => setGenealogyLoading(false))
-  }, [currentResult?.investigationId])
+  }, [currentResult?.investigationId, currentResult?.case_id])
 
   const handleRunPreset = (preset: Scenario) => {
     runDetection({

@@ -174,6 +174,26 @@ export interface DetectionResult {
       message?: string
       isRealAnalysis?: boolean
     }
+    videoMetadata?: {
+      supported?: boolean
+      status?: string
+      isRealAnalysis?: boolean
+      codec?: string | null
+      codecLongName?: string | null
+      duration?: number
+      fps?: number | null
+      frameCount?: number | null
+      resolution?: { width?: number | null; height?: number | null } | null
+      bitrate?: number
+      byteSize?: number
+      audioCodec?: string | null
+      audioChannels?: number | null
+      audioSampleRate?: number | null
+      container?: string | null
+      creationTime?: string | null
+      streamCount?: number
+      reason?: string
+    } | null
   }
   artifact?: {
     id: string
@@ -277,5 +297,5 @@ export interface GraphEdge {
   width: number
 }
 
-export type TabId = 'scanner' | 'propagation' | 'forensic' | 'origin' | 'discovery' | 'reasoning' | 'cases' | 'trends' | 'system' | 'feed'
+export type TabId = 'scanner' | 'propagation' | 'forensic' | 'origin' | 'discovery' | 'reasoning' | 'cases' | 'trends' | 'system' | 'feed' | 'intelligence'
 export type ScenarioKey = Scenario

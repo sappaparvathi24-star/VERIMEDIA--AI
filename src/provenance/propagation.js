@@ -19,6 +19,177 @@ export function validatePropagationUrl(url) {
   }
 }
 
+/**
+ * Derives a grounded confidence score and retrieval metadata for an appearance
+ * from backing discovery candidates, observations, and evidence.
+ * If no backing signals exist, confidence is set to null (UNKNOWN) rather than an arbitrary flat constant.
+ */
+export function deriveAppearanceConfidence(store, app, src = null) {
+  if (!store || !app) {
+    return {
+      confidence: null,
+      retrievalMethod: 'UNKNOWN',
+      matchStrength: null,
+      limitations: ['Confidence UNKNOWN: appearance lacks backing data.']
+    };
+  }
+
+  // 1. Search for a backing DiscoveryCandidate
+  const candidates = Array.from(store.discoveryCandidates?.values?.() || []);
+  const candidate = candidates.find(c => {
+    if (c.investigationId && app.investigationId && c.investigationId !== app.investigationId) {
+      return false;
+    }
+    if (app.evidenceIds?.length > 0 && c.evidenceIds?.some(eId => app.evidenceIds.includes(eId))) {
+      return true;
+    }
+    if (c.sourceId && app.sourceId && c.sourceId !== 'UNKNOWN' && c.sourceId === app.sourceId) {
+      if (!c.matchedArtifactId || c.matchedArtifactId === app.artifactId || c.artifactId === app.artifactId) {
+        return true;
+      }
+    }
+    if (src?.url && c.url && c.url === src.url) {
+      return true;
+    }
+    if (c.matchedArtifactId && c.matchedArtifactId === app.artifactId) {
+      return true;
+    }
+    return false;
+  });
+
+  if (candidate) {
+    const sim = candidate.similarityMeasurements || {};
+
+    // Exact hash match -> 1.0 confidence
+    if (sim.exactMatch === true || candidate.relationshipType === 'EXACT_MATCH') {
+      return {
+        confidence: 1.0,
+        retrievalMethod: 'EXACT_HASH_MATCH',
+        matchStrength: 1.0,
+        limitations: ['Confidence 1.0 grounded in verified bitstream cryptographic exact hash match.']
+      };
+    }
+
+    // Perceptual similarity match -> score derived from visual similarity float
+    if (typeof sim.visualSimilarity === 'number') {
+      const vs = Number(sim.visualSimilarity.toFixed(2));
+      return {
+        confidence: vs,
+        retrievalMethod: 'PERCEPTUAL_FINGERPRINT_MATCH',
+        matchStrength: vs,
+        limitations: [`Confidence ${vs} derived from perceptual hash visual similarity metric (${Math.round(vs * 100)}%).`]
+      };
+    }
+
+    // Hamming distance on perceptual hash
+    if (typeof sim.hammingDistance === 'number') {
+      const matchStrength = Math.max(0, Number((1 - (sim.hammingDistance / 64)).toFixed(2)));
+      return {
+        confidence: matchStrength,
+        retrievalMethod: 'PERCEPTUAL_FINGERPRINT_MATCH',
+        matchStrength,
+        limitations: [`Confidence ${matchStrength} derived from perceptual hash Hamming distance ${sim.hammingDistance}/64.`]
+      };
+    }
+
+    // Weak semantic / text keyword search
+    if (sim.similarityStatus === 'TEXT_MATCH_ONLY' || sim.comparisonMethod === 'EXTERNAL_API_METADATA_SEARCH') {
+      return {
+        confidence: 0.50,
+        retrievalMethod: 'EXTERNAL_API_METADATA_SEARCH',
+        matchStrength: 0.50,
+        limitations: ['Confidence 0.50 grounded in external metadata text query without verified media bitstream matching.']
+      };
+    }
+
+    // Heuristics based on verified candidate relationship type
+    if (candidate.relationshipType === 'DERIVED_COPY') {
+      return {
+        confidence: 0.90,
+        retrievalMethod: 'DERIVED_COPY_VERIFICATION',
+        matchStrength: 0.90,
+        limitations: ['Confidence 0.90 derived from verified derived copy relationship.']
+      };
+    }
+    if (candidate.relationshipType === 'TRANSFORMED_DERIVATIVE') {
+      return {
+        confidence: 0.80,
+        retrievalMethod: 'TRANSFORMATION_ANALYSIS',
+        matchStrength: 0.80,
+        limitations: ['Confidence 0.80 derived from transformation analysis of derivative media.']
+      };
+    }
+    if (candidate.relationshipType === 'RELATED_MEDIA') {
+      return {
+        confidence: 0.65,
+        retrievalMethod: 'RELATED_MEDIA_QUERY',
+        matchStrength: 0.65,
+        limitations: ['Confidence 0.65 derived from related context and metadata observation.']
+      };
+    }
+  }
+
+  // 2. Search for backing Evidence & Observations directly on the appearance
+  if (Array.isArray(app.evidenceIds) && app.evidenceIds.length > 0) {
+    for (const evId of app.evidenceIds) {
+      const ev = store.getEvidence ? store.getEvidence(evId) : store.evidence?.get?.(evId);
+      if (ev) {
+        if (ev.evidenceType === 'EXACT_HASH_MATCH' || ev.evidenceType === 'CRYPTOGRAPHIC_PROVENANCE_MATCH') {
+          return {
+            confidence: 1.0,
+            retrievalMethod: ev.evidenceType,
+            matchStrength: 1.0,
+            limitations: ['Confidence 1.0 derived from backing cryptographic evidence.']
+          };
+        }
+
+        // Check observations under this evidence
+        if (Array.isArray(ev.observationIds) && ev.observationIds.length > 0) {
+          for (const obsId of ev.observationIds) {
+            const obs = store.getObservation ? store.getObservation(obsId) : store.observations?.get?.(obsId);
+            if (obs && obs.value) {
+              if (obs.value.exactMatch === true) {
+                return {
+                  confidence: 1.0,
+                  retrievalMethod: 'EXACT_HASH_MATCH',
+                  matchStrength: 1.0,
+                  limitations: ['Confidence 1.0 derived from backing exact match observation.']
+                };
+              }
+              if (typeof obs.value.visualSimilarity === 'number') {
+                const vs = Number(obs.value.visualSimilarity.toFixed(2));
+                return {
+                  confidence: vs,
+                  retrievalMethod: 'PERCEPTUAL_FINGERPRINT_MATCH',
+                  matchStrength: vs,
+                  limitations: [`Confidence ${vs} derived from observation visual similarity metric.`]
+                };
+              }
+            }
+          }
+        }
+
+        if (typeof ev.confidence === 'number') {
+          return {
+            confidence: ev.confidence,
+            retrievalMethod: ev.evidenceType || 'EVIDENCE_CORROBORATION',
+            matchStrength: ev.confidence,
+            limitations: [`Confidence ${ev.confidence} derived from corroborating evidence (${ev.evidenceType || 'EVIDENCE'}).`]
+          };
+        }
+      }
+    }
+  }
+
+  // 3. Fallback: No backing candidate or observation data found -> mark confidence as null / UNKNOWN
+  return {
+    confidence: null,
+    retrievalMethod: 'UNKNOWN',
+    matchStrength: null,
+    limitations: ['Appearance confidence is UNKNOWN: no backing cryptographic verification or similarity observation available.']
+  };
+}
+
 export function analyzePropagation(store, investigationId, options = {}) {
   const inv = store.getInvestigation(investigationId);
   const events = Array.from(store.propagationEvents.values()).filter(
@@ -35,6 +206,8 @@ export function analyzePropagation(store, investigationId, options = {}) {
     );
     for (const app of appearances) {
       const src = app.sourceId ? store.getSource(app.sourceId) : null;
+      const backing = deriveAppearanceConfidence(store, app, src);
+
       events.push({
         id: app.id,
         investigationId,
@@ -44,8 +217,13 @@ export function analyzePropagation(store, investigationId, options = {}) {
         publishedAt: app.publishedAt,
         observedAt: app.observedAt,
         eventType: 'OBSERVED_APPEARANCE',
-        confidence: 0.85,
-        limitations: ['Extracted from baseline appearances timeline.']
+        confidence: backing.confidence,
+        retrievalMethod: backing.retrievalMethod,
+        matchStrength: backing.matchStrength,
+        limitations: [
+          'Extracted from baseline appearances timeline.',
+          ...backing.limitations
+        ]
       });
     }
   }
@@ -66,7 +244,10 @@ export function analyzePropagation(store, investigationId, options = {}) {
       platform: e.platform,
       url: e.url,
       timestamp: e.publishedAt || e.observedAt,
-      eventType: e.eventType
+      eventType: e.eventType,
+      confidence: e.confidence,
+      retrievalMethod: e.retrievalMethod || null,
+      matchStrength: e.matchStrength ?? null
     })),
     edges: relationships.map(r => ({
       id: r.id,

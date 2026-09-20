@@ -58,6 +58,13 @@ const FIVE_ENGINES: NavItem[] = [
 
 const WORKSPACE_TOOLS: NavItem[] = [
   {
+    id: 'intelligence',
+    label: 'Gemini AI Copilot',
+    icon: '✨',
+    description: 'Multimodal AI reasoning, executive dossiers, visual forensics & copilot',
+    badge: 'AI',
+  },
+  {
     id: 'scanner',
     label: 'Media Scanner',
     icon: '⚡',

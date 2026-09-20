@@ -14,6 +14,7 @@ import { EvidenceReasoningPanel } from '../components/panels/EvidenceReasoningPa
 import { EvidenceReasoningCard } from '../components/panels/EvidenceReasoningCard'
 import { CasesPanel } from '../components/panels/CasesPanel'
 import { SystemPanel } from '../components/panels/SystemPanel'
+import { GeminiIntelligencePanel } from '../components/panels/GeminiIntelligencePanel'
 import { EvidenceModal } from '../components/modals/EvidenceModal'
 import { DMCAModal } from '../components/modals/DMCAModal'
 import { MonitoringJobModal } from '../components/modals/MonitoringJobModal'
@@ -256,6 +257,12 @@ export function Dashboard() {
                   <FeedPanel />
                 </div>
               </div>
+            </div>
+          )}
+
+          {activeTab === 'intelligence' && (
+            <div style={{ height: '100%', width: '100%', overflow: 'hidden' }}>
+              <GeminiIntelligencePanel />
             </div>
           )}
 
