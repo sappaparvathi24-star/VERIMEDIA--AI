@@ -15,7 +15,7 @@ export const getApiBaseUrl = (): string => {
   if (typeof window !== 'undefined') {
     // If running on Vercel preview or production without explicit env variable, route to the Render backend
     if (window.location.hostname.includes('vercel.app')) {
-      return 'https://verimedia-ai-1.onrender.com'
+      return 'https://verimedia-ai-2.onrender.com'
     }
   }
   return ''
