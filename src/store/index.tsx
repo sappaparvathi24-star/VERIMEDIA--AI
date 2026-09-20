@@ -71,7 +71,7 @@ export const useStore = create<AppState>((set, get) => ({
   showHeroOverlay: false,
   showCommandPalette: false,
   selectedCaseId: null,
-  viewMode: 'simple',
+  viewMode: 'advanced',
   stats: { total: 1, threats: 1, dmca: 1, clean: 0 },
 
   setCurrentResult: (r) => set({ currentResult: r }),
