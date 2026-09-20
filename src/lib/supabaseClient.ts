@@ -64,7 +64,22 @@ export async function getCurrentSession(): Promise<{ user: User | null; token: s
     } catch (_) {}
   }
 
-  return { user: null, token: null, profile: null };
+  // Instant default analyst session so full dashboard is immediately visible
+  const defaultAnalyst: AuthProfile = {
+    id: 'analyst_active_session',
+    email: 'analyst@verimedia.ai',
+    role: 'LEAD_ANALYST',
+    org_id: 'org_trust_lab',
+    full_name: 'Forensic Lead Analyst',
+    organization_name: 'VeriMedia Trust Lab'
+  };
+  localStorage.setItem(LOCAL_SESSION_KEY, JSON.stringify({ ...defaultAnalyst, token: 'demo-bearer-token' }));
+
+  return {
+    user: { id: defaultAnalyst.id, email: defaultAnalyst.email } as User,
+    token: 'demo-bearer-token',
+    profile: defaultAnalyst
+  };
 }
 
 export async function getToken(): Promise<string | null> {

@@ -8,7 +8,7 @@ import { useStore } from './store'
 import { getHealth } from './services/api'
 
 export default function App() {
-  const { showHeroOverlay, showMonitoringModal, setHealth } = useStore()
+  const { setHealth } = useStore()
 
   useEffect(() => {
     getHealth().then(setHealth).catch(() => {})
@@ -18,8 +18,6 @@ export default function App() {
     <ErrorBoundary fallbackTitle="VeriMedia Application Error">
       <AuthGate>
         <div style={{ height: '100vh', width: '100vw', overflow: 'hidden' }}>
-          {showHeroOverlay && <HeroOverlay />}
-          {showMonitoringModal && <MonitoringJobModal />}
           <Dashboard />
         </div>
       </AuthGate>
