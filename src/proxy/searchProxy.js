@@ -44,6 +44,8 @@ export function setCached(key, data) {
   });
 }
 
+const DISCOVERY_TIMEOUT_MS = parseInt(process.env.DISCOVERY_TIMEOUT_MS, 10) || 15000;
+
 function fetchJson(url, options = {}) {
   return new Promise((resolve, reject) => {
     const urlObj = new URL(url);
@@ -55,7 +57,7 @@ function fetchJson(url, options = {}) {
         'Accept': 'application/json',
         ...options.headers
       },
-      timeout: options.timeout || 15000
+      timeout: options.timeout || DISCOVERY_TIMEOUT_MS
     }, (res) => {
       let body = '';
       res.on('data', chunk => body += chunk);
