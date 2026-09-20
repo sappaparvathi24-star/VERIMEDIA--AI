@@ -106,6 +106,7 @@ export interface DetectionResult {
   timestamp: string
   case_id: string | null
   processing_ms: number
+  investigationId?: string | null
   is_demo?: boolean
   mode?: string
   disclaimer?: string | null
@@ -151,6 +152,27 @@ export interface DetectionResult {
       channels?: number
       entropy?: number
       luminance?: number
+    }
+    ocr?: {
+      supported?: boolean
+      text?: string
+      confidence?: number
+      wordCount?: number
+      language?: string
+      hasText?: boolean
+      error?: string
+    }
+    c2pa?: {
+      status?: string
+      manifest?: {
+        title?: string | null
+        claim_generator?: string | null
+        assertions?: number
+        ingredients?: number
+        signature_info?: unknown
+      } | null
+      message?: string
+      isRealAnalysis?: boolean
     }
   }
   artifact?: {

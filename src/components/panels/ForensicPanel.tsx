@@ -483,7 +483,7 @@ export function ForensicPanel() {
       {forensics?.ocr?.supported && (
         <div style={{ background: '#0d1117', border: '1px solid #1e2d3d', borderRadius: 8, padding: '12px 14px' }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: '#a855f7', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
-            OCR — Extracted Text {forensics.ocr.wordCount > 0 ? `(${forensics.ocr.wordCount} words, ${Math.round(forensics.ocr.confidence * 100)}% confidence)` : '(no text detected)'}
+            OCR — Extracted Text {(forensics.ocr.wordCount ?? 0) > 0 ? `(${forensics.ocr.wordCount} words, ${Math.round((forensics.ocr.confidence ?? 0) * 100)}% confidence)` : '(no text detected)'}
           </div>
           {forensics.ocr.hasText ? (
             <pre style={{ fontSize: 11, color: '#cbd5e1', fontFamily: 'monospace', background: '#080c10', padding: 10, borderRadius: 6, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 120, overflowY: 'auto', margin: 0 }}>
