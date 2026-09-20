@@ -8,14 +8,27 @@ import type {
   HealthStatus,
 } from '../types'
 
+// Canonical Render backend URL — update this single constant when the backend URL changes
+const RENDER_BACKEND = 'https://verimedia-ai-2.onrender.com'
+
 export const getApiBaseUrl = (): string => {
-  if (import.meta.env.VITE_API_BASE_URL) {
-    return import.meta.env.VITE_API_BASE_URL.replace(/\/$/, '')
+  const envUrl = import.meta.env.VITE_API_BASE_URL?.trim()
+  if (envUrl) {
+    // If the env var still points to the old backend, silently upgrade it
+    if (envUrl.includes('verimedia-ai-1.onrender.com')) {
+      return RENDER_BACKEND
+    }
+    return envUrl.replace(/\/$/, '')
   }
   if (typeof window !== 'undefined') {
-    // If running on Vercel preview or production without explicit env variable, route to the Render backend
-    if (window.location.hostname.includes('vercel.app')) {
-      return 'https://verimedia-ai-2.onrender.com'
+    const host = window.location.hostname
+    // Route any Vercel deployment or custom domain to the Render backend
+    if (
+      host.includes('vercel.app') ||
+      host.includes('verimedia') ||
+      host !== 'localhost'
+    ) {
+      return RENDER_BACKEND
     }
   }
   return ''
