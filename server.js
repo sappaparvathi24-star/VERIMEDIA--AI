@@ -3525,8 +3525,23 @@ if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL && !isTestRunne
   const distPath = path.join(__dirname, 'dist');
   const distIndexPath = path.join(distPath, 'index.html');
   if (fs.existsSync(distIndexPath)) {
-    app.use(express.static(distPath));
+    // Hashed assets (dist/assets/*): immutable, 1-year cache.
+    // Their filenames change on every build, so a long-lived cache is safe.
+    app.use('/assets', express.static(path.join(distPath, 'assets'), {
+      immutable: true,
+      maxAge: '1y'
+    }));
+
+    // Other static files in dist/ (favicon, gemini-integration.js, etc.)
+    // but NOT index.html — the catch-all below handles that with no-cache.
+    app.use(express.static(distPath, { index: false }));
+
+    // index.html: always revalidate so browsers never serve a stale copy
+    // that references old hashed filenames after a redeploy.
     app.get('*', (req, res) => {
+      res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.set('Pragma', 'no-cache');
+      res.set('Expires', '0');
       res.sendFile(distIndexPath);
     });
   } else {
