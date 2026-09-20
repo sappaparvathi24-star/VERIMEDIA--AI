@@ -2127,7 +2127,56 @@ app.post(['/artifacts/upload', '/artifacts/upload/', '/api/artifacts/upload', '/
   }
 });
 
-// ── Forensic Jobs Polling Endpoints ──
+// ── Forensic Jobs Polling & SSE Real-time Streaming Endpoints ──
+app.get(['/api/jobs/:id/stream', '/api/v1/jobs/:id/stream', '/jobs/:id/stream'], (req, res) => {
+  const jobId = req.params.id;
+  const job = forensicJobQueue.getJob(jobId);
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  if (res.flushHeaders) res.flushHeaders();
+
+  if (job) {
+    res.write(`event: snapshot\ndata: ${JSON.stringify({
+      jobId: job.id,
+      id: job.id,
+      status: job.status,
+      progress: job.progress || 0,
+      stage: job.stage || 'ingest',
+      stageIndex: job.stageIndex || 0,
+      stageTitle: job.stageTitle || 'Processing',
+      stageDetail: job.stageDetail || '',
+      stages: job.stages,
+      logs: job.logs || [],
+      result: job.result,
+      error: job.error
+    })}\n\n`);
+
+    if (job.status === 'COMPLETED' || job.status === 'SKIPPED' || job.status === 'FAILED') {
+      res.write(`event: done\ndata: ${JSON.stringify(job)}\n\n`);
+      return res.end();
+    }
+  }
+
+  const listener = (eventData) => {
+    try {
+      res.write(`event: ${eventData.event || 'stage'}\ndata: ${JSON.stringify(eventData)}\n\n`);
+      if (eventData.status === 'COMPLETED' || eventData.status === 'SKIPPED' || eventData.status === 'FAILED') {
+        res.write(`event: done\ndata: ${JSON.stringify(eventData)}\n\n`);
+        forensicJobQueue.off(`job:${jobId}`, listener);
+        res.end();
+      }
+    } catch (_) {}
+  };
+
+  forensicJobQueue.on(`job:${jobId}`, listener);
+
+  req.on('close', () => {
+    forensicJobQueue.off(`job:${jobId}`, listener);
+  });
+});
+
 app.get(['/api/jobs/:id', '/api/v1/jobs/:id', '/jobs/:id'], (req, res) => {
   const job = forensicJobQueue.getJob(req.params.id);
   if (!job) {

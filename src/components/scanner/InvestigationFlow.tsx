@@ -90,13 +90,28 @@ const STAGES = [
 ]
 
 export function InvestigationFlow() {
-  const { currentResult, isScanning, scanError, setScanError, setCurrentResult, clearResults, setShowDMCAModal } = useStore()
-  const { runDetection } = useDetection()
+  const {
+    currentResult,
+    isScanning,
+    scanError,
+    setScanError,
+    setCurrentResult,
+    clearResults,
+    setShowDMCAModal,
+    setShowEvidenceModal,
+    scanProgress,
+    scanStageIndex,
+    scanStageTitle,
+    scanStageDetail,
+    scanStages,
+    scanLogs,
+    scanStartTime
+  } = useStore()
+  const { runMediaInvestigation } = useDetection()
 
   // Selected file in staging before scan
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
-  const [isUploading, setIsUploading] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -109,45 +124,18 @@ export function InvestigationFlow() {
 
   // Stepper active stage (1 to 5)
   const [currentStage, setCurrentStage] = useState<number>(1)
-
-  // Interactive Live Evaluation progress animation
-  const [scanProgress, setScanProgress] = useState(0)
-  const [scanStageIndex, setScanStageIndex] = useState(0)
   const [elapsedTime, setElapsedTime] = useState(0)
 
-  // Sync stage animation during scanning
+  // Sync elapsed timer
   useEffect(() => {
-    let interval: any
     let timer: any
-    if (isScanning || isUploading) {
-      setScanProgress(5)
-      setScanStageIndex(0)
-      const startTime = Date.now()
-      
+    if (isScanning && scanStartTime) {
       timer = setInterval(() => {
-        setElapsedTime(Math.floor((Date.now() - startTime) / 100) / 10)
+        setElapsedTime(Math.max(0, Math.floor((Date.now() - scanStartTime) / 100) / 10))
       }, 100)
-
-      interval = setInterval(() => {
-        setScanProgress(p => {
-          if (p >= 95) return 95
-          const step = Math.random() * 8 + 4
-          const next = p + step
-          if (next > 75) setScanStageIndex(4)
-          else if (next > 55) setScanStageIndex(3)
-          else if (next > 35) setScanStageIndex(2)
-          else if (next > 15) setScanStageIndex(1)
-          return Math.min(next, 95)
-        })
-      }, 250)
-    } else {
-      setScanProgress(100)
     }
-    return () => {
-      clearInterval(interval)
-      clearInterval(timer)
-    }
-  }, [isScanning, isUploading])
+    return () => clearInterval(timer)
+  }, [isScanning, scanStartTime])
 
   // Handle file selection
   function handleFileSelected(file: File) {
@@ -171,36 +159,18 @@ export function InvestigationFlow() {
   // Execute full real forensic pipeline on uploaded media
   async function handleStartInvestigation() {
     if (!selectedFile) return
-    setIsUploading(true)
     setScanError(null)
 
     try {
-      // Step 1: Upload real binary to backend Sharp ELA & EXIF analyzer
-      const uploadRes = await registerMediaArtifact(selectedFile)
-      const art = uploadRes?.artifact || uploadRes
-
-      if (!art || !art.id) {
-        throw new Error('Backend failed to create media artifact')
-      }
-
-      // Step 2: Trigger multi-engine detection using real artifact ID and optional context
-      await runDetection({
+      await runMediaInvestigation(selectedFile, {
         platform: platform || 'YouTube',
         username: username || 'analyst_upload',
         caption: caption || selectedFile.name,
-        content_type: contentType || 'news',
-        scenario: 'normal',
-        artifactId: art.id,
+        contentType: contentType || 'news'
       })
-
-      // Reset to stage 1 upon completion
       setCurrentStage(1)
     } catch (err: any) {
       console.error('Investigation error:', err)
-      const msg = err?.response?.data?.error || (err instanceof Error ? err.message : 'Investigation failed')
-      setScanError(msg)
-    } finally {
-      setIsUploading(false)
     }
   }
 
@@ -218,7 +188,7 @@ export function InvestigationFlow() {
   // ──────────────────────────────────────────────────────────────────────────
   // VIEW 1: CENTRALIZED UPLOAD CENTER (When no investigation is active)
   // ──────────────────────────────────────────────────────────────────────────
-  if (!currentResult && !isScanning && !isUploading) {
+  if (!currentResult && !isScanning) {
     return (
       <div style={{
         display: 'flex',
@@ -635,9 +605,7 @@ export function InvestigationFlow() {
   // ──────────────────────────────────────────────────────────────────────────
   // VIEW 2: INTERACTIVE MULTI-ENGINE SCAN HUD (During evaluation)
   // ──────────────────────────────────────────────────────────────────────────
-  if (isScanning || isUploading) {
-    const activeStageInfo = STAGES[scanStageIndex] || STAGES[0]
-
+  if (isScanning) {
     return (
       <div style={{
         display: 'flex',
@@ -646,25 +614,25 @@ export function InvestigationFlow() {
         justifyContent: 'center',
         minHeight: 'calc(100vh - 120px)',
         padding: '32px 20px',
-        maxWidth: 760,
+        maxWidth: 820,
         margin: '0 auto',
         textAlign: 'center'
       }}>
         {/* Animated Radar Pulse Circle */}
         <div style={{
           position: 'relative',
-          width: 120,
-          height: 120,
+          width: 110,
+          height: 110,
           borderRadius: '50%',
           background: 'rgba(0, 212, 255, 0.05)',
           border: '2px solid rgba(0, 212, 255, 0.4)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          marginBottom: 28,
+          marginBottom: 24,
           boxShadow: '0 0 50px rgba(0, 212, 255, 0.25)'
         }}>
-          <RefreshCw size={44} className="animate-spin" style={{ color: '#00d4ff' }} />
+          <RefreshCw size={40} className="animate-spin" style={{ color: '#00d4ff' }} />
           <div style={{
             position: 'absolute',
             bottom: -6,
@@ -672,19 +640,22 @@ export function InvestigationFlow() {
             border: '1px solid #00d4ff',
             borderRadius: 12,
             padding: '2px 8px',
-            fontSize: 10,
+            fontSize: 11,
             fontWeight: 800,
             color: '#00d4ff'
           }}>
-            {elapsedTime}s
+            {elapsedTime.toFixed(1)}s
           </div>
         </div>
 
         <h2 style={{ fontSize: 24, fontWeight: 800, color: '#f8fafc', margin: '0 0 8px 0' }}>
-          Running Multi-Engine Deep Forensic Audit
+          Running Multi-Stage Forensic Audit
         </h2>
-        <div style={{ fontSize: 14, color: '#38bdf8', fontWeight: 600, marginBottom: 24 }}>
-          {activeStageInfo.label}: {activeStageInfo.description}
+        <div style={{ fontSize: 14, color: '#38bdf8', fontWeight: 600, marginBottom: 8 }}>
+          {scanStageTitle}
+        </div>
+        <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 24, maxWidth: 600 }}>
+          {scanStageDetail}
         </div>
 
         {/* Progress Bar */}
@@ -694,36 +665,38 @@ export function InvestigationFlow() {
           borderRadius: 4,
           background: '#111b2b',
           overflow: 'hidden',
-          marginBottom: 32,
+          marginBottom: 24,
           border: '1px solid #1e2d3d'
         }}>
           <div style={{
             height: '100%',
             width: `${scanProgress}%`,
             background: 'linear-gradient(90deg, #00d4ff 0%, #38bdf8 50%, #a855f7 100%)',
-            transition: 'width 0.2s ease',
+            transition: 'width 0.3s ease',
             borderRadius: 4,
             boxShadow: '0 0 12px rgba(0, 212, 255, 0.6)'
           }} />
         </div>
 
-        {/* 5 Stages Step Checklist */}
-        <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {STAGES.map((st, idx) => {
-            const isDone = scanStageIndex > idx
-            const isCurrent = scanStageIndex === idx
+        {/* 6 Stages Step Checklist */}
+        <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
+          {scanStages.map((st, idx) => {
+            const isDone = st.status === 'COMPLETED' || scanStageIndex > idx
+            const isCurrent = scanStageIndex === idx && !isDone
+            const isSkipped = st.status === 'SKIPPED'
+            const isFailed = st.status === 'FAILED'
 
             return (
               <div
-                key={st.id}
+                key={st.key || idx}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  padding: '12px 18px',
+                  padding: '10px 16px',
                   borderRadius: 8,
                   background: isCurrent ? 'rgba(0, 212, 255, 0.08)' : '#0a101a',
-                  border: `1px solid ${isCurrent ? '#00d4ff50' : isDone ? '#22c55e30' : '#1e2d3d'}`,
+                  border: `1px solid ${isCurrent ? '#00d4ff60' : isDone ? '#22c55e30' : isFailed ? '#ef444430' : '#1e2d3d'}`,
                   transition: 'all 0.2s ease'
                 }}
               >
@@ -733,13 +706,15 @@ export function InvestigationFlow() {
                     <div style={{
                       fontSize: 13,
                       fontWeight: 700,
-                      color: isCurrent ? '#00d4ff' : isDone ? '#f8fafc' : '#64748b'
+                      color: isCurrent ? '#00d4ff' : isDone ? '#f8fafc' : isFailed ? '#f87171' : '#64748b'
                     }}>
                       {st.label}
                     </div>
-                    <div style={{ fontSize: 11, color: '#64748b' }}>
-                      {st.description}
-                    </div>
+                    {st.detail && (
+                      <div style={{ fontSize: 11, color: '#94a3b8' }}>
+                        {st.detail}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -749,12 +724,20 @@ export function InvestigationFlow() {
                       <CheckCircle size={14} /> Completed
                     </span>
                   ) : isCurrent ? (
-                    <span style={{ color: '#00d4ff', fontSize: 12, fontWeight: 700 }}>
-                      Evaluating...
+                    <span style={{ color: '#00d4ff', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <RefreshCw size={12} className="animate-spin" /> In Progress...
+                    </span>
+                  ) : isSkipped ? (
+                    <span style={{ color: '#f59e0b', fontSize: 12 }}>
+                      Skipped
+                    </span>
+                  ) : isFailed ? (
+                    <span style={{ color: '#ef4444', fontSize: 12 }}>
+                      Failed
                     </span>
                   ) : (
                     <span style={{ color: '#475569', fontSize: 12 }}>
-                      Queued
+                      Pending
                     </span>
                   )}
                 </div>
@@ -762,6 +745,28 @@ export function InvestigationFlow() {
             )
           })}
         </div>
+
+        {/* Live Terminal Log Snippet */}
+        {scanLogs.length > 0 && (
+          <div style={{
+            width: '100%',
+            background: '#040d1a',
+            border: '1px solid #1e2d3d',
+            borderRadius: 8,
+            padding: '10px 14px',
+            textAlign: 'left',
+            fontFamily: 'monospace',
+            fontSize: 11,
+            color: '#38bdf8'
+          }}>
+            <div style={{ color: '#64748b', fontSize: 10, marginBottom: 4, textTransform: 'uppercase' }}>
+              Latest Live Signal:
+            </div>
+            <div>
+              &gt; {scanLogs[scanLogs.length - 1].message}
+            </div>
+          </div>
+        )}
       </div>
     )
   }
@@ -943,38 +948,38 @@ export function InvestigationFlow() {
       </div>
 
       {/* Center: Stage Content View */}
-      <div style={{ flex: 1, overflow: 'auto', padding: 18 }}>
+      <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '16px 20px 40px 20px', scrollBehavior: 'smooth' }}>
         {/* Stage 1: Forensic Inspection */}
         {currentStage === 1 && (
-          <div style={{ height: '100%' }}>
+          <div style={{ width: '100%', minHeight: '100%' }}>
             <ForensicViewer result={currentResult} />
           </div>
         )}
 
         {/* Stage 2: Web Discovery Intelligence */}
         {currentStage === 2 && (
-          <div style={{ height: '100%' }}>
+          <div style={{ width: '100%', minHeight: '100%' }}>
             <DiscoveryPanel />
           </div>
         )}
 
         {/* Stage 3: Provenance Lineage & Origin */}
         {currentStage === 3 && (
-          <div style={{ height: '100%' }}>
+          <div style={{ width: '100%', minHeight: '100%' }}>
             <OriginPanel />
           </div>
         )}
 
         {/* Stage 4: Propagation Topology Mesh */}
         {currentStage === 4 && (
-          <div style={{ height: '100%' }}>
+          <div style={{ width: '100%', minHeight: '100%' }}>
             <PropagationGraph />
           </div>
         )}
 
         {/* Stage 5: AI Evidence Reasoning & Verdict */}
         {currentStage === 5 && (
-          <div style={{ height: '100%', maxWidth: 1100, margin: '0 auto', overflowY: 'auto' }}>
+          <div style={{ width: '100%', maxWidth: 1200, margin: '0 auto', minHeight: '100%' }}>
             <EvidenceReasoningCard />
           </div>
         )}

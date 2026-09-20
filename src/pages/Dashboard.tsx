@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useStore } from '../store'
 import { Sidebar } from '../components/layout/Sidebar'
 import { HeaderBar } from '../components/layout/HeaderBar'
+import { GlobalProgressBar } from '../components/common/GlobalProgressBar'
 import { InvestigationFlow } from '../components/scanner/InvestigationFlow'
 import { FeedPanel } from '../components/panels/FeedPanel'
 import { DetectionTrendChart } from '../components/charts/DetectionTrendChart'
@@ -35,78 +36,79 @@ export function Dashboard() {
       {/* Main Workspace Area */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
         <HeaderBar />
+        <GlobalProgressBar />
 
         {/* Content View Routing */}
-        <main style={{ flex: 1, overflow: 'hidden', padding: 0 }}>
+        <main style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: 0, scrollBehavior: 'smooth' }}>
           {/* Workspaces */}
           {activeTab === 'scanner' && (
-            <div style={{ height: '100%', width: '100%', overflow: 'hidden' }}>
+            <div style={{ minHeight: '100%', width: '100%', display: 'flex', flexDirection: 'column' }}>
               <InvestigationFlow />
             </div>
           )}
 
           {activeTab === 'intelligence' && (
-            <div style={{ height: '100%', width: '100%', overflow: 'hidden' }}>
+            <div style={{ minHeight: '100%', width: '100%', display: 'flex', flexDirection: 'column' }}>
               <GeminiIntelligencePanel />
             </div>
           )}
 
           {activeTab === 'forensic' && (
-            <div style={{ height: '100%', width: '100%', overflow: 'hidden' }}>
+            <div style={{ minHeight: '100%', width: '100%', display: 'flex', flexDirection: 'column' }}>
               <ForensicPanel />
             </div>
           )}
 
           {activeTab === 'discovery' && (
-            <div style={{ height: '100%', width: '100%', overflow: 'hidden' }}>
+            <div style={{ minHeight: '100%', width: '100%', display: 'flex', flexDirection: 'column' }}>
               <DiscoveryPanel />
             </div>
           )}
 
           {activeTab === 'origin' && (
-            <div style={{ height: '100%', width: '100%', overflow: 'hidden' }}>
+            <div style={{ minHeight: '100%', width: '100%', display: 'flex', flexDirection: 'column' }}>
               <OriginPanel />
             </div>
           )}
 
           {activeTab === 'propagation' && (
-            <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', background: '#080c10' }}>
+            <div style={{ minHeight: '100%', width: '100%', display: 'flex', flexDirection: 'column', background: '#080c10' }}>
               <PropagationGraph />
             </div>
           )}
 
           {activeTab === 'reasoning' && (
-            <div style={{ height: '100%', width: '100%', overflow: 'hidden' }}>
+            <div style={{ minHeight: '100%', width: '100%', display: 'flex', flexDirection: 'column' }}>
               <EvidenceReasoningPanel />
             </div>
           )}
 
           {activeTab === 'cases' && (
-            <div style={{ height: '100%', width: '100%', overflow: 'hidden' }}>
+            <div style={{ minHeight: '100%', width: '100%', display: 'flex', flexDirection: 'column' }}>
               <CasesPanel />
             </div>
           )}
 
           {activeTab === 'trends' && (
-            <div style={{ height: '100%', width: '100%', overflow: 'auto', padding: 20 }}>
+            <div style={{ minHeight: '100%', width: '100%', overflowY: 'auto', padding: 20 }}>
               <DetectionTrendChart />
             </div>
           )}
 
           {activeTab === 'system' && (
-            <div style={{ height: '100%', width: '100%', overflow: 'hidden' }}>
+            <div style={{ minHeight: '100%', width: '100%', display: 'flex', flexDirection: 'column' }}>
               <SystemPanel />
             </div>
           )}
 
           {activeTab === 'debug' && (
-            <div style={{ height: '100%', width: '100%', overflow: 'hidden' }}>
+            <div style={{ minHeight: '100%', width: '100%', display: 'flex', flexDirection: 'column' }}>
               <DebugPanel />
             </div>
           )}
 
           {activeTab === 'feed' && (
-            <div style={{ height: '100%', width: '100%', overflow: 'auto', padding: 20 }}>
+            <div style={{ minHeight: '100%', width: '100%', overflowY: 'auto', padding: 20 }}>
               <FeedPanel />
             </div>
           )}

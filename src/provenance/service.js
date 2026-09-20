@@ -700,14 +700,35 @@ class ProvenanceService {
     buffer,
     mimeType = 'image/jpeg',
     exif = null,
-    callGeminiFn = null
+    callGeminiFn = null,
+    onStageChange = null
   }) {
+    const notifyStage = (stageData) => {
+      if (typeof onStageChange === 'function') {
+        try {
+          onStageChange(stageData);
+        } catch (e) {
+          console.warn('[Forensics] Stage notification error:', e.message);
+        }
+      }
+    };
+
     const art = this.store.getArtifact(artifactId);
     if (!art) {
       throw new Error(`Artifact ${artifactId} not found in store`);
     }
 
     const filename = art.filename || 'uploaded_image.jpg';
+
+    // Notify stage 1: Ingest
+    notifyStage({
+      stage: 'INGEST',
+      stageIndex: 0,
+      stageTitle: 'Stage 1: Media Ingest & Cryptographic Fingerprinting',
+      stageDetail: `Extracted bitstream checksum (${(buffer?.length || art.byteSize || 0)} bytes). Generating SHA-256 and pHash...`,
+      progress: 15,
+      log: `Ingested ${filename} (${art.mimeType || mimeType}). SHA-256: ${art.sha256 ? art.sha256.slice(0, 16) + '...' : 'computed'}`
+    });
 
     // Check for video/audio MIME types — return explicit SKIPPED without silent fall-through
     const isVideoOrAudio = (mimeType && (mimeType.startsWith('video/') || mimeType.startsWith('audio/'))) ||
@@ -794,6 +815,15 @@ class ProvenanceService {
         status: 'SKIPPED'
       };
 
+      notifyStage({
+        stage: 'FUSION',
+        stageIndex: 5,
+        stageTitle: 'Pipeline Evaluation Skipped',
+        stageDetail: 'Video/Audio requires specialized file disk buffers.',
+        progress: 100,
+        log: 'Video/audio pipeline completed (SKIPPED)'
+      });
+
       return {
         run,
         observations: [],
@@ -812,15 +842,49 @@ class ProvenanceService {
     });
 
     // 2. Compute Physical Error-Level Analysis (ELA)
+    notifyStage({
+      stage: 'ELA',
+      stageIndex: 1,
+      stageTitle: 'Stage 2: Error Level Analysis (ELA)',
+      stageDetail: 'Executing dual-pass 95% JPEG recompression & DCT quantization diff...',
+      progress: 35,
+      log: 'Running error-level pixel variance inspection against baseline compression grids...'
+    });
     const elaResult = await performErrorLevelAnalysis(buffer, mimeType);
 
     // 3. Compute Deep EXIF Metadata & Device Provenance Analysis
+    notifyStage({
+      stage: 'EXIF_C2PA',
+      stageIndex: 2,
+      stageTitle: 'Stage 3: EXIF Metadata & C2PA Content Credentials',
+      stageDetail: 'Extracting camera device metadata, sensor PRNU characteristics and C2PA manifests...',
+      progress: 55,
+      log: `Parsed EXIF metadata. Checking C2PA JUMBF cryptographic envelopes...`
+    });
     const exifResult = analyzeExifMetadata(exif);
+    const c2paResult = await detectC2PA(buffer, mimeType);
 
-    // 4. Compute Deep Pixel, Channel & Luminance Statistics via Sharp
+    // 4. Compute Deep Pixel, Channel & Luminance Statistics via Sharp & OCR
+    notifyStage({
+      stage: 'STATS_OCR',
+      stageIndex: 3,
+      stageTitle: 'Stage 4: Pixel Statistics & OCR Extraction',
+      stageDetail: 'Computing Shannon entropy, luminance variance & optical text extraction...',
+      progress: 75,
+      log: 'Sharp channel decomposition & Tesseract optical text analysis active...'
+    });
     const statsResult = await computeImageStatistics(buffer);
+    const ocrResult = await performOCR(buffer, { language: 'eng' });
 
     // 5. Run Real Gemini Multimodal AI Vision Forensic Inspection
+    notifyStage({
+      stage: 'VISION_AI',
+      stageIndex: 4,
+      stageTitle: 'Stage 5: Multimodal AI Vision Audit',
+      stageDetail: 'Sending high-res buffer to Gemini Vision for generative artifact & tampering inspection...',
+      progress: 90,
+      log: 'Gemini multimodal neural vision inspection in progress...'
+    });
     let visionResult = null;
     if (callGeminiFn) {
       visionResult = await runGeminiMultimodalForensicVision({
@@ -834,13 +898,15 @@ class ProvenanceService {
       });
     }
 
-    // 5b. OCR — extract any text embedded in the image
-    const ocrResult = await performOCR(buffer, { language: 'eng' });
-
-    // 5c. C2PA manifest detection
-    const c2paResult = await detectC2PA(buffer, mimeType);
-
     // 6. Record Technical Analysis Run in Provenance Ledger
+    notifyStage({
+      stage: 'FUSION',
+      stageIndex: 5,
+      stageTitle: 'Stage 6: Provenance Ledger & Signal Fusion',
+      stageDetail: 'Calibrating multi-signal trust scores and synthesizing cryptographic finding...',
+      progress: 98,
+      log: 'Synthesizing evidence ledger, observations, and calculating trust quotient...'
+    });
     const run = this.store.createAnalysisRun({
       investigationId,
       artifactId,

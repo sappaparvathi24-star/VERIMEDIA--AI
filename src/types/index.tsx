@@ -301,3 +301,28 @@ export interface GraphEdge {
 
 export type TabId = 'scanner' | 'propagation' | 'forensic' | 'origin' | 'discovery' | 'reasoning' | 'cases' | 'trends' | 'system' | 'feed' | 'intelligence' | 'debug'
 export type ScenarioKey = Scenario
+
+export type ForensicStageStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'SKIPPED' | 'FAILED'
+
+export interface ForensicStageItem {
+  id: number
+  key: string
+  label: string
+  shortTitle: string
+  icon: string
+  description: string
+  color: string
+  status: ForensicStageStatus
+  detail?: string
+  durationMs?: number
+  metrics?: Record<string, any>
+}
+
+export interface ScanLogEntry {
+  id: string
+  timestamp: string
+  level: 'info' | 'success' | 'warn' | 'error'
+  stage: string
+  message: string
+}
+

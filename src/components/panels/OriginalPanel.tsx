@@ -50,7 +50,7 @@ export function OriginPanel() {
 
   if (!currentResult) {
     return (
-      <div style={{ padding: '24px 20px', overflowY: 'auto', height: '100%', background: '#080c10', color: '#f8fafc', display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ padding: '24px 20px', width: '100%', minHeight: '100%', background: '#080c10', color: '#f8fafc', display: 'flex', flexDirection: 'column', gap: 16 }}>
         <div style={{
           padding: '24px',
           borderRadius: 12,
@@ -108,7 +108,7 @@ export function OriginPanel() {
   const traced = ai_analysis.origin_traced
 
   return (
-    <div style={{ padding: 20, overflowY: 'auto', height: '100%', background: '#080c10', color: '#f8fafc', display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div style={{ padding: '20px 24px', width: '100%', minHeight: '100%', background: '#080c10', color: '#f8fafc', display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* Origin status header banner */}
       <div style={{
         padding: '16px 20px',
