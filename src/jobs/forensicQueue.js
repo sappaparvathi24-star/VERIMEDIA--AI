@@ -69,6 +69,33 @@ export class ForensicJobQueue extends EventEmitter {
           CREATE INDEX IF NOT EXISTS idx_forensic_jobs_status ON forensic_jobs(status);
         `);
 
+        // Check if any required columns are missing from existing forensic_jobs table and add them dynamically
+        try {
+          const columns = this.db.prepare('PRAGMA table_info(forensic_jobs)').all();
+          const colSet = new Set(columns.map(c => c.name));
+          const expectedCols = [
+            { name: 'progress', type: 'INTEGER DEFAULT 0' },
+            { name: 'stage', type: 'TEXT' },
+            { name: 'investigation_id', type: 'TEXT' },
+            { name: 'artifact_id', type: 'TEXT' },
+            { name: 'filename', type: 'TEXT' },
+            { name: 'mime_type', type: 'TEXT' },
+            { name: 'result', type: 'TEXT' },
+            { name: 'logs', type: 'TEXT' },
+            { name: 'error', type: 'TEXT' },
+            { name: 'started_at', type: 'TEXT' },
+            { name: 'completed_at', type: 'TEXT' }
+          ];
+
+          for (const col of expectedCols) {
+            if (!colSet.has(col.name)) {
+              this.db.exec(`ALTER TABLE forensic_jobs ADD COLUMN ${col.name} ${col.type}`);
+            }
+          }
+        } catch (colErr) {
+          console.warn('[ForensicQueue] Notice while verifying columns:', colErr.message);
+        }
+
         // Load existing active or recent jobs into memory
         const rows = this.db.prepare('SELECT * FROM forensic_jobs ORDER BY created_at DESC LIMIT 100').all();
         for (const row of rows) {
@@ -152,6 +179,55 @@ export class ForensicJobQueue extends EventEmitter {
           job.completedAt || null
         );
       } catch (err) {
+        if (err.message && err.message.includes('has no column named')) {
+          try {
+            const columns = this.db.prepare('PRAGMA table_info(forensic_jobs)').all();
+            const colSet = new Set(columns.map(c => c.name));
+            const expectedCols = [
+              { name: 'progress', type: 'INTEGER DEFAULT 0' },
+              { name: 'stage', type: 'TEXT' },
+              { name: 'investigation_id', type: 'TEXT' },
+              { name: 'artifact_id', type: 'TEXT' },
+              { name: 'filename', type: 'TEXT' },
+              { name: 'mime_type', type: 'TEXT' },
+              { name: 'result', type: 'TEXT' },
+              { name: 'logs', type: 'TEXT' },
+              { name: 'error', type: 'TEXT' },
+              { name: 'started_at', type: 'TEXT' },
+              { name: 'completed_at', type: 'TEXT' }
+            ];
+            for (const col of expectedCols) {
+              if (!colSet.has(col.name)) {
+                this.db.exec(`ALTER TABLE forensic_jobs ADD COLUMN ${col.name} ${col.type}`);
+              }
+            }
+            const retryStmt = this.db.prepare(`
+              INSERT INTO forensic_jobs (
+                id, type, status, progress, stage, investigation_id, artifact_id,
+                filename, mime_type, result, logs, error, created_at, started_at, completed_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              ON CONFLICT(id) DO UPDATE SET
+                status = excluded.status,
+                progress = excluded.progress,
+                stage = excluded.stage,
+                result = excluded.result,
+                logs = excluded.logs,
+                error = excluded.error,
+                started_at = excluded.started_at,
+                completed_at = excluded.completed_at
+            `);
+            retryStmt.run(
+              job.id, job.type, job.status, job.progress || 0, job.stage || null,
+              job.investigationId || null, job.artifactId || null, job.filename || null,
+              job.mimeType || null, job.result ? JSON.stringify(job.result) : null,
+              job.logs ? JSON.stringify(job.logs) : null, job.error || null,
+              job.createdAt, job.startedAt || null, job.completedAt || null
+            );
+            return;
+          } catch (retryErr) {
+            console.warn('[ForensicQueue] Retry persist failed:', retryErr.message);
+          }
+        }
         console.warn('[ForensicQueue] Failed to persist job to SQLite:', err.message);
       }
     }
