@@ -186,3 +186,53 @@ export const generateDMCANoticeGemini = async (payload: any) => {
     headers: token ? { Authorization: `Bearer ${token}` } : {}
   }).then(r => r.data)
 }
+
+// ── Google Search API: Earliest Known Appearance (Source) ───────────────────
+export interface EarliestAppearanceResult {
+  found: boolean
+  targetQuery: string
+  earliestAppearance: {
+    title: string
+    publisher: string
+    domain: string
+    url: string
+    publishedAt: string
+    formattedDate?: string
+    snippet?: string
+    platform?: string
+    confidenceScore: number
+    sourceType?: string
+    author?: string
+  }
+  searchSummary: string
+  timelineAppearances: Array<{
+    order?: number
+    timestamp: string
+    platform: string
+    domain: string
+    url?: string
+    title: string
+    type: string
+    isEarliest: boolean
+  }>
+  corroborationSources: string[]
+  searchQueriesUsed: string[]
+  groundingSources?: Array<{ uri: string; title: string }>
+  provider: string
+  queriedAt: string
+}
+
+export const fetchEarliestAppearance = async (params: {
+  query?: string
+  filename?: string
+  sha256?: string
+  investigationId?: string
+  mediaUrl?: string
+  scenario?: string
+}): Promise<EarliestAppearanceResult> => {
+  const token = await getToken()
+  return axios.post(`${BASE}/api/forensics/earliest-appearance`, params, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {}
+  }).then(r => r.data)
+}
+
