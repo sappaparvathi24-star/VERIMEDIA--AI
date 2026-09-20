@@ -171,8 +171,8 @@ export const testProvider = (provider: string) =>
 export const getSearchTransparency = () =>
   api.get('/search/transparency').then(r => r.data)
 
-export const searchMultiSource = (query: string, platforms?: string[]) =>
-  api.post('/search/multi-source', { query, platforms }).then(r => r.data)
+export const searchMultiSource = (query: string, platforms?: string[], options?: Record<string, any>) =>
+  api.post('/search/multi-source', { query, platforms, ...options }).then(r => r.data)
 
 export const getInvestigationCandidates = (id: string) =>
   api.get(`/investigations/${id}/discovery/candidates`).then(r => r.data)

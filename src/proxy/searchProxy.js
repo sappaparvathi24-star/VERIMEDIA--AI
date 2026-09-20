@@ -3,6 +3,7 @@
 import https from 'https';
 import http from 'http';
 import { checkRateLimit } from '../security/rateLimiter.js';
+import { getMonthlyVisionCallCount, canUseVisionApi, DEFAULT_MONTHLY_LIMIT } from '../matching/visionQuotaGuard.js';
 
 export { checkRateLimit };
 
@@ -581,6 +582,23 @@ export function getDiscoveryHealth() {
         status: hasGoogleSearch ? 'configured' : 'not_configured',
         permanentUnavailable: false,
         reason: hasGoogleSearch ? null : 'GOOGLE_CSE_API_KEY or GOOGLE_CSE_CX not set'
+      },
+      googleVisionWebDetection: {
+        id: 'googleVisionWebDetection',
+        name: 'Google Cloud Vision — Web Detection',
+        available: Boolean(process.env.GOOGLE_VISION_API_KEY || process.env.GOOGLE_API_KEY) && canUseVisionApi(),
+        authRequired: true,
+        status: !(process.env.GOOGLE_VISION_API_KEY || process.env.GOOGLE_API_KEY)
+          ? 'not_configured'
+          : (!canUseVisionApi() ? 'quota_exceeded' : 'configured'),
+        permanentUnavailable: false,
+        quota: {
+          used: getMonthlyVisionCallCount(),
+          limit: Number(process.env.GOOGLE_VISION_MONTHLY_LIMIT || DEFAULT_MONTHLY_LIMIT)
+        },
+        reason: !(process.env.GOOGLE_VISION_API_KEY || process.env.GOOGLE_API_KEY)
+          ? 'GOOGLE_VISION_API_KEY not configured on this deployment'
+          : (!canUseVisionApi() ? `Monthly free-tier limit (${process.env.GOOGLE_VISION_MONTHLY_LIMIT || DEFAULT_MONTHLY_LIMIT} reqs) reached` : null)
       },
       instagram: {
         id: 'instagram',

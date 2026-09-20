@@ -57,6 +57,14 @@ export const DISCOVERY_SOURCE_DEFINITIONS = [
     isPermanentUnavailable: false,
     publicApiExists: true
   },
+  {
+    id: 'googleVisionWebDetection',
+    name: 'Google Cloud Vision — Web Detection',
+    category: 'Reverse Image Search',
+    description: 'Real reverse-image search via image content, not keywords. Free up to 1,000 requests/month.',
+    isPermanentUnavailable: false,
+    publicApiExists: true
+  },
   // Permanent explicit notice items (Standing Rule 9)
   {
     id: 'instagram',

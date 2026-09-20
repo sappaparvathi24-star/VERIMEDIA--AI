@@ -175,13 +175,37 @@ export function ForensicViewer({ result: propResult, compact = false, onClose }:
   const fetchEarliest = useCallback(async (overrideQuery?: string) => {
     setLoadingEarliest(true)
     setEarliestError(null)
+
+    // Construct query ONLY from real signals extracted from current file
+    const ocrText = result?.forensics?.ocr?.text?.trim() || (result as any)?.ocr?.text?.trim() || (result as any)?.ocr_text?.trim()
+    const visualDesc = result?.forensics?.subjectDescription?.trim() || result?.subject_description?.trim() || result?.forensics?.summary?.trim()
+    const rawFilename = (result as any)?.filename || (result as any)?.media_name || (result as any)?.artifact?.filename || ''
+    const cleanFilename = rawFilename && !['unknown', 'sample.mp4', 'press_conference_master_4k.mp4', 'demo.mp4', 'placeholder.jpg', 'test.jpg', 'image.png', 'upload.jpg', 'video.mp4', 'file.mp4'].includes(rawFilename.toLowerCase())
+      ? rawFilename.replace(/\.[^/.]+$/, '').replace(/[_\\-]/g, ' ').trim()
+      : ''
+    const manualQuery = overrideQuery?.trim() || customSearchQuery?.trim()
+    const caption = (result as any)?.caption?.trim()
+
+    const scenarioQuery = (result?.scenario === 'deepfake' || result?.scenario === 'scam' || result?.scenario === 'authentic') && (result as any)?.is_scenario
+      ? ((result as any)?.caption || (result?.scenario === 'deepfake' ? 'Synthesized political speech press briefing' : 'Official press conference 4k master broadcast'))
+      : ''
+
+    const finalQuery = manualQuery || caption || ocrText || visualDesc || cleanFilename || scenarioQuery
+
+    if (!finalQuery) {
+      setLoadingEarliest(false)
+      setIsCustomSearching(false)
+      setEarliestData(null)
+      setEarliestError('Not enough information available in this file to search for its earliest appearance.')
+      return
+    }
+
     try {
-      const q = overrideQuery || customSearchQuery || (result as any)?.caption || (result as any)?.title || (result?.scenario === 'deepfake' ? 'Synthesized political speech press briefing' : 'Official press conference 4k master broadcast')
       const data = await fetchEarliestAppearance({
-        query: q,
-        filename: (result as any)?.filename || (result as any)?.media_name || 'press_conference_master_4k.mp4',
+        query: finalQuery,
+        filename: cleanFilename || undefined,
         sha256,
-        investigationId: (result as any)?.investigationId || (result as any)?.id || 'INV-2026-001',
+        investigationId: (result as any)?.investigationId || (result as any)?.id || undefined,
         scenario: result?.scenario
       })
       setEarliestData(data)
@@ -1001,13 +1025,13 @@ export function ForensicViewer({ result: propResult, compact = false, onClose }:
 
                     <div className="space-y-1">
                       <h4 className="font-bold text-sm text-white">
-                        {earliestData?.earliestAppearance?.title || (result?.scenario ? 'White House Press Briefing 4K Pool Master Feed' : 'Not determined')}
+                        {earliestData?.earliestAppearance?.title || (result?.scenario && (result as any)?.is_scenario ? 'White House Press Briefing 4K Pool Master Feed' : 'Not determined')}
                       </h4>
                       <p className="text-xs text-slate-300">
                         {earliestData?.earliestAppearance?.snippet ||
-                          (result?.scenario
+                          (result?.scenario && (result as any)?.is_scenario
                             ? 'First recorded public broadcast captured directly from White House press pool transmission. No synthetic voice clone, face manipulation, or neural frame interpolation detected in original baseline.'
-                            : 'No indexed earliest observation found on public search nodes for this specific media asset.')}
+                            : (earliestError || 'No indexed earliest observation found on public search nodes for this specific media asset.'))}
                       </p>
                     </div>
 
@@ -1015,19 +1039,19 @@ export function ForensicViewer({ result: propResult, compact = false, onClose }:
                       <div className="space-y-0.5">
                         <div className="text-[10px] text-slate-500 font-mono uppercase">Original Publisher</div>
                         <div className="font-semibold text-slate-200 truncate">
-                          {earliestData?.earliestAppearance?.publisher || (result?.scenario ? 'Associated Press / Reuters Pool' : 'Not determined')}
+                          {earliestData?.earliestAppearance?.publisher || (result?.scenario && (result as any)?.is_scenario ? 'Associated Press / Reuters Pool' : 'Not determined')}
                         </div>
                       </div>
                       <div className="space-y-0.5">
                         <div className="text-[10px] text-slate-500 font-mono uppercase">Domain / Host</div>
                         <div className="font-mono text-cyan-400 truncate">
-                          {earliestData?.earliestAppearance?.domain || (result?.scenario ? 'apnews.com' : 'Not available')}
+                          {earliestData?.earliestAppearance?.domain || (result?.scenario && (result as any)?.is_scenario ? 'apnews.com' : 'Not available')}
                         </div>
                       </div>
                       <div className="space-y-0.5">
                         <div className="text-[10px] text-slate-500 font-mono uppercase">Earliest Timestamp</div>
                         <div className="font-mono text-slate-200">
-                          {earliestData?.earliestAppearance?.formattedDate || earliestData?.earliestAppearance?.publishedAt || (result?.scenario ? '2026-01-10T08:14:00Z' : 'Not available')}
+                          {earliestData?.earliestAppearance?.formattedDate || earliestData?.earliestAppearance?.publishedAt || (result?.scenario && (result as any)?.is_scenario ? '2026-01-10T08:14:00Z' : 'Not available')}
                         </div>
                       </div>
                       <div className="space-y-0.5">
@@ -1035,7 +1059,7 @@ export function ForensicViewer({ result: propResult, compact = false, onClose }:
                         <div className="font-mono text-emerald-400 font-bold">
                           {earliestData?.earliestAppearance?.confidenceScore != null
                             ? `${((earliestData.earliestAppearance.confidenceScore) * 100).toFixed(0)}% Corroborated`
-                            : (result?.scenario ? '96% Corroborated' : 'Unavailable')}
+                            : (result?.scenario && (result as any)?.is_scenario ? '96% Corroborated' : 'Unavailable')}
                         </div>
                       </div>
                     </div>
@@ -1074,67 +1098,71 @@ export function ForensicViewer({ result: propResult, compact = false, onClose }:
                     </div>
 
                     <div className="relative pl-4 space-y-3 before:absolute before:left-1.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-700">
-                      {(earliestData?.timelineAppearances || (result?.scenario ? [
-                        {
-                          order: 1,
-                          timestamp: '2026-01-10T08:14:00Z',
-                          platform: 'AP News Wire / Pool Feed',
-                          domain: 'apnews.com',
-                          title: 'Live 4K Press Briefing Transmission',
-                          type: 'ORIGINAL_MASTER',
-                          isEarliest: true
-                        },
-                        {
-                          order: 2,
-                          timestamp: '2026-01-10T09:12:00Z',
-                          platform: 'YouTube News Syndicate',
-                          domain: 'youtube.com',
-                          title: 'Full Briefing Syndication Broadcast',
-                          type: 'SECONDARY_SYNDICATION',
-                          isEarliest: false
-                        },
-                        {
-                          order: 3,
-                          timestamp: '2026-01-10T11:45:00Z',
-                          platform: 'TikTok & X (Viral Feed)',
-                          domain: 'x.com',
-                          title: isManipulated ? 'Deepfake Neural Voice Clone Derivative' : 'Social Media Quote Clip',
-                          type: isManipulated ? 'DERIVATIVE_MODIFICATION' : 'SOCIAL_DISTRIBUTION',
-                          isEarliest: false
-                        }
-                      ] : [])).length === 0 ? (
+                      {((earliestData?.timelineAppearances && earliestData.timelineAppearances.length > 0)
+                        ? earliestData.timelineAppearances
+                        : (result?.scenario && (result as any)?.is_scenario ? [
+                            {
+                              order: 1,
+                              timestamp: '2026-01-10T08:14:00Z',
+                              platform: 'AP News Wire / Pool Feed',
+                              domain: 'apnews.com',
+                              title: 'Live 4K Press Briefing Transmission',
+                              type: 'ORIGINAL_MASTER',
+                              isEarliest: true
+                            },
+                            {
+                              order: 2,
+                              timestamp: '2026-01-10T09:12:00Z',
+                              platform: 'YouTube News Syndicate',
+                              domain: 'youtube.com',
+                              title: 'Full Briefing Syndication Broadcast',
+                              type: 'SECONDARY_SYNDICATION',
+                              isEarliest: false
+                            },
+                            {
+                              order: 3,
+                              timestamp: '2026-01-10T11:45:00Z',
+                              platform: 'TikTok & X (Viral Feed)',
+                              domain: 'x.com',
+                              title: isManipulated ? 'Deepfake Neural Voice Clone Derivative' : 'Social Media Quote Clip',
+                              type: isManipulated ? 'DERIVATIVE_MODIFICATION' : 'SOCIAL_DISTRIBUTION',
+                              isEarliest: false
+                            }
+                          ] : [])).length === 0 ? (
                         <div className="text-xs text-slate-500 py-2">
                           No dissemination chronology observed across crawled endpoints yet.
                         </div>
-                      ) : (earliestData?.timelineAppearances || (result?.scenario ? [
-                        {
-                          order: 1,
-                          timestamp: '2026-01-10T08:14:00Z',
-                          platform: 'AP News Wire / Pool Feed',
-                          domain: 'apnews.com',
-                          title: 'Live 4K Press Briefing Transmission',
-                          type: 'ORIGINAL_MASTER',
-                          isEarliest: true
-                        },
-                        {
-                          order: 2,
-                          timestamp: '2026-01-10T09:12:00Z',
-                          platform: 'YouTube News Syndicate',
-                          domain: 'youtube.com',
-                          title: 'Full Briefing Syndication Broadcast',
-                          type: 'SECONDARY_SYNDICATION',
-                          isEarliest: false
-                        },
-                        {
-                          order: 3,
-                          timestamp: '2026-01-10T11:45:00Z',
-                          platform: 'TikTok & X (Viral Feed)',
-                          domain: 'x.com',
-                          title: isManipulated ? 'Deepfake Neural Voice Clone Derivative' : 'Social Media Quote Clip',
-                          type: isManipulated ? 'DERIVATIVE_MODIFICATION' : 'SOCIAL_DISTRIBUTION',
-                          isEarliest: false
-                        }
-                      ] : [])).map((node, idx) => (
+                      ) : ((earliestData?.timelineAppearances && earliestData.timelineAppearances.length > 0)
+                        ? earliestData.timelineAppearances
+                        : (result?.scenario && (result as any)?.is_scenario ? [
+                            {
+                              order: 1,
+                              timestamp: '2026-01-10T08:14:00Z',
+                              platform: 'AP News Wire / Pool Feed',
+                              domain: 'apnews.com',
+                              title: 'Live 4K Press Briefing Transmission',
+                              type: 'ORIGINAL_MASTER',
+                              isEarliest: true
+                            },
+                            {
+                              order: 2,
+                              timestamp: '2026-01-10T09:12:00Z',
+                              platform: 'YouTube News Syndicate',
+                              domain: 'youtube.com',
+                              title: 'Full Briefing Syndication Broadcast',
+                              type: 'SECONDARY_SYNDICATION',
+                              isEarliest: false
+                            },
+                            {
+                              order: 3,
+                              timestamp: '2026-01-10T11:45:00Z',
+                              platform: 'TikTok & X (Viral Feed)',
+                              domain: 'x.com',
+                              title: isManipulated ? 'Deepfake Neural Voice Clone Derivative' : 'Social Media Quote Clip',
+                              type: isManipulated ? 'DERIVATIVE_MODIFICATION' : 'SOCIAL_DISTRIBUTION',
+                              isEarliest: false
+                            }
+                          ] : [])).map((node, idx) => (
                         <div key={idx} className="relative space-y-0.5">
                           <div className={`absolute -left-[19px] top-1 w-2.5 h-2.5 rounded-full border-2 ${
                             node.isEarliest

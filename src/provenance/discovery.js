@@ -94,7 +94,13 @@ export class ExternalDiscoveryAdapter {
   }
 
   async discover(artifact, strategy, options = {}) {
-    if (!this.enabled && !options.enableExternal && !options.query && !options.signals) {
+    const opts = {
+      ...options,
+      imageBase64: options.imageBase64 || artifact?.imageBase64 || artifact?.content || artifact?.previewDataUrl || null,
+      mediaUrl: options.mediaUrl || artifact?.url || artifact?.mediaUrl || null
+    };
+
+    if (!this.enabled && !options.enableExternal && !options.query && !options.signals && !opts.imageBase64 && !opts.mediaUrl) {
       return {
         available: false,
         reason: 'External discovery unavailable — showing indexed evidence only.',
@@ -103,8 +109,8 @@ export class ExternalDiscoveryAdapter {
       };
     }
 
-    const signals = buildQuerySignals(artifact, options);
-    if (signals.length === 0 && !options.query && !options.url) {
+    const signals = buildQuerySignals(artifact, opts);
+    if (signals.length === 0 && !opts.query && !opts.url && !opts.imageBase64 && !opts.mediaUrl) {
       return {
         available: false,
         providerStatuses: this.manager.getTransparencyReport(),
@@ -114,7 +120,7 @@ export class ExternalDiscoveryAdapter {
     }
 
     try {
-      const searchResult = await this.manager.searchAll(signals, options);
+      const searchResult = await this.manager.searchAll(signals, opts);
       return {
         available: true,
         providerStatuses: searchResult.providerStatuses,

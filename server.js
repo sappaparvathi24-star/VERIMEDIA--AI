@@ -28,6 +28,9 @@ import { MultiSourceDiscoveryManager } from './src/matching/providers/index.js';
 import { getFullDiscoveryTransparency } from './src/matching/discoveryTransparency.js';
 import { computeAverageHash, hashSimilarity } from './src/forensics/perceptualHash.js';
 import { getArtifactMedia, storeArtifactMedia } from './src/forensics/imageForensics.js';
+import { getMonthlyVisionCallCount, DEFAULT_MONTHLY_LIMIT, canUseVisionApi } from './src/matching/visionQuotaGuard.js';
+import { GoogleVisionWebDetectionProvider } from './src/matching/providers/googleVisionWebDetection.js';
+import { generateWorkflowReport, extractCreatorAttribution } from './src/provenance/workflowReport.js';
 import { ForensicJobQueue } from './src/jobs/forensicQueue.js';
 import {
   authenticateUser,
@@ -58,6 +61,19 @@ import {
 } from './src/audit/auditService.js';
 import { persistence } from './src/db/persistence.js';
 dotenv.config();
+
+// ---------------------------------------------------------------------------
+// Boot-time signal for GEMINI_API_KEY & environment diagnostics
+// ---------------------------------------------------------------------------
+const rawGeminiKey = process.env.GEMINI_API_KEY;
+if (rawGeminiKey && rawGeminiKey.trim()) {
+  const maskedKey = rawGeminiKey.length > 8
+    ? `${rawGeminiKey.slice(0, 4)}...${rawGeminiKey.slice(-4)}`
+    : '****';
+  console.log(`✨ [Boot] GEMINI_API_KEY detected (${maskedKey}) — Multimodal AI capabilities operational.`);
+} else {
+  console.warn('⚠️  [Boot] GEMINI_API_KEY is NOT configured on this deployment. System running in deterministic / local fallback mode.');
+}
 
 // ---------------------------------------------------------------------------
 // Media file persistence — write uploaded buffers to data/media/<sha256>.<ext>
@@ -95,10 +111,10 @@ seedDefaultAuthEntities();
 // Asynchronously hydrate store from Supabase PostgreSQL if configured
 await provenanceService.hydrate();
 
-// Periodic snapshotting loop to Supabase (every 10 seconds)
+// Periodic snapshotting loop to Supabase (every 30 seconds)
 setInterval(() => {
   persistence.snapshotAll(provenanceService.store);
-}, 10 * 1000).unref?.();
+}, 30 * 1000).unref?.();
 
 // Monitoring scheduler — check and execute overdue jobs every 60 seconds
 setInterval(() => {
@@ -327,8 +343,10 @@ const forensicJobQueue = new ForensicJobQueue({
 function buildIntegrationStatus() {
   const googleCseKey = process.env.GOOGLE_CSE_API_KEY || process.env.GOOGLE_SEARCH_API_KEY;
   const googleCseCx  = process.env.GOOGLE_CSE_CX      || process.env.GOOGLE_SEARCH_ENGINE_ID;
+  const visionKey    = process.env.GOOGLE_VISION_API_KEY || process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY;
   return {
     gemini:       process.env.GEMINI_API_KEY                  ? 'configured' : 'not_configured',
+    googleVision: visionKey                                   ? 'configured' : 'not_configured',
     supabase:     (process.env.SUPABASE_URL && (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY))
                     ? 'configured' : 'not_configured',
     youtube:      process.env.YOUTUBE_API_KEY                 ? 'configured' : 'not_configured',
@@ -345,28 +363,62 @@ function healthResponse(req, res) {
   const allArtifacts = provenanceService.getArtifacts ? provenanceService.getArtifacts() : [];
   const allInvestigations = provenanceService.getInvestigations();
   const integrations = buildIntegrationStatus();
+  const hasGemini = Boolean(process.env.GEMINI_API_KEY);
+
+  const effectiveVisionLimit = Number(process.env.GOOGLE_VISION_MONTHLY_LIMIT || DEFAULT_MONTHLY_LIMIT);
+  const visionCount = getMonthlyVisionCallCount();
+
+  let storageBackend = 'sqlite_ephemeral';
+  if (process.env.SUPABASE_URL && (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY)) {
+    storageBackend = 'supabase';
+  } else if (process.env.PERSISTENT_DATA_DIR || process.env.DATABASE_PATH) {
+    storageBackend = 'sqlite_persistent';
+  } else {
+    storageBackend = 'sqlite_ephemeral';
+  }
+
+  const diskMounted = Boolean(
+    process.env.PERSISTENT_DATA_DIR ||
+    process.env.DATABASE_PATH ||
+    fs.existsSync(path.resolve(process.cwd(), 'data'))
+  );
+
   res.json({
     status: 'ok',
     service: 'VeriMedia AI Unified Backend',
+    storageBackend,
+    diskMounted,
     services: {
       'Express Server': 'operational',
       'SQLite Database': 'operational',
-      'Gemini AI': integrations.gemini === 'configured' ? 'configured' : 'not_configured',
+      'Gemini AI': hasGemini ? 'configured' : 'not_configured',
       'Provenance Engine': 'operational',
       'Discovery Providers': 'operational'
+    },
+    gemini: {
+      configured: hasGemini,
+      model: 'gemini-2.5-flash',
+      fallbackModels: ['gemini-2.5-flash-lite', 'gemini-2.0-flash', 'gemini-1.5-flash']
+    },
+    visionApiQuota: {
+      used: visionCount,
+      limit: effectiveVisionLimit,
+      canUse: canUseVisionApi()
     },
     integrations,
     version: '1.0.0',
     uptime_seconds: Math.floor(process.uptime()),
     total_scans: allArtifacts.filter(a => !a.isDemo).length,
     total_investigations: allInvestigations.filter(i => !i.isDemo).length,
-    models: ['gemini-flash-lite-latest', 'gemini-flash-latest'],
+    models: ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash'],
     timestamp: new Date().toISOString()
   });
 }
 
 app.get('/health', healthResponse);
+app.get('/health/deep', healthResponse);
 app.get('/api/health', healthResponse);
+app.get('/api/health/deep', healthResponse);
 app.get('/api/v1/health', healthResponse);
 
 // Dedicated integration-status endpoint — honest configured/not_configured/not_implemented per provider
@@ -3102,6 +3154,156 @@ app.post('/api/search/multi-source', async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// GOOGLE CLOUD VISION WEB DETECTION & CREATOR ATTRIBUTION ENDPOINTS
+// ---------------------------------------------------------------------------
+const visionProvider = new GoogleVisionWebDetectionProvider();
+
+const handleVisionWebDetection = async (req, res) => {
+  const clientIp = req.ip || req.connection?.remoteAddress || 'unknown';
+  if (!checkRateLimit(clientIp)) {
+    return res.status(429).json({ error: 'Rate limit exceeded. Please wait a moment.' });
+  }
+
+  try {
+    let imageBase64 = null;
+    let mediaUrl = null;
+    let artifactId = req.body?.artifactId || req.query?.artifactId || null;
+
+    // Check multipart file upload
+    if (req.file && req.file.buffer) {
+      imageBase64 = req.file.buffer.toString('base64');
+    } else if (req.body?.imageBase64) {
+      imageBase64 = req.body.imageBase64;
+    } else if (req.body?.mediaUrl || req.body?.url || req.query?.url) {
+      mediaUrl = req.body?.mediaUrl || req.body?.url || req.query?.url;
+    } else if (artifactId) {
+      const storedMedia = getArtifactMedia(artifactId);
+      if (storedMedia && storedMedia.buffer) {
+        imageBase64 = storedMedia.buffer.toString('base64');
+      } else {
+        const art = provenanceService.getArtifact(artifactId);
+        if (art && art.url) {
+          mediaUrl = art.url;
+        }
+      }
+    }
+
+    if (!imageBase64 && !mediaUrl) {
+      return res.status(400).json({
+        error: 'Missing image input: provide multipart file, imageBase64, mediaUrl, or valid artifactId.'
+      });
+    }
+
+    const effectiveLimit = Number(process.env.GOOGLE_VISION_MONTHLY_LIMIT || DEFAULT_MONTHLY_LIMIT);
+
+    // Call Vision Web Detection provider
+    const searchRes = await visionProvider.search({
+      imageBase64,
+      mediaUrl
+    });
+
+    const candidates = searchRes.candidates || [];
+    const creatorAttribution = extractCreatorAttribution(candidates);
+
+    res.json({
+      status: searchRes.status === 'AVAILABLE' ? 'ok' : searchRes.status,
+      provider: 'Google Cloud Vision — Web Detection',
+      bestGuessLabels: searchRes.bestGuessLabels || [],
+      fullMatchingImages: searchRes.fullMatchingImages || [],
+      partialMatchingImages: searchRes.partialMatchingImages || [],
+      pagesWithMatchingImages: searchRes.pagesWithMatchingImages || [],
+      visuallySimilarImages: searchRes.visuallySimilarImages || [],
+      candidates,
+      candidateCount: candidates.length,
+      creatorAttribution,
+      quota: {
+        used: getMonthlyVisionCallCount(),
+        limit: effectiveLimit,
+        canUse: canUseVisionApi()
+      },
+      reason: searchRes.reason || null
+    });
+  } catch (err) {
+    res.status(502).json({
+      error: 'Google Cloud Vision Web Detection query failed',
+      message: err.message
+    });
+  }
+};
+
+app.post('/api/v1/vision/web-detection', upload.single('file'), handleVisionWebDetection);
+app.post('/api/vision/web-detection', upload.single('file'), handleVisionWebDetection);
+app.post('/api/vision/search', upload.single('file'), handleVisionWebDetection);
+
+// ---------------------------------------------------------------------------
+// VERIMEDIA AI 4-FEATURE UNIFIED WORKFLOW REPORT ENDPOINT
+// (Original Website, AI Detection, Creator Investigation, Image Forensics)
+// ---------------------------------------------------------------------------
+const handleWorkflowReport = async (req, res) => {
+  try {
+    let buffer = null;
+    let artifact = null;
+    let artifactId = req.params?.id || req.body?.artifactId || req.query?.artifactId;
+    let investigationId = req.params?.id || req.body?.investigationId || req.query?.investigationId;
+
+    if (req.file && req.file.buffer) {
+      buffer = req.file.buffer;
+    }
+
+    if (artifactId) {
+      artifact = provenanceService.getArtifact(artifactId);
+      if (!buffer) {
+        const stored = getArtifactMedia(artifactId);
+        if (stored?.buffer) buffer = stored.buffer;
+      }
+    }
+
+    if (!artifact && investigationId) {
+      const inv = provenanceService.getInvestigation(investigationId);
+      if (inv && inv.artifactIds && inv.artifactIds.length > 0) {
+        artifact = provenanceService.getArtifact(inv.artifactIds[0]);
+        if (!buffer) {
+          const stored = getArtifactMedia(inv.artifactIds[0]);
+          if (stored?.buffer) buffer = stored.buffer;
+        }
+      }
+    }
+
+    // Retrieve discovery candidates
+    let candidates = [];
+    if (investigationId) {
+      candidates = provenanceService.getDiscoveryCandidates(investigationId);
+    }
+
+    // Run Vision search if image buffer is available and Vision is configured & within quota
+    let visionResults = null;
+    if (buffer && visionProvider.isConfigured() && canUseVisionApi()) {
+      try {
+        visionResults = await visionProvider.search({
+          imageBase64: buffer.toString('base64')
+        });
+      } catch (_) {}
+    }
+
+    const report = await generateWorkflowReport({
+      artifact,
+      buffer,
+      candidates,
+      forensicAnalysis: artifact?.metadata?.forensicAnalysis || null,
+      visionResults,
+      userNotes: req.body?.notes || null
+    });
+
+    res.json(report);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to generate workflow report', message: err.message });
+  }
+};
+
+app.post('/api/v1/workflow/report', upload.single('file'), handleWorkflowReport);
+app.post('/api/investigations/:id/workflow-report', upload.single('file'), handleWorkflowReport);
+
+// ---------------------------------------------------------------------------
 // EARLIEST KNOWN APPEARANCE (SOURCE) DISCOVERY VIA GOOGLE SEARCH API
 // ---------------------------------------------------------------------------
 app.post('/api/forensics/earliest-appearance', async (req, res) => {
@@ -3947,6 +4149,7 @@ if (!process.env.VERCEL && !isTestRunner) {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`🛡️ VeriMedia AI server running on http://0.0.0.0:${PORT}`);
     console.log(`   NODE_ENV=${process.env.NODE_ENV || 'development'}`);
+    console.log(`   GEMINI_API_KEY=${process.env.GEMINI_API_KEY ? 'CONFIGURED ✓' : 'NOT SET (deterministic mode)'}`);
     console.log(`   SECRET_KEY=${process.env.SECRET_KEY ? 'SET ✓' : 'NOT SET (ephemeral dev key)'}`);
     console.log(`   API_KEY_SALT=${process.env.API_KEY_SALT ? 'SET ✓' : 'NOT SET (ephemeral dev key)'}`);
   });

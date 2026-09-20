@@ -7,6 +7,11 @@ interface ProviderInfo {
   name: string
   available: boolean
   authRequired: boolean
+  status?: string
+  quota?: {
+    used: number
+    limit: number
+  }
   reason?: string | null
   permanentUnavailable?: boolean
   instances?: string[]
@@ -60,22 +65,23 @@ export function DiscoveryPanel() {
     setQueryError(null)
     setStatusMsg(null)
 
-    if (currentResult?.caption) {
-      setTestQuery(currentResult.caption)
-    } else if (isTestScenario) {
-      setTestQuery('Championship final broadcast 2026')
-    } else {
-      setTestQuery('')
-    }
+    const ocrText = currentResult?.forensics?.ocr?.text?.trim() || (currentResult as any)?.ocr?.text?.trim() || (currentResult as any)?.ocr_text?.trim()
+    const visualDesc = currentResult?.forensics?.subjectDescription?.trim() || currentResult?.subject_description?.trim() || currentResult?.forensics?.summary?.trim()
+    const rawFilename = currentResult?.artifact?.filename || (currentResult as any)?.filename || (currentResult as any)?.media_name || ''
+    const cleanFilename = rawFilename && !['unknown', 'sample.mp4', 'press_conference_master_4k.mp4', 'demo.mp4', 'placeholder.jpg', 'test.jpg'].includes(rawFilename.toLowerCase())
+      ? rawFilename.replace(/\.[^/.]+$/, '').replace(/[_\\-]/g, ' ').trim()
+      : ''
+    const caption = currentResult?.caption?.trim()
+
+    const initialSignal = caption || ocrText || visualDesc || cleanFilename || ''
+    setTestQuery(initialSignal)
 
     const invId = currentResult?.investigationId || currentResult?.case_id
-    // Only load pre-baked test scenario candidates if user has explicitly selected one of the test scenarios
-    if (isTestScenario && invId) {
+    if (invId) {
       loadInvestigationCandidates(invId)
     } else if (currentResult && (currentResult as any).candidates && Array.isArray((currentResult as any).candidates) && (currentResult as any).candidates.length > 0) {
       setCandidatesList((currentResult as any).candidates)
     } else {
-      // Clear candidates so that non-scenario scans do not inherit demo/scenario candidates
       setCandidatesList([])
     }
   }, [currentResult])
@@ -129,22 +135,53 @@ export function DiscoveryPanel() {
   }
 
   async function handleSearch() {
-    if (!testQuery.trim()) return
+    const rawImage = (currentResult as any)?.artifact?.previewUrl ||
+      (currentResult as any)?.artifact?.fileUrl ||
+      (currentResult as any)?.artifact?.dataUrl ||
+      (currentResult as any)?.previewUrl ||
+      (currentResult as any)?.media_url ||
+      null
+
+    const isVisionProvider = selectedProvider === 'googleVisionWebDetection'
+
+    if (!testQuery.trim() && !(isVisionProvider && rawImage)) {
+      setCandidatesList([])
+      setQueryError('Not enough information extracted from this file to search automatically. Enter a search term manually, or this file may not be analyzable.')
+      return
+    }
+
     setIsQuerying(true)
     setQueryError(null)
     setStatusMsg(null)
     try {
-      const result = await searchMultiSource(testQuery.trim(), [selectedProvider])
+      const searchOptions: Record<string, any> = {}
+      if (rawImage) {
+        if (typeof rawImage === 'string' && rawImage.startsWith('data:')) {
+          searchOptions.imageBase64 = rawImage
+        } else if (typeof rawImage === 'string' && /^https?:\/\//.test(rawImage)) {
+          searchOptions.mediaUrl = rawImage
+        }
+      }
+
+      const result = await searchMultiSource(testQuery.trim(), [selectedProvider], searchOptions)
       const provResult = result?.results?.[selectedProvider] || result
       const candidates = provResult?.candidates || provResult?.results || result?.candidates || []
       
       const counts: Record<string, { count: number; status: string }> = {}
+      let providerFailureReason: string | null = null
+
       if (result?.providerStatuses) {
         Object.entries(result.providerStatuses).forEach(([k, v]: [string, any]) => {
           counts[k] = { count: v.count || 0, status: v.status || 'OK' }
+          if (k === selectedProvider && (v.status === 'UNAVAILABLE' || v.status === 'ERROR' || v.status === 'QUOTA_REACHED' || v.reason)) {
+            providerFailureReason = v.reason ? `${activeProviderObj?.name || k}: ${v.reason}` : `${activeProviderObj?.name || k}: provider unavailable`
+          }
         })
       } else {
-        counts[selectedProvider] = { count: candidates.length, status: 'OK' }
+        counts[selectedProvider] = { count: candidates.length, status: provResult?.status || 'OK' }
+        if (provResult?.status === 'UNAVAILABLE' || provResult?.status === 'ERROR' || provResult?.reason) {
+          providerFailureReason = provResult.reason ? `${activeProviderObj?.name || selectedProvider}: ${provResult.reason}` : `${activeProviderObj?.name || selectedProvider}: provider unavailable`
+        }
       }
       setProviderMatchCounts(counts)
 
@@ -169,14 +206,19 @@ export function DiscoveryPanel() {
           }
         })
         setCandidatesList(formatted)
-        setStatusMsg(`Discovered ${formatted.length} live candidates via ${activeProviderObj?.name || selectedProvider}.`)
+        setStatusMsg(`Discovered ${formatted.length} live appearances via ${activeProviderObj?.name || selectedProvider}.`)
       } else {
         setCandidatesList([])
-        setStatusMsg('No matching appearances found across indexed providers for this asset')
+        if (providerFailureReason) {
+          setQueryError(providerFailureReason)
+        } else {
+          setStatusMsg('No matching appearances found across indexed providers for this asset.')
+        }
       }
     } catch (err: any) {
       setCandidatesList([])
-      setQueryError(err?.response?.data?.error || err?.message || 'Search failed across configured discovery endpoints')
+      const reasonMsg = err?.response?.data?.reason || err?.response?.data?.message || err?.response?.data?.error || err?.message
+      setQueryError(reasonMsg ? `${activeProviderObj?.name || selectedProvider}: ${reasonMsg}` : `${activeProviderObj?.name || selectedProvider}: request timed out or returned non-2xx response`)
     } finally {
       setIsQuerying(false)
     }
@@ -188,11 +230,13 @@ export function DiscoveryPanel() {
   const totalCount = providerList.filter(p => !p.permanentUnavailable).length
 
   function statusColor(p: ProviderInfo) {
+    if (p.status === 'quota_exceeded' || p.status === 'QUOTA_EXCEEDED') return '#f97316'
     if (p.permanentUnavailable) return '#4a5568'
     return p.available ? '#4ade80' : '#f59e0b'
   }
 
   function statusLabel(p: ProviderInfo) {
+    if (p.status === 'quota_exceeded' || p.status === 'QUOTA_EXCEEDED') return 'QUOTA REACHED'
     if (p.permanentUnavailable) return 'UNAVAILABLE'
     return p.available ? 'AVAILABLE' : 'CONFIG REQUIRED'
   }
@@ -300,7 +344,7 @@ export function DiscoveryPanel() {
                     ● {statusLabel(prov)}
                   </span>
                   <span style={{ fontSize: 9, fontFamily: 'monospace', color: '#64748b' }}>
-                    {providerMatchCounts[prov.id] !== undefined ? `${providerMatchCounts[prov.id].count} matches` : '0 matches'}
+                    {prov.quota ? `${prov.quota.used}/${prov.quota.limit} reqs` : (providerMatchCounts[prov.id] !== undefined ? `${providerMatchCounts[prov.id].count} matches` : '0 matches')}
                   </span>
                 </div>
               </button>
@@ -496,21 +540,17 @@ export function DiscoveryPanel() {
             </div>
             <div style={{ color: queryError ? '#f87171' : '#94a3b8', fontWeight: 800, fontSize: 14 }}>
               {queryError
-                ? 'Discovery Provider Search Error'
-                : (currentResult || statusMsg
-                    ? 'No matching appearances found across indexed providers for this asset'
-                    : 'No Live Candidates Ingested Yet')}
+                ? (queryError.includes('Not enough information')
+                    ? queryError
+                    : `Discovery Provider Error — ${queryError}`)
+                : 'No matching appearances found across indexed providers for this asset.'}
             </div>
             <div style={{ fontSize: 12, maxWidth: 520, lineHeight: 1.5, color: '#64748b' }}>
               {queryError ? (
-                <span>Error details: {queryError}. Check discovery adapter credentials or select an alternate provider.</span>
-              ) : (currentResult || statusMsg) ? (
-                <span>
-                  Search across verified discovery adapters returned <strong>0 matches</strong> for this media signature. Provider statuses are confirmed at 0 matches.
-                </span>
+                <span>{queryError}</span>
               ) : (
                 <span>
-                  Select an active discovery adapter above (such as <strong>Google Search API</strong>) and enter a target search query, then click <strong>"Discover Candidates"</strong> to fetch real live candidate results.
+                  Live search across configured discovery providers returned 0 matching records for this media asset.
                 </span>
               )}
             </div>

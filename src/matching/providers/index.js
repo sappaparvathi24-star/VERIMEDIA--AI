@@ -1,6 +1,7 @@
 // VeriMedia AI — Provider Registry & Discovery Manager
 import { YouTubeDiscoveryProvider } from './youtube.js';
 import { GoogleImagesDiscoveryProvider } from './googleImages.js';
+import { GoogleVisionWebDetectionProvider } from './googleVisionWebDetection.js';
 import { RedditDiscoveryProvider } from './reddit.js';
 import { MastodonDiscoveryProvider } from './mastodon.js';
 import { ArchiveOrgDiscoveryProvider } from './archiveOrg.js';
@@ -12,12 +13,13 @@ export class MultiSourceDiscoveryManager {
   constructor(config = {}) {
     this.providers = new Map();
     
-    // Register the 5 primary discovery platforms
+    // Register the primary discovery platforms
     this.registerProvider(new RedditDiscoveryProvider(config.reddit));
     this.registerProvider(new YouTubeDiscoveryProvider(config.youtube));
     this.registerProvider(new MastodonDiscoveryProvider(config.mastodon));
     this.registerProvider(new ArchiveOrgDiscoveryProvider(config.archiveOrg));
     this.registerProvider(new GoogleImagesDiscoveryProvider(config.googleImages));
+    this.registerProvider(new GoogleVisionWebDetectionProvider(config.googleVision));
   }
 
   registerProvider(provider) {
@@ -54,7 +56,7 @@ export class MultiSourceDiscoveryManager {
       targetProviders = targetProviders.filter(p => 
         opts.platforms.includes(p.id) || 
         opts.platforms.includes(p.name) || 
-        (opts.platforms.includes('google-search-api') && (p.id === 'googleImages' || p.id === 'googleSearch'))
+        (opts.platforms.includes('google-search-api') && (p.id === 'googleImages' || p.id === 'googleSearch' || p.id === 'googleVisionWebDetection'))
       );
     } else if (opts.provider) {
       targetProviders = targetProviders.filter(p => p.id === opts.provider || p.name === opts.provider);
@@ -94,6 +96,7 @@ export class MultiSourceDiscoveryManager {
 export {
   YouTubeDiscoveryProvider,
   GoogleImagesDiscoveryProvider,
+  GoogleVisionWebDetectionProvider,
   RedditDiscoveryProvider,
   MastodonDiscoveryProvider,
   ArchiveOrgDiscoveryProvider,

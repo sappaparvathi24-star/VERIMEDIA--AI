@@ -8,6 +8,9 @@ export class PersistenceManager {
     this.isConfigured = isSupabaseConfigured;
     this.isHydrated = false;
     this.inMemoryStore = new Map();
+    this.isSnapshotting = false;
+    this.supabaseConsecutiveErrors = 0;
+    this.supabaseCooldownUntil = 0;
   }
 
   // ---------------------------------------------------------------------------
@@ -61,7 +64,7 @@ export class PersistenceManager {
       }
       this.isHydrated = true;
     } catch (err) {
-      console.warn('[Persistence] Local SQLite hydration warning:', err.message);
+      console.warn('[Persistence] Local SQLite hydration notice:', err.message);
       this.isHydrated = true;
     }
 
@@ -69,9 +72,21 @@ export class PersistenceManager {
       return;
     }
 
+    // Check circuit breaker
+    if (Date.now() < this.supabaseCooldownUntil) {
+      return;
+    }
+
     try {
+      // Timeout check: If Supabase project is sleeping or unreachable, fail fast to SQLite
+      const fetchWithTimeout = (promise, ms = 4000) =>
+        Promise.race([
+          promise,
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Supabase network timeout')), ms))
+        ]);
+
       // 1. Investigations
-      const { data: invRows } = await supabaseAdmin.from('investigations').select('*');
+      const { data: invRows } = await fetchWithTimeout(supabaseAdmin.from('investigations').select('*'));
       if (invRows && invRows.length > 0) {
         for (const r of invRows) {
           store.investigations.set(r.id, {
@@ -94,7 +109,7 @@ export class PersistenceManager {
       }
 
       // 2. Media Artifacts
-      const { data: artRows } = await supabaseAdmin.from('media_artifacts').select('*');
+      const { data: artRows } = await fetchWithTimeout(supabaseAdmin.from('media_artifacts').select('*'));
       if (artRows && artRows.length > 0) {
         for (const r of artRows) {
           store.artifacts.set(r.id, {
@@ -137,10 +152,10 @@ export class PersistenceManager {
         { table: 'report_audit_records', map: store.reportAuditRecords }
       ];
 
-      await Promise.all(
+      await Promise.allSettled(
         genericTables.map(async ({ table, map }) => {
           if (!map) return;
-          const { data, error } = await supabaseAdmin.from(table).select('*');
+          const { data, error } = await fetchWithTimeout(supabaseAdmin.from(table).select('*'), 4000);
           if (!error && data && data.length > 0) {
             for (const item of data) {
               map.set(item.id, item.data || item);
@@ -149,10 +164,14 @@ export class PersistenceManager {
         })
       );
 
+      this.supabaseConsecutiveErrors = 0;
+      this.supabaseCooldownUntil = 0;
       this.isHydrated = true;
       console.log('⚡ [Persistence] Successfully hydrated store from Supabase PostgreSQL.');
     } catch (err) {
-      console.warn('[Persistence] Hydration warning:', err.message);
+      this.supabaseConsecutiveErrors++;
+      this.supabaseCooldownUntil = Date.now() + 60000;
+      console.warn(`ℹ️ [Persistence] Supabase hydration notice (${err.message}). Local durable SQLite storage is active.`);
       this.isHydrated = true;
     }
   }
@@ -162,8 +181,22 @@ export class PersistenceManager {
   // ---------------------------------------------------------------------------
   async snapshotAll(store) {
     if (!store || !this.isConfigured || !supabaseAdmin) return;
+    
+    // Concurrency and circuit breaker check
+    if (this.isSnapshotting) return;
+    if (Date.now() < this.supabaseCooldownUntil) return;
+
+    this.isSnapshotting = true;
 
     try {
+      const snapWithTimeout = (promise, ms = 8000) =>
+        Promise.race([
+          promise,
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Supabase snapshot timeout')), ms))
+        ]);
+
+      const tasks = [];
+
       // 1. Investigations
       const invRecords = Array.from(store.investigations.values()).map(inv => ({
         id: inv.id,
@@ -183,7 +216,7 @@ export class PersistenceManager {
       }));
 
       if (invRecords.length > 0) {
-        await supabaseAdmin.from('investigations').upsert(invRecords, { onConflict: 'id' });
+        tasks.push(snapWithTimeout(supabaseAdmin.from('investigations').upsert(invRecords, { onConflict: 'id' })));
       }
 
       // 2. Media Artifacts
@@ -205,7 +238,7 @@ export class PersistenceManager {
       }));
 
       if (artRecords.length > 0) {
-        await supabaseAdmin.from('media_artifacts').upsert(artRecords, { onConflict: 'id' });
+        tasks.push(snapWithTimeout(supabaseAdmin.from('media_artifacts').upsert(artRecords, { onConflict: 'id' })));
       }
 
       // Generic JSONB tables
@@ -237,10 +270,28 @@ export class PersistenceManager {
           data: item,
           updated_at: item.updatedAt || new Date().toISOString()
         }));
-        await supabaseAdmin.from(table).upsert(rows, { onConflict: 'id' });
+        tasks.push(snapWithTimeout(supabaseAdmin.from(table).upsert(rows, { onConflict: 'id' })));
+      }
+
+      const results = await Promise.allSettled(tasks);
+      const rejected = results.filter(r => r.status === 'rejected');
+
+      if (rejected.length > 0) {
+        this.supabaseConsecutiveErrors++;
+        const backoffMs = Math.min(300000, 30000 * Math.pow(2, this.supabaseConsecutiveErrors - 1));
+        this.supabaseCooldownUntil = Date.now() + backoffMs;
+        console.warn(`ℹ️ [Persistence] Remote snapshot notice: ${rejected.length} batch(es) timed out/failed (${rejected[0].reason?.message || 'timeout'}). Remote sync paused for ${Math.round(backoffMs / 1000)}s. Local SQLite persistence is actively preserving all changes.`);
+      } else {
+        this.supabaseConsecutiveErrors = 0;
+        this.supabaseCooldownUntil = 0;
       }
     } catch (err) {
-      console.error('[Persistence] Snapshot error:', err.message);
+      this.supabaseConsecutiveErrors++;
+      const backoffMs = Math.min(300000, 30000 * Math.pow(2, this.supabaseConsecutiveErrors - 1));
+      this.supabaseCooldownUntil = Date.now() + backoffMs;
+      console.warn(`ℹ️ [Persistence] Remote snapshot notice: ${err.message}. Remote sync paused for ${Math.round(backoffMs / 1000)}s. Local SQLite persistence active.`);
+    } finally {
+      this.isSnapshotting = false;
     }
   }
 

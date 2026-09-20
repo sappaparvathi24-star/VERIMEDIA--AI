@@ -133,16 +133,17 @@ async function runAsyncTests() {
     assert.deepStrictEqual(mastodonRes, []);
   });
 
-  // Test 9: MultiSourceDiscoveryManager initializes all 5 providers
-  test('MultiSourceDiscoveryManager registers all 5 honest discovery providers', () => {
+  // Test 9: MultiSourceDiscoveryManager initializes all 6 providers
+  test('MultiSourceDiscoveryManager registers all 6 honest discovery providers', () => {
     const manager = new MultiSourceDiscoveryManager();
     const providers = manager.getAllProviders();
-    assert.strictEqual(providers.length, 5);
+    assert.strictEqual(providers.length, 6);
     assert.ok(manager.getProvider('reddit'));
     assert.ok(manager.getProvider('youtube'));
     assert.ok(manager.getProvider('mastodon'));
     assert.ok(manager.getProvider('archiveOrg'));
     assert.ok(manager.getProvider('googleImages'));
+    assert.ok(manager.getProvider('googleVisionWebDetection'));
   });
 
   // Test 10: MultiSource searchAll aggregates results and sets provider statuses

@@ -127,15 +127,16 @@ run('Sybil Defense: Multi-source corroboration (3 distinct independent groups) r
 });
 
 // 2. Mocked Connector Registration & Discovery Rate Limiting
-run('Discovery: MultiSourceDiscoveryManager registers all 5 honest discovery providers', () => {
+run('Discovery: MultiSourceDiscoveryManager registers all 6 honest discovery providers', () => {
   const manager = new MultiSourceDiscoveryManager();
   const providers = manager.getAllProviders();
-  assert.strictEqual(providers.length, 5);
+  assert.strictEqual(providers.length, 6);
   assert.ok(manager.getProvider('reddit'));
   assert.ok(manager.getProvider('youtube'));
   assert.ok(manager.getProvider('mastodon'));
   assert.ok(manager.getProvider('archiveOrg'));
   assert.ok(manager.getProvider('googleImages'));
+  assert.ok(manager.getProvider('googleVisionWebDetection'));
 });
 
 run('Discovery: Search proxy rate limiter enforces sliding-window thresholds', () => {
