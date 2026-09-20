@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useStore } from '../../store'
-import { getProviders, searchMultiSource, getInvestigationCandidates } from '../../services/api'
+import { getProviders, getSearchTransparency, searchMultiSource, getInvestigationCandidates } from '../../services/api'
 
 interface ProviderInfo {
   id: string
@@ -10,6 +10,18 @@ interface ProviderInfo {
   reason?: string | null
   permanentUnavailable?: boolean
   instances?: string[]
+}
+
+interface TransparencySource {
+  id: string
+  name: string
+  category: string
+  description: string
+  status: string
+  reason?: string | null
+  resultCount?: number
+  isPermanentUnavailable?: boolean
+  publicApiExists?: boolean
 }
 
 interface DiscoveredCandidate {
@@ -29,6 +41,9 @@ interface DiscoveredCandidate {
 export function DiscoveryPanel() {
   const { currentResult, setActiveTab } = useStore()
   const [providers, setProviders] = useState<Record<string, ProviderInfo>>({})
+  const [transparencySources, setTransparencySources] = useState<TransparencySource[]>([])
+  const [transparencyNotice, setTransparencyNotice] = useState<string | null>(null)
+  const [checkedAt, setCheckedAt] = useState<string | null>(null)
   const [providersLoading, setProvidersLoading] = useState(true)
   const [selectedProvider, setSelectedProvider] = useState<string>('googleImages')
   const [testQuery, setTestQuery] = useState('')
@@ -38,7 +53,7 @@ export function DiscoveryPanel() {
   const [statusMsg, setStatusMsg] = useState<string | null>(null)
 
   useEffect(() => {
-    loadProviders()
+    fetchProvidersAndTransparency()
     if (currentResult?.caption) {
       setTestQuery(currentResult.caption)
     } else {
@@ -51,6 +66,39 @@ export function DiscoveryPanel() {
     }
   }, [currentResult])
 
+  async function fetchProvidersAndTransparency() {
+    setProvidersLoading(true)
+    try {
+      const [provRes, transpRes] = await Promise.all([
+        getProviders().catch(() => null),
+        getSearchTransparency().catch(() => null)
+      ])
+
+      if (provRes?.providers) {
+        setProviders(provRes.providers)
+        if (provRes.checkedAt) setCheckedAt(provRes.checkedAt)
+        const provs = provRes.providers as Record<string, ProviderInfo>
+        if (provs.googleImages?.available) {
+          setSelectedProvider('googleImages')
+        } else {
+          const first = Object.values(provs).find(p => p.available && !p.permanentUnavailable)
+          if (first) setSelectedProvider(first.id)
+        }
+      }
+
+      if (transpRes?.sources && Array.isArray(transpRes.sources)) {
+        setTransparencySources(transpRes.sources)
+      }
+      if (transpRes?.notice) {
+        setTransparencyNotice(transpRes.notice)
+      }
+    } catch (e) {
+      console.error('Failed to load providers and search transparency:', e)
+    } finally {
+      setProvidersLoading(false)
+    }
+  }
+
   async function loadInvestigationCandidates(invId: string) {
     try {
       const res = await getInvestigationCandidates(invId)
@@ -60,27 +108,6 @@ export function DiscoveryPanel() {
       }
     } catch (err) {
       console.warn('Could not load candidates for investigation:', err)
-    }
-  }
-
-  async function loadProviders() {
-    setProvidersLoading(true)
-    try {
-      const data = await getProviders()
-      if (data?.providers) {
-        setProviders(data.providers)
-        const provs = data.providers as Record<string, ProviderInfo>
-        if (provs.googleImages?.available) {
-          setSelectedProvider('googleImages')
-        } else {
-          const first = Object.values(provs).find(p => p.available && !p.permanentUnavailable)
-          if (first) setSelectedProvider(first.id)
-        }
-      }
-    } catch (e) {
-      console.error('Failed to load providers', e)
-    } finally {
-      setProvidersLoading(false)
     }
   }
 
@@ -185,7 +212,7 @@ export function DiscoveryPanel() {
             <div style={{ fontSize: 9, color: '#64748b', textTransform: 'uppercase' }}>Matched Candidates</div>
           </div>
           <button
-            onClick={loadProviders}
+            onClick={fetchProvidersAndTransparency}
             disabled={providersLoading}
             style={{
               background: '#0d1117',
@@ -198,17 +225,24 @@ export function DiscoveryPanel() {
               fontWeight: 700
             }}
           >
-            {providersLoading ? '◌ Loading…' : '↻ Refresh Adapters'}
+            {providersLoading ? '◌ Loading…' : '↻ Refresh Matrix'}
           </button>
         </div>
       </div>
 
       {/* Provider Selection Badges */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <div style={{ fontSize: 11, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-          Configured Discovery Adapters
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            Configured Discovery Adapters (Live Backend)
+          </div>
+          {checkedAt && (
+            <span style={{ fontSize: 10, color: '#64748b', fontFamily: 'monospace' }}>
+              Verified: {new Date(checkedAt).toLocaleTimeString()}
+            </span>
+          )}
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 10 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10 }}>
           {providerList.map(prov => {
             const isSelected = selectedProvider === prov.id
             const canSelect = prov.available && !prov.permanentUnavailable
@@ -241,6 +275,77 @@ export function DiscoveryPanel() {
           })}
         </div>
       </div>
+
+      {/* Live Search Transparency Matrix Section */}
+      {transparencySources.length > 0 && (
+        <div style={{ background: '#0d1117', border: '1px solid #1e2d3d', borderRadius: 10, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ fontSize: 12, fontWeight: 800, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span>📡 Live Search Transparency Matrix</span>
+              <span style={{ fontSize: 10, color: '#00d4ff', background: 'rgba(0,212,255,0.15)', padding: '2px 6px', borderRadius: 4, fontFamily: 'monospace' }}>
+                getSearchTransparency()
+              </span>
+            </div>
+            <span style={{ fontSize: 10, color: '#64748b' }}>
+              {transparencySources.length} Platform Sources Audited
+            </span>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 10 }}>
+            {transparencySources.map((src) => {
+              const isAvailable = src.status === 'AVAILABLE'
+              const isUnavail = src.isPermanentUnavailable || src.status === 'UNAVAILABLE'
+              return (
+                <div
+                  key={src.id}
+                  style={{
+                    background: '#080c10',
+                    border: '1px solid #1e2d3d',
+                    borderRadius: 8,
+                    padding: '10px 12px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 4
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: 12, fontWeight: 800, color: '#e2e8f0' }}>{src.name}</span>
+                    <span style={{
+                      fontSize: 9,
+                      fontWeight: 800,
+                      padding: '2px 6px',
+                      borderRadius: 4,
+                      fontFamily: 'monospace',
+                      background: isAvailable ? 'rgba(34,197,94,0.15)' : isUnavail ? 'rgba(100,116,139,0.2)' : 'rgba(245,158,11,0.15)',
+                      color: isAvailable ? '#4ade80' : isUnavail ? '#64748b' : '#fbbf24'
+                    }}>
+                      {src.status}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 10, color: '#38bdf8', fontFamily: 'monospace' }}>
+                    {src.category}
+                  </div>
+                  <p style={{ fontSize: 11, color: '#94a3b8', margin: 0, lineHeight: 1.3 }}>
+                    {src.description}
+                  </p>
+                  {src.reason && (
+                    <div style={{ fontSize: 10, color: '#f59e0b', marginTop: 2, fontStyle: 'italic' }}>
+                      Note: {src.reason}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+
+          {transparencyNotice && (
+            <div style={{ padding: '8px 12px', borderRadius: 6, background: 'rgba(15,23,42,0.8)', border: '1px solid #1e2d3d', fontSize: 11, color: '#94a3b8', display: 'flex', gap: 6, alignItems: 'center' }}>
+              <span>🔒</span>
+              <span><strong>Compliance Notice:</strong> {transparencyNotice}</span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Live Search Bar */}
       <div style={{ background: '#0d1117', border: '1px solid #1e2d3d', borderRadius: 10, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -362,131 +467,131 @@ export function DiscoveryPanel() {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {candidatesList.map((cand, idx) => {
-            const sim = cand.similarity ?? 0.85
-            const simPct = Math.round(sim * 100)
-            const isOriginal = simPct >= 99
-            const isHighDerivative = simPct >= 85 && !isOriginal
+              const sim = cand.similarity ?? 0.85
+              const simPct = Math.round(sim * 100)
+              const isOriginal = simPct >= 99
+              const isHighDerivative = simPct >= 85 && !isOriginal
 
-            return (
-              <div
-                key={cand.id || idx}
-                style={{
-                  background: '#0d1117',
-                  border: isOriginal ? '1.5px solid rgba(34, 197, 94, 0.5)' : isHighDerivative ? '1.5px solid rgba(245, 158, 11, 0.4)' : '1px solid #1e2d3d',
-                  borderRadius: 8,
-                  padding: '14px 16px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 8,
-                  transition: 'border-color 0.15s ease'
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-                  <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                    <div style={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: 8,
-                      background: isOriginal ? 'rgba(34,197,94,0.15)' : 'rgba(0,212,255,0.1)',
-                      border: `1px solid ${isOriginal ? '#22c55e44' : '#00d4ff44'}`,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: 18,
-                      flexShrink: 0
-                    }}>
-                      {isOriginal ? '👑' : cand.platform?.includes('TikTok') ? '📱' : cand.platform?.includes('YouTube') ? '▶️' : '🌐'}
-                    </div>
-
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                        <h4 style={{ fontSize: 14, fontWeight: 800, color: '#f8fafc', margin: 0 }}>
-                          {cand.title}
-                        </h4>
-                        <span style={{
-                          fontSize: 10,
-                          fontWeight: 800,
-                          padding: '2px 6px',
-                          borderRadius: 4,
-                          background: isOriginal ? 'rgba(34,197,94,0.2)' : 'rgba(56,189,248,0.15)',
-                          color: isOriginal ? '#4ade80' : '#38bdf8'
-                        }}>
-                          {cand.platform || 'Web'}
-                        </span>
-                        {cand.author && (
-                          <span style={{ fontSize: 11, color: '#94a3b8' }}>by @{cand.author}</span>
-                        )}
+              return (
+                <div
+                  key={cand.id || idx}
+                  style={{
+                    background: '#0d1117',
+                    border: isOriginal ? '1.5px solid rgba(34, 197, 94, 0.5)' : isHighDerivative ? '1.5px solid rgba(245, 158, 11, 0.4)' : '1px solid #1e2d3d',
+                    borderRadius: 8,
+                    padding: '14px 16px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 8,
+                    transition: 'border-color 0.15s ease'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+                    <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                      <div style={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: 8,
+                        background: isOriginal ? 'rgba(34,197,94,0.15)' : 'rgba(0,212,255,0.1)',
+                        border: `1px solid ${isOriginal ? '#22c55e44' : '#00d4ff44'}`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: 18,
+                        flexShrink: 0
+                      }}>
+                        {isOriginal ? '👑' : cand.platform?.includes('TikTok') ? '📱' : cand.platform?.includes('YouTube') ? '▶️' : '🌐'}
                       </div>
 
-                      <p style={{ fontSize: 12, color: '#cbd5e1', margin: '4px 0 0 0', lineHeight: 1.4 }}>
-                        {cand.snippet}
-                      </p>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                          <h4 style={{ fontSize: 14, fontWeight: 800, color: '#f8fafc', margin: 0 }}>
+                            {cand.title}
+                          </h4>
+                          <span style={{
+                            fontSize: 10,
+                            fontWeight: 800,
+                            padding: '2px 6px',
+                            borderRadius: 4,
+                            background: isOriginal ? 'rgba(34,197,94,0.2)' : 'rgba(56,189,248,0.15)',
+                            color: isOriginal ? '#4ade80' : '#38bdf8'
+                          }}>
+                            {cand.platform || 'Web'}
+                          </span>
+                          {cand.author && (
+                            <span style={{ fontSize: 11, color: '#94a3b8' }}>by @{cand.author}</span>
+                          )}
+                        </div>
 
-                      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 6, fontSize: 11, color: '#64748b' }}>
-                        <span>Published: {cand.publishedAt ? new Date(cand.publishedAt).toLocaleString() : 'N/A'}</span>
-                        <span>•</span>
-                        <a href={cand.url} target="_blank" rel="noreferrer" style={{ color: '#38bdf8', textDecoration: 'none' }}>
-                          🔗 {cand.url.length > 45 ? `${cand.url.slice(0, 45)}…` : cand.url}
-                        </a>
-                      </div>
-                    </div>
-                  </div>
+                        <p style={{ fontSize: 12, color: '#cbd5e1', margin: '4px 0 0 0', lineHeight: 1.4 }}>
+                          {cand.snippet}
+                        </p>
 
-                  {/* Similarity Score Badge & Actions */}
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
-                    <div style={{
-                      textAlign: 'right',
-                      background: '#080c10',
-                      padding: '4px 10px',
-                      borderRadius: 6,
-                      border: '1px solid #1e2d3d'
-                    }}>
-                      <div style={{ fontSize: 16, fontWeight: 800, color: isOriginal ? '#4ade80' : isHighDerivative ? '#fbbf24' : '#38bdf8', fontFamily: 'monospace' }}>
-                        {simPct}%
-                      </div>
-                      <div style={{ fontSize: 9, color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>
-                        {isOriginal ? 'Master Origin' : 'Perceptual Match'}
+                        <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 6, fontSize: 11, color: '#64748b' }}>
+                          <span>Published: {cand.publishedAt ? new Date(cand.publishedAt).toLocaleString() : 'N/A'}</span>
+                          <span>•</span>
+                          <a href={cand.url} target="_blank" rel="noreferrer" style={{ color: '#38bdf8', textDecoration: 'none' }}>
+                            🔗 {cand.url.length > 45 ? `${cand.url.slice(0, 45)}…` : cand.url}
+                          </a>
+                        </div>
                       </div>
                     </div>
 
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <button
-                        onClick={() => setActiveTab('origin')}
-                        style={{
-                          background: 'rgba(56, 189, 248, 0.1)',
-                          border: '1px solid rgba(56, 189, 248, 0.3)',
-                          color: '#38bdf8',
-                          padding: '4px 8px',
-                          borderRadius: 4,
-                          fontSize: 10,
-                          fontWeight: 700,
-                          cursor: 'pointer'
-                        }}
-                      >
-                        🌳 Trace in E3
-                      </button>
-                      <button
-                        onClick={() => setActiveTab('propagation')}
-                        style={{
-                          background: 'rgba(168, 85, 247, 0.1)',
-                          border: '1px solid rgba(168, 85, 247, 0.3)',
-                          color: '#c084fc',
-                          padding: '4px 8px',
-                          borderRadius: 4,
-                          fontSize: 10,
-                          fontWeight: 700,
-                          cursor: 'pointer'
-                        }}
-                      >
-                        📡 View in E4
-                      </button>
+                    {/* Similarity Score Badge & Actions */}
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
+                      <div style={{
+                        textAlign: 'right',
+                        background: '#080c10',
+                        padding: '4px 10px',
+                        borderRadius: 6,
+                        border: '1px solid #1e2d3d'
+                      }}>
+                        <div style={{ fontSize: 16, fontWeight: 800, color: isOriginal ? '#4ade80' : isHighDerivative ? '#fbbf24' : '#38bdf8', fontFamily: 'monospace' }}>
+                          {simPct}%
+                        </div>
+                        <div style={{ fontSize: 9, color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>
+                          {isOriginal ? 'Master Origin' : 'Perceptual Match'}
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button
+                          onClick={() => setActiveTab('origin')}
+                          style={{
+                            background: 'rgba(56, 189, 248, 0.1)',
+                            border: '1px solid rgba(56, 189, 248, 0.3)',
+                            color: '#38bdf8',
+                            padding: '4px 8px',
+                            borderRadius: 4,
+                            fontSize: 10,
+                            fontWeight: 700,
+                            cursor: 'pointer'
+                          }}
+                        >
+                          🌳 Trace in E3
+                        </button>
+                        <button
+                          onClick={() => setActiveTab('propagation')}
+                          style={{
+                            background: 'rgba(168, 85, 247, 0.1)',
+                            border: '1px solid rgba(168, 85, 247, 0.3)',
+                            color: '#c084fc',
+                            padding: '4px 8px',
+                            borderRadius: 4,
+                            fontSize: 10,
+                            fontWeight: 700,
+                            cursor: 'pointer'
+                          }}
+                        >
+                          📡 View in E4
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            )
-          })}
-        </div>
+              )
+            })}
+          </div>
         )}
       </div>
     </div>
