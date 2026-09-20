@@ -126,7 +126,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = 3000;
+// Render (and most PaaS) assign a dynamic port via process.env.PORT.
+// Fall back to 3000 for local development only.
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 // ---------------------------------------------------------------------------
 // Robust, Production-Ready CORS Configuration
@@ -3575,6 +3577,9 @@ function generateChatFallback(query) {
 if (!process.env.VERCEL && !isTestRunner) {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`🛡️ VeriMedia AI server running on http://0.0.0.0:${PORT}`);
+    console.log(`   NODE_ENV=${process.env.NODE_ENV || 'development'}`);
+    console.log(`   SECRET_KEY=${process.env.SECRET_KEY ? 'SET ✓' : 'NOT SET (ephemeral dev key)'}`);
+    console.log(`   API_KEY_SALT=${process.env.API_KEY_SALT ? 'SET ✓' : 'NOT SET (ephemeral dev key)'}`);
   });
 }
 
