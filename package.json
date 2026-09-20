@@ -7,7 +7,7 @@
     "dev": "node server.js",
     "start": "node server.js",
     "lint": "tsc --noEmit",
-    "test": "node test/test_phase_f.js && node test/test_phase_h.js && node test/test_phase_15.js && node test/test_phase_16_security_threats.js && node test/test_phase_17_discovery_independence.js && node test/test_phase_18_performance.js && node test/test_persistence_durability.js && node test/test_non_fabrication.js && node test/test_video_audio_and_jobs.js && node tests/test_route_security.js",
+    "test": "node test/test_phase_f.js && node test/test_phase_h.js && node test/test_phase_15.js && node test/test_phase_16_security_threats.js && node test/test_phase_17_discovery_independence.js && node test/test_phase_18_performance.js && node test/test_persistence_durability.js && node test/test_non_fabrication.js && node test/test_video_audio_and_jobs.js && node test/test_route_security.js",
     "build": "vite build && tsc --noEmit"
   },
   "dependencies": {
