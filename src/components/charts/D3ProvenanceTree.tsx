@@ -29,6 +29,7 @@ export interface ProvenanceTreeNode {
 interface D3ProvenanceTreeProps {
   result?: DetectionResult | null
   height?: number
+  genealogyData?: { nodes: unknown[]; links: unknown[] } | null
 }
 
 // Builds a realistic forensic tree based on the active detection result and scenario
@@ -364,7 +365,7 @@ const CATEGORY_COLORS: Record<string, { bg: string; border: string; text: string
   enforcement: { bg: '#450a0a', border: '#ef4444', text: '#f87171', icon: '⚖️' },
 }
 
-export function D3ProvenanceTree({ result: propResult, height = 520 }: D3ProvenanceTreeProps) {
+export function D3ProvenanceTree({ result: propResult, height = 520, genealogyData }: D3ProvenanceTreeProps) {
   const storeResult = useStore(state => state.currentResult)
   const activeResult = propResult || storeResult
 
@@ -375,7 +376,50 @@ export function D3ProvenanceTree({ result: propResult, height = 520 }: D3Provena
   const [zoomTransform, setZoomTransform] = useState<d3.ZoomTransform>(d3.zoomIdentity)
   const [copiedHash, setCopiedHash] = useState<string | null>(null)
 
-  const treeData = useMemo(() => buildProvenanceTreeData(activeResult), [activeResult])
+  // Use real API genealogy data when available, otherwise fall back to synthetic tree
+  const treeData = useMemo(() => {
+    if (genealogyData && genealogyData.nodes && genealogyData.nodes.length > 0) {
+      // Convert flat nodes/links from API into nested ProvenanceTreeNode tree
+      const apiNodes = genealogyData.nodes as Array<Record<string, unknown>>
+      const apiLinks = genealogyData.links as Array<Record<string, unknown>>
+      // Build adjacency map: parent -> children
+      const childrenMap = new Map<string, string[]>()
+      const allIds = new Set(apiNodes.map(n => String(n.id)))
+      apiLinks.forEach(l => {
+        const src = String(l.source || l.from || l.parent)
+        const tgt = String(l.target || l.to || l.child)
+        if (!childrenMap.has(src)) childrenMap.set(src, [])
+        childrenMap.get(src)!.push(tgt)
+      })
+      // Find root: node with no incoming links
+      const hasParent = new Set(apiLinks.map(l => String(l.target || l.to || l.child)))
+      const rootId = apiNodes.find(n => !hasParent.has(String(n.id)))?.id || apiNodes[0]?.id
+      const nodeMap = new Map(apiNodes.map(n => [String(n.id), n]))
+      function buildNode(id: string, depth = 0): ProvenanceTreeNode {
+        const n = nodeMap.get(id) || {}
+        const childIds = childrenMap.get(id) || []
+        return {
+          id: String(id),
+          name: String(n.label || n.name || n.platform || `Node ${id}`),
+          category: (n.category as ProvenanceTreeNode['category']) || (depth === 0 ? 'origin' : 'propagation'),
+          platform: String(n.platform || ''),
+          timestamp: String(n.timestamp || n.createdAt || new Date().toISOString()),
+          relativeTime: String(n.relativeTime || ''),
+          sha256: n.sha256 ? String(n.sha256) : undefined,
+          phash: n.phash ? String(n.phash) : undefined,
+          similarity: typeof n.similarity === 'number' ? n.similarity : undefined,
+          details: {
+            title: String(n.label || n.name || 'Node'),
+            description: String(n.description || n.url || ''),
+            epistemicStatus: depth === 0 ? 'REAL_API_DATA' : undefined
+          },
+          children: depth < 8 ? childIds.filter(cid => allIds.has(cid)).map(cid => buildNode(cid, depth + 1)) : []
+        }
+      }
+      return buildNode(String(rootId))
+    }
+    return buildProvenanceTreeData(activeResult)
+  }, [genealogyData, activeResult])
 
   // D3 Tree Render Logic
   useEffect(() => {

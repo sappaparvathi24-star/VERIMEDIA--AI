@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useStore } from '../../store'
 import { useDetection } from '../../hooks/useDetection'
 import { D3ProvenanceTree } from '../charts/D3ProvenanceTree'
+import { getInvestigationGenealogy } from '../../services/api'
 import type { Scenario } from '../../types'
 
 const PRESETS: { key: Scenario; label: string; icon: string }[] = [
@@ -15,6 +16,27 @@ export function OriginPanel() {
   const { currentResult, isScanning } = useStore()
   const { runDetection } = useDetection()
   const [activeSubTab, setActiveSubTab] = useState<'tree' | 'transformations' | 'metrics' | 'custody'>('tree')
+  const [genealogyData, setGenealogyData] = useState<{ nodes: unknown[]; links: unknown[] } | null>(null)
+  const [genealogyLoading, setGenealogyLoading] = useState(false)
+
+  useEffect(() => {
+    const invId = currentResult?.investigationId
+    if (!invId) {
+      setGenealogyData(null)
+      return
+    }
+    setGenealogyLoading(true)
+    getInvestigationGenealogy(invId)
+      .then((data: any) => {
+        if (data && (data.nodes || data.links)) {
+          setGenealogyData({ nodes: data.nodes || [], links: data.links || [] })
+        } else {
+          setGenealogyData(null)
+        }
+      })
+      .catch(() => setGenealogyData(null))
+      .finally(() => setGenealogyLoading(false))
+  }, [currentResult?.investigationId])
 
   const handleRunPreset = (preset: Scenario) => {
     runDetection({
@@ -240,7 +262,21 @@ export function OriginPanel() {
 
       {/* Main Content View by Selected Sub-Tab */}
       {activeSubTab === 'tree' && (
-        <D3ProvenanceTree result={currentResult} height={520} />
+        genealogyLoading ? (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 200, color: '#64748b', gap: 10 }}>
+            <span style={{ animation: 'spin-slow 1s linear infinite' }}>◌</span>
+            <span style={{ fontSize: 12 }}>Loading genealogy from investigation…</span>
+          </div>
+        ) : genealogyData && genealogyData.nodes.length > 0 ? (
+          <D3ProvenanceTree genealogyData={genealogyData} height={520} />
+        ) : genealogyData && genealogyData.nodes.length === 0 ? (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 200, color: '#64748b', gap: 8 }}>
+            <div style={{ fontSize: 24 }}>🌳</div>
+            <div style={{ fontSize: 12 }}>No genealogy data — run discovery to build the lineage graph</div>
+          </div>
+        ) : (
+          <D3ProvenanceTree result={currentResult} height={520} />
+        )
       )}
 
       {activeSubTab === 'transformations' && (
