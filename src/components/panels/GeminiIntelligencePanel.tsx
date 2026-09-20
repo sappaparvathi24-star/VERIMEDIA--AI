@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useStore } from '../../store'
 import {
-  askGeminiCopilot,
+  askVeriMediaAssistant,
   explainForensicSignalGemini,
   generateInvestigationBriefGemini,
   analyzeMultimodalGemini,
@@ -62,7 +62,7 @@ export function GeminiIntelligencePanel() {
     {
       id: 'welcome',
       role: 'assistant',
-      content: `### 👋 VeriMedia Gemini Intelligence Copilot Ready
+      content: `### 👋 VeriMedia Assistant Ready
 I am connected to the **Gemini Multimodal Reasoning Engine**. I have live context on your active media scans, perceptual fingerprints, and the SQLite provenance graph.
 
 **How can I assist your forensic investigation today?**
@@ -71,7 +71,7 @@ I am connected to the **Gemini Multimodal Reasoning Engine**. I have live contex
 - Draft legally grounded DMCA takedown briefs with cryptographic citations
 - Explain the physical and mathematical mechanics behind any forensic signal`,
       timestamp: new Date().toLocaleTimeString(),
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.6-flash',
     },
   ])
   const [inputText, setInputText] = useState('')
@@ -141,7 +141,7 @@ I am connected to the **Gemini Multimodal Reasoning Engine**. I have live contex
         .filter(m => m.id !== 'welcome')
         .map(m => ({ role: m.role, content: m.content }))
 
-      const response = await askGeminiCopilot(contextPrefix + textToSend, history)
+      const response = await askVeriMediaAssistant(contextPrefix + textToSend, history)
       const assistantText = response?.reply || response?.text || 'Analysis completed.'
 
       setMessages(prev => [
@@ -151,11 +151,11 @@ I am connected to the **Gemini Multimodal Reasoning Engine**. I have live contex
           role: 'assistant',
           content: assistantText,
           timestamp: new Date().toLocaleTimeString(),
-          model: response?.source || 'gemini-2.5-flash',
+          model: response?.source || 'gemini-3.6-flash',
         },
       ])
     } catch (err: any) {
-      console.error('Gemini copilot error:', err)
+      console.error('VeriMedia Assistant error:', err)
       setMessages(prev => [
         ...prev,
         {
@@ -277,7 +277,7 @@ I am connected to the **Gemini Multimodal Reasoning Engine**. I have live contex
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <h2 style={{ fontSize: 16, fontWeight: 800, margin: 0, color: '#f8fafc' }}>
-                Gemini AI Intelligence & Multimodal Copilot
+                VeriMedia AI Assistant
               </h2>
               <span style={{
                 fontSize: 10,
@@ -288,7 +288,7 @@ I am connected to the **Gemini Multimodal Reasoning Engine**. I have live contex
                 fontWeight: 700,
                 fontFamily: 'monospace',
               }}>
-                GEMINI 2.5 / 3.8 FLASH
+                GEMINI 3.6 FLASH
               </span>
               <span style={{
                 fontSize: 10,
@@ -326,7 +326,7 @@ I am connected to the **Gemini Multimodal Reasoning Engine**. I have live contex
             }}
           >
             <Brain size={13} />
-            <span>AI Copilot</span>
+            <span>VeriMedia Assistant</span>
           </button>
 
           <button
@@ -415,7 +415,7 @@ I am connected to the **Gemini Multimodal Reasoning Engine**. I have live contex
                     alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
                   }}>
                     <span style={{ fontSize: 10, color: '#64748b', fontWeight: 700 }}>
-                      {m.role === 'user' ? 'ANALYST' : `GEMINI AI (${m.model || 'gemini-2.5-flash'})`}
+                      {m.role === 'user' ? 'ANALYST' : `VERIMEDIA ASSISTANT (${m.model || 'gemini-3.6-flash'})`}
                     </span>
                     <span style={{ fontSize: 10, color: '#475569' }}>{m.timestamp}</span>
                   </div>
@@ -455,7 +455,7 @@ I am connected to the **Gemini Multimodal Reasoning Engine**. I have live contex
               {isSending && (
                 <div style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: 8, color: '#a855f7', fontSize: 12, padding: '8px 12px' }}>
                   <RefreshCw size={14} className="animate-spin" />
-                  <span>Gemini is analyzing multi-modal evidence...</span>
+                  <span>VeriMedia Assistant is analyzing multi-modal evidence...</span>
                 </div>
               )}
               <div ref={chatEndRef} />
@@ -492,7 +492,7 @@ I am connected to the **Gemini Multimodal Reasoning Engine**. I have live contex
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
-                placeholder="Ask Gemini to investigate perceptual hashes, verify C2PA credentials, or draft enforcement briefs..."
+                placeholder="Ask VeriMedia Assistant to investigate perceptual hashes, verify C2PA credentials, or draft enforcement briefs..."
                 style={{
                   flex: 1,
                   background: '#080c10',

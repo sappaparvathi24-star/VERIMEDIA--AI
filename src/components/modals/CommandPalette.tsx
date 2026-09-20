@@ -109,7 +109,7 @@ export function CommandPalette() {
     {
       id: 'nav-intelligence',
       category: 'NAVIGATION',
-      title: 'Gemini AI Intelligence & Multimodal Copilot',
+      title: 'VeriMedia AI Assistant',
       subtitle: 'Multimodal visual analysis, executive dossiers & AI reasoning',
       icon: '✨',
       badge: 'AI',

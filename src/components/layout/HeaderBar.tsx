@@ -54,7 +54,7 @@ const PAGE_TITLES: Record<TabId, { title: string; subtitle: string; icon: string
     icon: '📡'
   },
   intelligence: {
-    title: 'Gemini AI Intelligence & Multimodal Copilot',
+    title: 'VeriMedia AI Assistant',
     subtitle: 'Multimodal reasoning, automated forensic dossiers & technical explainer',
     icon: '✨'
   },
@@ -203,8 +203,8 @@ export function HeaderBar() {
           </button>
         </Tooltip>
 
-        {/* Gemini AI Intelligence Button */}
-        <Tooltip content="Gemini AI Intelligence: Multimodal Copilot, Executive Dossiers & Technical Explainer" position="bottom">
+        {/* VeriMedia AI Assistant Button */}
+        <Tooltip content="VeriMedia AI Assistant: Multimodal Analysis, Executive Dossiers & Technical Explainer" position="bottom">
           <button
             onClick={() => useStore.getState().setActiveTab('intelligence')}
             style={{

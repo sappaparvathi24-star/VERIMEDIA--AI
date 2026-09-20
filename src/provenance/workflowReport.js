@@ -5,6 +5,7 @@
 import { GoogleVisionWebDetectionProvider } from '../matching/providers/googleVisionWebDetection.js';
 import { canUseVisionApi, getMonthlyVisionCallCount, DEFAULT_MONTHLY_LIMIT } from '../matching/visionQuotaGuard.js';
 import { computeAverageHash } from '../forensics/perceptualHash.js';
+import { computeImageStatistics, performErrorLevelAnalysis } from '../forensics/imageForensics.js';
 import crypto from 'crypto';
 
 /**
@@ -80,14 +81,16 @@ export function extractCreatorAttribution(discoveredCandidates = [], artifactMet
 export async function generateWorkflowReport({
   artifact,
   buffer = null,
+  filename = null,
+  mimeType = null,
   candidates = [],
   forensicAnalysis = null,
   visionResults = null,
   userNotes = null
 }) {
   const artifactId = artifact?.id || (buffer ? `ART-${crypto.createHash('sha256').update(buffer).digest('hex').substring(0, 12)}` : 'UNKNOWN_ARTIFACT');
-  const filename = artifact?.filename || 'uploaded_image.jpg';
-  const mimeType = artifact?.mimeType || 'image/jpeg';
+  const actualFilename = filename || artifact?.originalName || artifact?.filename || 'uploaded_image.jpg';
+  const actualMimeType = mimeType || artifact?.mimeType || 'image/jpeg';
   const now = new Date().toISOString();
 
   // ── FEATURE 4: IMAGE FORENSICS ──────────────────────────────────────────
@@ -101,10 +104,33 @@ export async function generateWorkflowReport({
       perceptualHash = null;
     }
   }
+
+  // Run deep image statistics & ELA if buffer is available
+  let statsResult = null;
+  let elaResult = null;
+  if (buffer) {
+    try {
+      statsResult = await computeImageStatistics(buffer);
+    } catch (_) {}
+    try {
+      elaResult = await performErrorLevelAnalysis(buffer, actualMimeType);
+    } catch (_) {}
+  }
+
   const metadata = artifact?.metadata || {};
-  const dimensions = metadata.dimensions || (artifact?.width && artifact?.height ? `${artifact.width}x${artifact.height}` : null);
-  const colorSpace = metadata.colorSpace || null;
+  const dimensions = statsResult
+    ? `${statsResult.width}x${statsResult.height}`
+    : (metadata.dimensions || (artifact?.width && artifact?.height ? `${artifact.width}x${artifact.height}` : null));
+  const colorSpace = statsResult?.space || metadata.colorSpace || null;
   const exif = metadata.exif || null;
+
+  const elaStatusStr = elaResult
+    ? (elaResult.status === 'COMPLETED' ? (elaResult.hasCompressionAnomaly ? 'ANOMALY_DETECTED' : 'NORMAL_DECAY') : elaResult.status)
+    : (forensicAnalysis?.ela?.status || metadata?.forensicAnalysis?.ela?.status || 'Not evaluated');
+
+  const noiseStatusStr = statsResult
+    ? `Variance: ${statsResult.meanVariance}, Entropy: ${statsResult.entropy}`
+    : (forensicAnalysis?.noise?.status || metadata?.forensicAnalysis?.noise?.status || 'Not evaluated');
 
   const forensicsBlock = {
     feature: 'Image Forensics',
@@ -113,12 +139,12 @@ export async function generateWorkflowReport({
     perceptualHash: perceptualHash || 'Not computed',
     byteSize: byteSize !== null ? byteSize : 'Not available',
     dimensions: dimensions || 'Not available',
-    mimeType,
+    mimeType: actualMimeType,
     colorSpace: colorSpace || 'Not specified',
     exif: exif || 'No EXIF metadata present',
-    elaResiduals: forensicAnalysis?.ela?.status || (metadata?.forensicAnalysis?.ela?.status || 'Not evaluated'),
-    noiseConsistency: forensicAnalysis?.noise?.status || (metadata?.forensicAnalysis?.noise?.status || 'Not evaluated'),
-    summary: `Cryptographic SHA-256 fingerprint: ${sha256}. Perceptual hash: ${perceptualHash || 'Not computed'}. Format: ${mimeType}.`
+    elaResiduals: elaStatusStr,
+    noiseConsistency: noiseStatusStr,
+    summary: `Cryptographic SHA-256 fingerprint: ${sha256}. Perceptual hash: ${perceptualHash || 'Not computed'}. Format: ${actualMimeType}.`
   };
 
   // ── FEATURE 1: ORIGINAL WEBSITE & REVERSE SEARCH ─────────────────────────
@@ -207,7 +233,7 @@ export async function generateWorkflowReport({
     reportId: `RPT-WF-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`,
     generatedAt: now,
     artifactId,
-    filename,
+    filename: actualFilename,
     workflow: {
       originalWebsite: originalWebsiteBlock,
       aiDetection: aiDetectionBlock,

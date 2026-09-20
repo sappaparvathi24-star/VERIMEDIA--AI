@@ -59,9 +59,9 @@ const FIVE_ENGINES: NavItem[] = [
 const WORKSPACE_TOOLS: NavItem[] = [
   {
     id: 'intelligence',
-    label: 'Gemini AI Copilot',
+    label: 'VeriMedia Assistant',
     icon: '✨',
-    description: 'Multimodal AI reasoning, executive dossiers, visual forensics & copilot',
+    description: 'Multimodal AI reasoning, executive dossiers, visual forensics & assistant',
     badge: 'AI',
   },
   {

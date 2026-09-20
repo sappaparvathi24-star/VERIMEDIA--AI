@@ -308,7 +308,7 @@ function getGenAI() {
 async function callGemini(contents, config = {}) {
   const ai = getGenAI();
   if (!ai) return null;
-  const models = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-flash-latest'];
+  const models = ['gemini-3.6-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest'];
   for (const model of models) {
     try {
       const response = await ai.models.generateContent({
@@ -319,8 +319,8 @@ async function callGemini(contents, config = {}) {
       if (response && response.text) {
         return { text: response.text, model };
       }
-    } catch (_) {
-      // Gracefully advance to next candidate model if current model experiences high demand or temporary unavailability
+    } catch (err) {
+      console.warn(`callGemini failed for model ${model}:`, err.message);
     }
   }
   return null;
@@ -343,7 +343,7 @@ const forensicJobQueue = new ForensicJobQueue({
 function buildIntegrationStatus() {
   const googleCseKey = process.env.GOOGLE_CSE_API_KEY || process.env.GOOGLE_SEARCH_API_KEY;
   const googleCseCx  = process.env.GOOGLE_CSE_CX      || process.env.GOOGLE_SEARCH_ENGINE_ID;
-  const visionKey    = process.env.GOOGLE_VISION_API_KEY || process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY;
+  const visionKey    = process.env.GOOGLE_VISION_API_KEY || process.env.GOOGLE_API_KEY;
   return {
     gemini:       process.env.GEMINI_API_KEY                  ? 'configured' : 'not_configured',
     googleVision: visionKey                                   ? 'configured' : 'not_configured',
@@ -352,10 +352,10 @@ function buildIntegrationStatus() {
     youtube:      process.env.YOUTUBE_API_KEY                 ? 'configured' : 'not_configured',
     googleSearch: (googleCseKey && googleCseCx)               ? 'configured' : 'not_configured',
     reddit:       'configured',  // uses public unauthenticated JSON endpoint — no key required
-    instagram:    process.env.INSTAGRAM_ACCESS_TOKEN          ? 'configured' : 'not_configured',
-    x:            (process.env.X_API_KEY || process.env.X_ACCESS_TOKEN) ? 'configured' : 'not_configured',
-    tiktok:       process.env.TIKTOK_CLIENT_KEY               ? 'configured' : 'not_implemented',
-    facebook:     process.env.META_APP_ID                     ? 'configured' : 'not_implemented'
+    instagram:    process.env.INSTAGRAM_ACCESS_TOKEN          ? 'not_verified' : 'not_configured',
+    x:            (process.env.X_API_KEY || process.env.X_ACCESS_TOKEN) ? 'not_verified' : 'not_configured',
+    tiktok:       'not_implemented',
+    facebook:     'permanently_unavailable'
   };
 }
 
@@ -397,8 +397,8 @@ function healthResponse(req, res) {
     },
     gemini: {
       configured: hasGemini,
-      model: 'gemini-2.5-flash',
-      fallbackModels: ['gemini-2.5-flash-lite', 'gemini-2.0-flash', 'gemini-1.5-flash']
+      model: 'gemini-3.6-flash',
+      fallbackModels: ['gemini-3.1-flash-lite', 'gemini-flash-latest']
     },
     visionApiQuota: {
       used: visionCount,
@@ -410,7 +410,7 @@ function healthResponse(req, res) {
     uptime_seconds: Math.floor(process.uptime()),
     total_scans: allArtifacts.filter(a => !a.isDemo).length,
     total_investigations: allInvestigations.filter(i => !i.isDemo).length,
-    models: ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash'],
+    models: ['gemini-3.6-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest'],
     timestamp: new Date().toISOString()
   });
 }
@@ -445,13 +445,44 @@ const handleChat = async (req, res) => {
       userText = 'How can I assist with media analysis or DMCA enforcement?';
     }
 
-    const fullPrompt = system_prompt
-      ? `${system_prompt}\n\nUser Question:\n${userText}`
-      : `You are VeriMedia AI Assistant, an expert in digital media rights, perceptual hashing, deepfake detection, forensic watermarking, and DMCA copyright enforcement.\nUser Question:\n${userText}`;
+    // Convert multi-turn messages into Gemini structured contents
+    let geminiContents = [];
+    if (Array.isArray(messages) && messages.length > 0) {
+      for (const m of messages) {
+        if (!m) continue;
+        const role = (m.role === 'assistant' || m.role === 'model') ? 'model' : 'user';
+        const text = typeof m === 'string' ? m : (m.content || m.text || '');
+        if (text) {
+          geminiContents.push({
+            role,
+            parts: [{ text }]
+          });
+        }
+      }
+    }
+
+    // Append prompt if provided or if missing from contents
+    if (prompt) {
+      const lastItem = geminiContents[geminiContents.length - 1];
+      if (!lastItem || lastItem.parts[0]?.text !== prompt) {
+        geminiContents.push({
+          role: 'user',
+          parts: [{ text: prompt }]
+        });
+      }
+    }
+
+    if (geminiContents.length === 0) {
+      geminiContents = [{ role: 'user', parts: [{ text: userText }] }];
+    }
+
+    const systemInstruction = system_prompt ||
+      'You are VeriMedia Assistant, an expert AI assistant specialized in digital media forensics, deepfake detection, perceptual hashing, and DMCA copyright enforcement. Answer the user prompt directly, intelligently, accurately, and uniquely without repetitive templates.';
 
     let geminiResult = null;
     try {
-      geminiResult = await callGemini(fullPrompt, {
+      geminiResult = await callGemini(geminiContents, {
+        systemInstruction,
         maxOutputTokens: max_tokens,
         temperature: 0.7
       });
@@ -478,7 +509,7 @@ const handleChat = async (req, res) => {
     });
   } catch (err) {
     console.error('Chat endpoint error:', err);
-    const fallbackReply = 'VeriMedia AI Copilot is online. You can scan media, evaluate 6-signal forensic breakdowns, inspect perceptual hash matches, and generate DMCA takedown notices.';
+    const fallbackReply = 'VeriMedia Assistant is online and ready. You can scan media, evaluate 6-signal forensic breakdowns, inspect perceptual hash matches, and generate DMCA takedown notices.';
     return res.json({
       reply: fallbackReply,
       content: [{ type: 'text', text: fallbackReply }],
@@ -898,7 +929,7 @@ app.post('/api/gemini/multimodal-analyze', analysisLimiter, async (req, res) => 
           ]
         }
       ];
-      const models = ['gemini-flash-lite-latest', 'gemini-flash-latest'];
+      const models = ['gemini-3.6-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest'];
       for (const model of models) {
         try {
           const response = await ai.models.generateContent({ model, contents, config: { temperature: 0.2, maxOutputTokens: 512 } });
@@ -3288,6 +3319,8 @@ const handleWorkflowReport = async (req, res) => {
     const report = await generateWorkflowReport({
       artifact,
       buffer,
+      filename: req.file?.originalname || req.file?.filename || artifact?.originalName || artifact?.filename || 'uploaded_image.jpg',
+      mimeType: req.file?.mimetype || artifact?.mimeType || 'image/jpeg',
       candidates,
       forensicAnalysis: artifact?.metadata?.forensicAnalysis || null,
       visionResults,
@@ -4132,17 +4165,18 @@ function buildForensicFallback({ contentDescription, matchScore, integrityScore,
 }
 
 function generateChatFallback(query) {
-  const q = (query || '').toLowerCase();
-  if (q.includes('dmca') || q.includes('takedown')) {
-    return 'Under 17 U.S.C. § 512, a valid DMCA notice requires identification of the copyrighted work, the infringing URL, contact information, and good faith attestations. VeriMedia AI automatically generates and submits this notice with technical fingerprint evidence attached.';
+  const q = (query || '').trim();
+  const lowerQ = q.toLowerCase();
+  if (lowerQ.includes('dmca') || lowerQ.includes('takedown')) {
+    return `Regarding your request "${q}": Under 17 U.S.C. § 512, a valid DMCA notice requires identification of the copyrighted work, the infringing URL, contact information, and good faith attestations. VeriMedia Assistant automatically compiles and submits this notice with technical fingerprint evidence attached.`;
   }
-  if (q.includes('deepfake') || q.includes('manipulat')) {
-    return 'VeriMedia AI detects manipulation using a multi-signal pipeline: frame-by-frame perceptual hashing, audio spectrogram verification, facial landmark consistency, and edge-crop artifact detection.';
+  if (lowerQ.includes('deepfake') || lowerQ.includes('manipulat') || lowerQ.includes('ai')) {
+    return `Regarding your query "${q}": VeriMedia Assistant detects manipulation using a multi-signal pipeline: frame-by-frame perceptual hashing, audio spectrogram verification, facial landmark consistency, and edge-crop artifact detection.`;
   }
-  if (q.includes('fingerprint') || q.includes('hash')) {
-    return 'Perceptual fingerprinting maps media frames into robust vector embeddings that remain stable despite compression, scaling, color changes, or cropping, allowing instant identification against protected master catalogs.';
+  if (lowerQ.includes('fingerprint') || lowerQ.includes('hash')) {
+    return `Regarding your query "${q}": Perceptual fingerprinting maps media frames into robust vector embeddings that remain stable despite compression, scaling, color changes, or cropping, allowing instant identification against protected master catalogs.`;
   }
-  return 'VeriMedia AI is operational. You can scan videos, inspect 6-signal forensic breakdowns, evaluate trust scores, and issue automated DMCA takedown requests across supported social platforms.';
+  return `VeriMedia Assistant received your inquiry: "${q}". I am ready to help with media scanning, 6-signal forensic breakdowns, executive dossier synthesis, and automated DMCA copyright enforcement.`;
 }
 
 if (!process.env.VERCEL && !isTestRunner) {

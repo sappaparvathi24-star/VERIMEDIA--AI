@@ -192,6 +192,25 @@ export const getInvestigationReports = (id: string) =>
 export const generateInvestigationReport = (id: string) =>
   api.post(`/investigations/${id}/report`).then(r => r.data)
 
+export const get4FeatureWorkflowReport = async (investigationId: string) => {
+  const token = await getToken()
+  return axios.post(`${BASE}/api/investigations/${investigationId}/workflow-report`, {}, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {}
+  }).then(r => r.data)
+}
+
+export const generate4FeatureWorkflowReport = async (file: File) => {
+  const token = await getToken()
+  const formData = new FormData()
+  formData.append('file', file)
+  return axios.post(`${BASE}/api/v1/workflow/report`, formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    }
+  }).then(r => r.data)
+}
+
 export const getDetectionTrends = (timeRange: string = '24h', platform: string = 'ALL') =>
   api.get('/analytics/detection-trends', { params: { timeRange, platform } }).then(r => r.data)
 
@@ -220,13 +239,15 @@ export const getAuditEvents = (params?: { limit?: number; investigationId?: stri
 export const getHealth = (): Promise<HealthStatus> =>
   api.get<HealthStatus>('/health').then(r => r.data)
 
-// ── Gemini Intelligence API ──────────────────────────────────────────────────
-export const askGeminiCopilot = async (prompt: string, history?: Array<{ role: string; content: string }>) => {
+// ── VeriMedia Assistant API ──────────────────────────────────────────────────
+export const askVeriMediaAssistant = async (prompt: string, history?: Array<{ role: string; content: string }>) => {
   const token = await getToken()
   return axios.post(`${BASE}/api/chat`, { prompt, messages: history }, {
     headers: token ? { Authorization: `Bearer ${token}` } : {}
   }).then(r => r.data)
 }
+
+export const askGeminiCopilot = askVeriMediaAssistant
 
 export const explainForensicSignalGemini = async (payload: {
   signalKey: string
