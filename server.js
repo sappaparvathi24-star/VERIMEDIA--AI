@@ -32,6 +32,7 @@ import {
   requireAuth,
   requireRole,
   authorizeChain,
+  entityAccessGuard,
   loginUser,
   logoutUser,
   getUserProfile,
@@ -54,13 +55,6 @@ import {
   AuditObjectType
 } from './src/audit/auditService.js';
 import { persistence } from './src/db/persistence.js';
-import {
-  authenticate,
-  investigationAccessGuard,
-  entityAccessGuard,
-  logAudit
-} from './src/middleware/auth.js';
-
 dotenv.config();
 
 // ---------------------------------------------------------------------------

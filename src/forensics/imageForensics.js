@@ -48,7 +48,7 @@ export async function computeImageStatistics(imageBuffer) {
       max: c.max,
       mean: Number(c.mean.toFixed(2)),
       stdev: Number(c.stdev.toFixed(2)),
-      entropy: Number((Math.log2(c.stdev + 1) * 1.4).toFixed(2))
+      contrastIndex: Number((Math.log2(c.stdev + 1) * 1.4).toFixed(2))
     }));
 
     const isGrayscale = stats.isOpaque && channels.length >= 3 &&
@@ -216,7 +216,7 @@ Return STRICT JSON only (no markdown, no extra commentary):
         },
         limitations: [
           'LLM vision judgments represent subjective probabilistic visual interpretations, not a calibrated deepfake detection model with validated false positive/negative rates.',
-          'Numeric trust scores and confidence ratings are calibrated downstream from physical signals (Error-Level Analysis, EXIF metadata, and statistical distributions) and validated model baselines, rather than uncalibrated prompt ranges.',
+          'Numeric trust scores and confidence ratings are adjusted downstream from physical signals (Error-Level Analysis, EXIF metadata, and statistical distributions) using heuristic rule-based weights, not empirically validated model baselines.',
           'Adversarial perturbations, diffusion noise patterns, and refined inpainting can deceive multimodal LLMs.',
           'Definitive authenticity verification requires end-to-end cryptographic provenance (C2PA / hardware digital signatures).'
         ]
@@ -230,9 +230,11 @@ Return STRICT JSON only (no markdown, no extra commentary):
 }
 
 /**
- * Calibrates numeric forensic scores downstream from real physical signals (ELA, EXIF,
- * pixel statistics, and visual anomaly observations) combined with empirical
- * model calibration baselines, rather than ungrounded prompt anchors.
+ * Adjusts numeric forensic scores downstream from real physical signals (ELA, EXIF,
+ * pixel statistics, and visual anomaly observations) using heuristic rule-based weights.
+ * NOTE: The base scores and adjustment constants are hand-picked and have NOT been
+ * validated against a labelled dataset. They are engineering heuristics, not
+ * empirically calibrated baselines.
  */
 export function calibrateForensicScores({
   authenticity,
@@ -244,7 +246,8 @@ export function calibrateForensicScores({
 }) {
   const label = (authenticity || '').toUpperCase();
 
-  // Validated empirical calibration baselines for multimodal vision classifications
+  // Heuristic rule-based starting points for multimodal vision classifications.
+  // These are hand-picked constants — not validated against a labelled dataset.
   let baseTrustScore = 50;
   let baseManipulationProb = 0.50;
   let baseConfidence = 0.65;
@@ -325,7 +328,7 @@ export function calibrateForensicScores({
     trustScore: Math.round(baseTrustScore),
     manipulationProbability: Number(baseManipulationProb.toFixed(2)),
     confidence: Number(baseConfidence.toFixed(2)),
-    calibrationMethod: 'MULTI_SIGNAL_PHYSICAL_AND_EMPIRICAL_CALIBRATION',
+    calibrationMethod: 'MULTI_SIGNAL_HEURISTIC_ADJUSTMENT',
     isCalibratedDownstream: true
   };
 }
