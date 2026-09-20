@@ -1,7 +1,5 @@
 import { useState } from 'react'
 import { useStore } from '../../store'
-import { listInvestigations, getApiBaseUrl } from '../../services/api'
-import { getToken } from '../../lib/supabaseClient'
 
 export interface PlatformOption {
   id: string
@@ -178,6 +176,8 @@ export function MonitoringJobModal({ isOpen = true, onClose, onSave }: Props) {
 
     try {
       // Find the investigation to attach this job to
+      const { listInvestigations, getApiBaseUrl } = await import('../../services/api')
+      const { getToken } = await import('../../lib/supabaseClient')
       const token = await getToken()
 
       let investigationId: string | null = currentResult?.case_id || null

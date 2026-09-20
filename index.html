@@ -14,36 +14,6 @@
 </head>
 <body style="margin: 0; padding: 0; background-color: #080c16; color: #f8fafc; font-family: 'Plus Jakarta Sans', system-ui, sans-serif;">
   <div id="root"></div>
-  <!-- Boot-error safety net: catches any top-level JS error (including a 404'd
-       hashed asset) before React mounts and writes visible text into #root.
-       Without this, a failed module load produces a completely blank white page
-       with no visible indication that anything went wrong. -->
-  <script>
-    window.addEventListener('error', function(e) {
-      var root = document.getElementById('root');
-      if (root && !root.hasChildNodes()) {
-        root.innerHTML =
-          '<div style="font-family:monospace;padding:24px;color:#b91c1c;background:#fff;position:fixed;inset:0;z-index:9999;overflow:auto">' +
-          '<b>App failed to load.</b><br><br>' +
-          (e.message || 'Unknown error') +
-          '<br><small style="color:#6b7280">' + (e.filename || '') + (e.lineno ? ':' + e.lineno : '') + '</small>' +
-          '<br><br><small style="color:#6b7280">Open DevTools (F12) &rarr; Console for full details.</small>' +
-          '</div>';
-      }
-    });
-    window.addEventListener('unhandledrejection', function(e) {
-      var root = document.getElementById('root');
-      if (root && !root.hasChildNodes()) {
-        root.innerHTML =
-          '<div style="font-family:monospace;padding:24px;color:#b91c1c;background:#fff;position:fixed;inset:0;z-index:9999;overflow:auto">' +
-          '<b>App failed to load (promise rejection).</b><br><br>' +
-          (e.reason && e.reason.message ? e.reason.message : String(e.reason)) +
-          '<br><br><small style="color:#6b7280">Open DevTools (F12) &rarr; Console for full details.</small>' +
-          '</div>';
-      }
-    });
-  </script>
   <script type="module" src="/src/main.tsx"></script>
-  <script src="/gemini-integration.js"></script>
 </body>
 </html>

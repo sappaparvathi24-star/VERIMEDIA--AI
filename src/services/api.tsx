@@ -176,20 +176,6 @@ export const searchMultiSource = (query: string, platforms?: string[]) =>
 export const getInvestigationCandidates = (id: string) =>
   api.get(`/investigations/${id}/discovery/candidates`).then(r => r.data)
 
-export const runDiscoveryJob = async (investigationId: string) => {
-  const token = await getToken()
-  return axios.post(`${BASE}/api/investigations/${investigationId}/discovery/jobs`, {}, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {}
-  }).then(r => r.data)
-}
-
-export const compareArtifacts = async (artifactAId: string, artifactBId: string, investigationId?: string) => {
-  const token = await getToken()
-  return axios.post(`${BASE}/api/artifacts/compare`, { artifactAId, artifactBId, investigationId }, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {}
-  }).then(r => r.data)
-}
-
 export const getInvestigationGenealogy = (id: string) =>
   api.get(`/investigations/${id}/genealogy`).then(r => r.data)
 

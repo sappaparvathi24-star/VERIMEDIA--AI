@@ -26,7 +26,6 @@ export function Dashboard() {
     activeTab,
     showEvidenceModal, showDMCAModal, showMonitoringModal, showHeroOverlay,
     currentResult,
-    setViewMode,
   } = useStore()
 
   const [scannerVisualizerMode, setScannerVisualizerMode] = useState<'propagation' | 'reasoning'>('propagation')
@@ -52,24 +51,6 @@ export function Dashboard() {
 
       {/* Main Workspace Area */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
-        {/* Simple view link — top-right, unobtrusive */}
-        <div style={{ position: 'absolute', top: 8, right: 16, zIndex: 100 }}>
-          <button
-            onClick={() => setViewMode('simple')}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: '#475569',
-              fontSize: 11,
-              cursor: 'pointer',
-              textDecoration: 'underline',
-              textUnderlineOffset: 2,
-              padding: '2px 4px',
-            }}
-          >
-            ← Simple view
-          </button>
-        </div>
         <HeaderBar />
 
         {/* Content View Routing */}
