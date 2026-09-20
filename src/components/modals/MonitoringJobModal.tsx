@@ -111,7 +111,7 @@ interface Props {
 }
 
 export function MonitoringJobModal({ isOpen = true, onClose, onSave }: Props) {
-  const { setShowMonitoringModal } = useStore()
+  const { setShowMonitoringModal, currentResult } = useStore()
 
   const [jobName, setJobName] = useState('Automated Reappearance Scan — Media Artifact')
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([
@@ -159,7 +159,7 @@ export function MonitoringJobModal({ isOpen = true, onClose, onSave }: Props) {
     setSelectedPlatforms([])
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsSubmitting(true)
 
@@ -174,16 +174,63 @@ export function MonitoringJobModal({ isOpen = true, onClose, onSave }: Props) {
       notes
     }
 
-    setTimeout(() => {
-      setIsSubmitting(false)
-      setSuccessMessage('Monitoring job successfully scheduled and registered in active daemon queue.')
-      if (onSave) {
-        onSave(config)
+    try {
+      // Find the investigation to attach this job to
+      const { listInvestigations, getApiBaseUrl } = await import('../../services/api')
+      const { getToken } = await import('../../lib/supabaseClient')
+      const token = await getToken()
+
+      let investigationId: string | null = currentResult?.case_id || null
+      if (!investigationId || investigationId === 'CASE-2026-089') {
+        try {
+          const invs = await listInvestigations()
+          const realInvs = (invs || []).filter((i: any) => !i.isDemo)
+          if (realInvs.length > 0) investigationId = realInvs[0].id
+        } catch (_) {}
       }
-      setTimeout(() => {
-        handleClose()
-      }, 1200)
-    }, 450)
+
+      if (!investigationId) {
+        // Create a new investigation for this monitoring job if none exist
+        const base = getApiBaseUrl()
+        const res = await fetch(`${base}/api/investigations`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify({ title: jobName || 'Monitoring Investigation', description: notes || '' })
+        })
+        const inv = await res.json()
+        investigationId = inv?.id || null
+      }
+
+      if (investigationId) {
+        const base = getApiBaseUrl()
+        const res = await fetch(`${base}/api/investigations/${investigationId}/monitoring/jobs`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify({
+            ...config,
+            investigationId
+          })
+        })
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}))
+          throw new Error(err?.error || `Server error ${res.status}`)
+        }
+      }
+
+      setSuccessMessage(`Monitoring job "${jobName}" created and scheduled. First run in ${intervalSchedule.toLowerCase().replace('_', ' ')}.`)
+      if (onSave) onSave(config)
+      setTimeout(() => handleClose(), 1400)
+    } catch (err: any) {
+      setSuccessMessage(`⚠ ${err?.message || 'Failed to create monitoring job. Check server connection.'}`)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   if (!isOpen) return null

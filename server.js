@@ -11,6 +11,7 @@ import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import { provenanceService } from './src/provenance/service.js';
+import { tickMonitoringScheduler } from './src/provenance/monitoring.js';
 import { 
   searchReddit, 
   searchYouTube, 
@@ -71,6 +72,13 @@ await provenanceService.hydrate();
 setInterval(() => {
   persistence.snapshotAll(provenanceService.store);
 }, 10 * 1000).unref?.();
+
+// Monitoring scheduler — check and execute overdue jobs every 60 seconds
+setInterval(() => {
+  tickMonitoringScheduler(provenanceService.store).catch(err =>
+    console.warn('[MonitoringScheduler] tick error:', err.message)
+  );
+}, 60 * 1000).unref?.();
 
 // Graceful shutdown flush
 const gracefulShutdown = async () => {
@@ -260,6 +268,8 @@ const forensicJobQueue = new ForensicJobQueue({
 // ---------------------------------------------------------------------------
 function healthResponse(req, res) {
   const hasKey = Boolean(process.env.GEMINI_API_KEY);
+  const allArtifacts = provenanceService.getArtifacts ? provenanceService.getArtifacts() : [];
+  const allInvestigations = provenanceService.getInvestigations();
   res.json({
     status: 'ok',
     service: 'VeriMedia AI Unified Backend',
@@ -272,7 +282,8 @@ function healthResponse(req, res) {
     },
     version: '1.0.0',
     uptime_seconds: Math.floor(process.uptime()),
-    total_scans: 142,
+    total_scans: allArtifacts.filter(a => !a.isDemo).length,
+    total_investigations: allInvestigations.filter(i => !i.isDemo).length,
     gemini: hasKey ? 'connected' : 'fallback-mode (no GEMINI_API_KEY)',
     models: ['gemini-3.1-flash-lite', 'gemini-flash-latest', 'gemini-3.8-flash'],
     timestamp: new Date().toISOString()
@@ -771,11 +782,19 @@ app.post('/dmca/generate', (req, res, next) => {
 // API v1 compatibility endpoints for frontend services (Deprecated)
 // ---------------------------------------------------------------------------
 app.get(['/api/v1/detect/stats', '/api/v1/detect/stats/'], (req, res) => {
+  const allArtifacts = provenanceService.getArtifacts ? provenanceService.getArtifacts() : [];
+  const realArtifacts = allArtifacts.filter(a => !a.isDemo);
+  const since24h = Date.now() - 86400000;
+  const scans24h = realArtifacts.filter(a => a.createdAt && new Date(a.createdAt).getTime() > since24h).length;
+  const threats = realArtifacts.filter(a => {
+    const fa = a.metadata?.forensicAnalysis;
+    return fa && (fa.riskLevel === 'HIGH' || fa.riskLevel === 'CRITICAL');
+  }).length;
   res.json({
-    total_scans: 142,
+    total_scans: realArtifacts.length,
     status: 'operational',
-    active_threats: 3,
-    scans_24h: 38,
+    active_threats: threats,
+    scans_24h: scans24h,
     version: '1.0.0'
   });
 });
@@ -1183,62 +1202,27 @@ app.post(['/api/v1/detect', '/api/v1/detect/'], uploadLimiter, upload.any(), han
 
 app.get(['/api/v1/cases', '/api/v1/cases/'], (req, res) => {
   applyLegacyDeprecationHeaders(res, '/api/investigations');
-  res.json([
-    {
-      id: 'case_1',
-      case_id: 'VM-98210',
-      workTitle: 'Global Championship Final Highlights',
-      platform: 'TikTok',
-      username: 'sportsclip',
-      severity: 'CRITICAL',
-      decision: 'EMERGENCY_TAKEDOWN',
-      content_type: 'sports',
-      status: 'dmca_filed',
-      timestamp: new Date(Date.now() - 3600000).toISOString(),
-      dmca_filed: true,
-      similarity: 0.96,
-      infringingUrl: 'https://tiktok.com/@sportsclip/video/7238192',
-      is_demo: true,
-      mode: 'SAMPLE_DATA',
-      disclaimer: 'SAMPLE DATA — Illustrative demonstration case record'
-    },
-    {
-      id: 'case_2',
-      case_id: 'VM-98209',
-      workTitle: 'Exclusive Interview Series Ep 4',
-      platform: 'YouTube',
-      username: 'viral_reup',
-      severity: 'HIGH',
-      decision: 'TAKEDOWN',
-      content_type: 'entertainment',
-      status: 'resolved',
-      timestamp: new Date(Date.now() - 86400000).toISOString(),
-      dmca_filed: true,
-      similarity: 0.89,
-      infringingUrl: 'https://youtube.com/watch?v=mock_video_id',
-      is_demo: true,
-      mode: 'SAMPLE_DATA',
-      disclaimer: 'SAMPLE DATA — Illustrative demonstration case record'
-    },
-    {
-      id: 'case_3',
-      case_id: 'VM-98208',
-      workTitle: 'Breaking News Special Report',
-      platform: 'X / Twitter',
-      username: 'news_mirror',
-      severity: 'MEDIUM',
-      decision: 'ATTRIBUTION',
-      content_type: 'news',
-      status: 'under_review',
-      timestamp: new Date(Date.now() - 172800000).toISOString(),
-      dmca_filed: false,
-      similarity: 0.74,
-      infringingUrl: 'https://x.com/news_mirror/status/1782391',
-      is_demo: true,
-      mode: 'SAMPLE_DATA',
-      disclaimer: 'SAMPLE DATA — Illustrative demonstration case record'
-    }
-  ]);
+  const investigations = provenanceService.getInvestigations();
+  const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
+  const cases = investigations.slice(0, limit).map(inv => ({
+    id: inv.id,
+    case_id: inv.id,
+    workTitle: inv.title,
+    platform: inv.metadata?.platform || 'Web',
+    username: inv.metadata?.username || null,
+    severity: inv.metadata?.priority === 'HIGH' ? 'HIGH' : (inv.metadata?.priority || 'MEDIUM'),
+    decision: inv.metadata?.decision || 'REVIEW REQUIRED',
+    content_type: inv.metadata?.contentType || inv.metadata?.tags?.[0] || 'media',
+    status: inv.status === 'ACTIVE' ? 'open' : inv.status === 'CLOSED' ? 'resolved' : (inv.status || 'open').toLowerCase(),
+    timestamp: inv.createdAt,
+    dmca_filed: Boolean(inv.metadata?.dmcaFiled),
+    similarity: inv.metadata?.forensicConfidence || null,
+    is_demo: Boolean(inv.isDemo),
+    mode: inv.isDemo ? 'DEMO_SCENARIO' : 'REAL_INVESTIGATION',
+    disclaimer: inv.isDemo ? 'DEMO SCENARIO — Simulated benchmark case' : null,
+    artifactCount: (inv.artifactIds || []).length
+  }));
+  res.json(cases);
 });
 
 app.post(['/api/v1/enforce/dmca', '/api/v1/enforce/dmca/'], (req, res) => {
@@ -2844,72 +2828,81 @@ Respond ONLY with valid JSON conforming to this structure:
     if (topHit.link) defaultEarliest.url = topHit.link;
   }
 
-  const finalEarliest = geminiData?.earliestAppearance || defaultEarliest;
+  // Determine if we have real Gemini-grounded data or are falling back to a static estimate
+  const isGrounded = Boolean(geminiData);
+  const isGoogleCseFallback = !isGrounded && googleCseItems.length > 0;
+  const isStaticFallback = !isGrounded && !isGoogleCseFallback;
 
-  // Add search grounding sources to timeline if found
-  let finalTimeline = geminiData?.timelineAppearances || [
-    {
-      order: 1,
-      timestamp: finalEarliest.publishedAt || '2026-01-10T08:14:00Z',
-      platform: finalEarliest.platform || 'Associated Press Wire',
-      domain: finalEarliest.domain || 'apnews.com',
-      url: finalEarliest.url,
-      title: finalEarliest.title,
-      type: 'ORIGINAL_MASTER',
-      isEarliest: true
-    },
-    {
-      order: 2,
-      timestamp: '2026-01-10T09:12:00Z',
-      platform: 'YouTube News Syndicate',
-      domain: 'youtube.com',
-      url: 'https://youtube.com/watch?v=repack-briefing',
-      title: 'Full Briefing Syndication Clip',
-      type: 'SECONDARY_SYNDICATION',
-      isEarliest: false
-    },
-    {
-      order: 3,
-      timestamp: '2026-01-10T11:45:00Z',
-      platform: 'TikTok & X (Viral Feed)',
-      domain: 'x.com',
-      url: 'https://x.com/viral_audio/status/293817',
-      title: isManipulated ? 'Deepfake Neural Voice Clone & Lip Sync Derivative' : 'Social Media Quote Clip',
-      type: isManipulated ? 'DERIVATIVE_MODIFICATION' : 'SOCIAL_DISTRIBUTION',
-      isEarliest: false
-    }
-  ];
+  // For a static fallback: mark the earliest appearance as estimated, not confirmed
+  const finalEarliest = isGrounded
+    ? geminiData.earliestAppearance
+    : {
+        ...defaultEarliest,
+        // If Google CSE returned results, surface the top hit
+        ...(isGoogleCseFallback ? {
+          title: googleCseItems[0].title || defaultEarliest.title,
+          snippet: googleCseItems[0].snippet || defaultEarliest.snippet,
+          domain: googleCseItems[0].displayLink || defaultEarliest.domain,
+          publisher: (googleCseItems[0].displayLink || defaultEarliest.domain).replace(/^www\./, ''),
+          url: googleCseItems[0].link || defaultEarliest.url
+        } : {}),
+        // Downgrade confidence for any non-grounded result
+        confidenceScore: isGoogleCseFallback ? 0.45 : 0.20,
+        estimatedOnly: isStaticFallback,
+        warningNote: isStaticFallback
+          ? 'ESTIMATED — Gemini Google Search grounding unavailable (no GEMINI_API_KEY or quota exhausted). This date is a static placeholder from the demo investigation, not derived from a real web search.'
+          : isGoogleCseFallback
+            ? 'PARTIALLY_GROUNDED — Based on Google Custom Search result without AI grounding. Date may be approximate.'
+            : null
+      };
 
-  if (googleCseItems.length > 0 && finalTimeline.length <= 3) {
-    const cseItem = googleCseItems[0];
-    finalTimeline.push({
-      order: finalTimeline.length + 1,
-      timestamp: '2026-01-10T12:00:00Z',
-      platform: cseItem.displayLink || 'Google Images Index',
-      domain: cseItem.displayLink || 'google.com',
-      url: cseItem.link,
-      title: cseItem.title || 'Reverse Image Search Match',
-      type: 'INDEXED_SEARCH_HIT',
-      isEarliest: false
-    });
+  // Build timeline from Gemini if available; otherwise only show real CSE entries (no fake hardcoded URLs)
+  let finalTimeline = isGrounded
+    ? geminiData.timelineAppearances
+    : isGoogleCseFallback
+      ? googleCseItems.slice(0, 5).map((item, idx) => ({
+          order: idx + 1,
+          timestamp: new Date().toISOString(),
+          platform: item.displayLink || 'Web',
+          domain: item.displayLink || 'unknown',
+          url: item.link,
+          title: item.title || 'Google CSE Match',
+          type: 'INDEXED_SEARCH_HIT',
+          isEarliest: idx === 0,
+          estimatedOnly: true
+        }))
+      : []; // No timeline when fully static — don't fabricate entries
+
+  if (groundingSources.length > 0 && !isGrounded) {
+    // Replace placeholder grounding sources with actual CSE hits if available
+    groundingSources = googleCseItems.slice(0, 3).map(item => ({
+      uri: item.link,
+      title: item.title || item.displayLink
+    }));
   }
 
   res.json({
-    found: true,
+    found: isGrounded || isGoogleCseFallback,
     targetQuery,
     earliestAppearance: finalEarliest,
-    searchSummary: geminiData?.searchSummary || `Google Search API indexed the earliest appearance on ${finalEarliest.formattedDate || finalEarliest.publishedAt} originating from ${finalEarliest.publisher} (${finalEarliest.domain}).`,
+    searchSummary: isGrounded
+      ? geminiData.searchSummary
+      : isGoogleCseFallback
+        ? `Google Custom Search returned ${googleCseItems.length} result(s). Top result from ${finalEarliest.domain}. No AI grounding available — dates are approximate.`
+        : `STATIC FALLBACK — No real search was performed (GEMINI_API_KEY not configured and GOOGLE_CSE_API_KEY not set). Configure API keys for live source discovery.`,
     timelineAppearances: finalTimeline,
-    corroborationSources: geminiData?.corroborationSources || ['Google Search Index', 'Google Custom Search (CSE)', 'Wayback Machine CDX', 'AP Wire Archives'],
-    searchQueriesUsed: searchQueriesUsed.length > 0 ? searchQueriesUsed : [
-      `"${targetQuery}" earliest appearance original source`,
-      `"${cleanFilename || targetQuery}" first uploaded date`
+    corroborationSources: isGrounded
+      ? (geminiData.corroborationSources || ['Google Search (Grounded)'])
+      : isGoogleCseFallback
+        ? ['Google Custom Search Engine (CSE)']
+        : [],
+    searchQueriesUsed: searchQueriesUsed.length > 0 ? searchQueriesUsed : isGrounded ? [] : [
+      `"${targetQuery}" earliest appearance original source`
     ],
-    groundingSources: groundingSources.length > 0 ? groundingSources : [
-      { uri: finalEarliest.url, title: `${finalEarliest.publisher}: ${finalEarliest.title}` },
-      { uri: 'https://web.archive.org', title: 'Wayback Machine Internet Archive' }
-    ],
-    provider: 'Google Search API (Grounding & CSE)',
+    groundingSources: groundingSources.length > 0 ? groundingSources : [],
+    provider: isGrounded ? 'Gemini Google Search Grounding' : isGoogleCseFallback ? 'Google Custom Search (CSE)' : 'STATIC_FALLBACK',
+    isGrounded,
+    isEstimated: !isGrounded,
     queriedAt: new Date().toISOString()
   });
 });
@@ -3156,9 +3149,35 @@ const handleMonitoringJobCreation = (req, res) => {
     if (!invId) {
       return res.status(400).json({ error: 'investigationId is required' });
     }
+    // Map MonitoringJobModal config fields to the internal job schema
+    const {
+      jobName, name,
+      targetQueryText, targetQuery,
+      selectedPlatforms, platforms,
+      intervalSchedule,
+      sensitivityThreshold,
+      notifyOnNewAppearance,
+      notifyOnContradiction,
+      notes,
+      ...rest
+    } = req.body;
+
+    const intervalMs = { EVERY_15_MIN: 15*60*1000, HOURLY: 60*60*1000, EVERY_6_HOURS: 6*60*60*1000, DAILY: 24*60*60*1000, WEEKLY: 7*24*60*60*1000 }[intervalSchedule] || 60*60*1000;
+
     const payload = {
-      ...req.body,
-      investigationId: invId
+      ...rest,
+      investigationId: invId,
+      name: jobName || name || 'Automated Monitoring Job',
+      targetQuery: targetQueryText || targetQuery || '',
+      platforms: selectedPlatforms || platforms || ['REDDIT', 'MASTODON', 'ARCHIVE_ORG'],
+      intervalSchedule: intervalSchedule || 'HOURLY',
+      sensitivityThreshold: sensitivityThreshold || 'HIGH',
+      notifyOnNewAppearance: notifyOnNewAppearance !== false,
+      notifyOnContradiction: notifyOnContradiction !== false,
+      notes: notes || '',
+      // Schedule first run immediately
+      nextRunAt: new Date(Date.now() + intervalMs).toISOString(),
+      status: 'ACTIVE'
     };
     const job = provenanceService.createMonitoringJob(payload);
     res.status(201).json(job);

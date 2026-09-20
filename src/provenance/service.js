@@ -51,6 +51,15 @@ class ProvenanceService {
     return this.store.getArtifact(id);
   }
 
+  // Return all artifacts, or all artifacts for a given investigation
+  getArtifacts(investigationId) {
+    const all = Array.from(this.store.artifacts.values());
+    if (investigationId) {
+      return all.filter(a => a.investigationId === investigationId);
+    }
+    return all;
+  }
+
   createArtifact(payload) {
     return this.store.createArtifact(payload);
   }

@@ -12,8 +12,9 @@ export const DEFAULT_SHOWCASE_RESULT: DetectionResult = {
   processing_ms: 320,
   timestamp: new Date().toISOString(),
   case_id: 'CASE-2026-089',
-  is_demo: false,
-  mode: 'REAL_PIPELINE',
+  is_demo: true,
+  mode: 'SIMULATED_SCENARIO',
+  disclaimer: 'DEMO SHOWCASE — Pre-loaded benchmark scenario. Upload a real media file for live forensic analysis.',
   subject_description: 'High-profile broadcast video exhibiting facial boundary blending and audio-acoustic viseme desynchronization.',
   visual_findings: [
     'Facial boundary gradient discontinuity along the jawline indicative of GAN/Diffusion blending.',
