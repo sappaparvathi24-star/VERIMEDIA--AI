@@ -8,12 +8,21 @@ export function EvidenceReasoningCard() {
 
   if (!currentResult) return null
 
+  const isScenario = Boolean(currentResult.scenario)
   const art = currentResult.artifact
   const forensic = currentResult.forensics
   const sha256 = art?.sha256 ? `${art.sha256.slice(0, 16)}…` : currentResult.fingerprint_hash || 'N/A'
-  const simPct = Math.round((currentResult.similarity ?? 0.92) * 100)
-  const trustScore = currentResult.trust?.trust_score ?? currentResult.ml?.trust_score ?? 78
+  const simPct = currentResult.similarity != null ? Math.round(currentResult.similarity * 100) : (isScenario ? 92 : null)
+  const trustScore = currentResult.trust?.trust_score ?? currentResult.ml?.trust_score ?? (isScenario ? 78 : null)
   const isThreat = currentResult.ai_analysis?.decision === 'TAKEDOWN' || currentResult.ai_analysis?.decision === 'EMERGENCY_TAKEDOWN'
+
+  // Requirement 3 Verdict fields: strictly avoid fabricated fallbacks on non-scenario scans
+  const originSource = (currentResult as any)?.originSource || currentResult.authorship?.origin_node || (isScenario ? 'AP News Wire (Original Broadcast)' : 'Not determined')
+  const originDate = (currentResult as any)?.originDate || (isScenario ? '10 Jan 2026, 08:32 UTC' : 'Not available')
+  const c2paStatus = (currentResult as any)?.c2paStatus || (currentResult.forensics?.c2pa?.status === 'C2PA_PRESENT' ? 'VALID_SIGNED' : (isScenario && currentResult.scenario === 'authentic' ? 'VALID_SIGNED' : 'UNSIGNED / NO MANIFEST'))
+  const dmcaEligible = (currentResult as any)?.dmcaEligible ?? (currentResult.ai_analysis?.dmca_needed || (isScenario && (currentResult.scenario === 'scam' || currentResult.scenario === 'deepfake')) ? true : false)
+  const riskScore = (currentResult as any)?.riskScore ?? (isScenario ? 87 : (currentResult.ml?.manipulation_probability != null ? Math.round(currentResult.ml.manipulation_probability * 100) : null))
+  const confidence = (currentResult as any)?.confidence ?? (isScenario ? 94 : (currentResult.ai_analysis?.confidence != null ? Math.round(currentResult.ai_analysis.confidence * 100) : (trustScore ?? null)))
 
   const candidatesData = {
     current: {
@@ -23,14 +32,14 @@ export function EvidenceReasoningCard() {
       statusColor: isThreat ? '#ef4444' : '#22c55e',
       summary: currentResult.ai_analysis?.threat_type
         ? `${currentResult.ai_analysis.threat_type}. Analyzed via multi-signal forensic pipeline.`
-        : `Cryptographic SHA-256 (${sha256}) and perceptual hash verified with ${simPct}% match.`,
+        : `Cryptographic SHA-256 (${sha256}) and perceptual hash verified${simPct != null ? ` with ${simPct}% match` : ''}.`,
       signals: [
         {
           name: 'SHA-256 & Perceptual Hash Correlation',
           category: 'PERCEPTUAL',
           impact: isThreat ? '-35%' : '+28%',
           color: isThreat ? '#f87171' : '#4ade80',
-          detail: `Perceptual match score: ${simPct}%. SHA-256 fingerprint: ${sha256}.`,
+          detail: `Perceptual match score: ${simPct != null ? `${simPct}%` : 'N/A'}. SHA-256 fingerprint: ${sha256}.`,
           caveat: 'Perceptual hashing measures visual cosine similarity against known reference corpus.'
         },
         {
@@ -65,7 +74,7 @@ export function EvidenceReasoningCard() {
     },
     sourceA: {
       name: 'Source A (YouTube Master)',
-      confidence: 84,
+      confidence: isScenario ? 84 : null,
       status: 'LIKELY EARLIEST OBSERVED BROADCAST',
       statusColor: '#22c55e',
       summary: 'Earliest public observation across indexed nodes. Uncropped 16:9 canvas dimensions with continuous station watermark.',
@@ -98,7 +107,7 @@ export function EvidenceReasoningCard() {
     },
     sourceB: {
       name: 'Source B (Reddit Repost)',
-      confidence: 42,
+      confidence: isScenario ? 42 : null,
       status: 'DERIVED REPOST (2ND GEN)',
       statusColor: '#a855f7',
       summary: 'Secondary distribution node published 30h post-master. 91% visual similarity but second-generation transcode macroblocking.',
@@ -123,7 +132,7 @@ export function EvidenceReasoningCard() {
     },
     sourceC: {
       name: 'Source C (TikTok 1:1 Clip)',
-      confidence: 28,
+      confidence: isScenario ? 28 : null,
       status: 'DERIVED MUTATION (CROP)',
       statusColor: '#f59e0b',
       summary: 'Tertiary spatial crop with 44% canvas loss. A cropped sub-region cannot mathematically generate the uncropped master.',
@@ -148,7 +157,7 @@ export function EvidenceReasoningCard() {
     },
     sourceD: {
       name: 'Source D (X Dubbed Clip)',
-      confidence: 14,
+      confidence: isScenario ? 14 : null,
       status: 'SYNTHETIC TAMPERING DETECTED',
       statusColor: '#ef4444',
       summary: 'Tampered derivative with deepfake voiceover dubbing and synthetic overlay obscuring the original watermark.',
@@ -220,11 +229,65 @@ export function EvidenceReasoningCard() {
         </div>
       </div>
 
+      {/* Verdict Summary Bar (Requirement 3: Explicit Determination without Fabricated Fallbacks) */}
+      <div style={{
+        background: '#0a0f16',
+        border: '1px solid #1e2d3d',
+        borderRadius: 8,
+        padding: '12px 16px',
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
+        gap: 12
+      }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <span style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700 }}>Origin Source</span>
+          <span style={{ fontSize: 12, fontWeight: 800, color: originSource === 'Not determined' ? '#94a3b8' : '#38bdf8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {originSource}
+          </span>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <span style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700 }}>Origin Date</span>
+          <span style={{ fontSize: 12, fontWeight: 700, color: originDate === 'Not available' ? '#64748b' : '#f8fafc' }}>
+            {originDate}
+          </span>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <span style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700 }}>C2PA Manifest</span>
+          <span style={{
+            fontSize: 11,
+            fontWeight: 800,
+            fontFamily: 'monospace',
+            color: c2paStatus.includes('VALID') ? '#4ade80' : '#94a3b8'
+          }}>
+            {c2paStatus}
+          </span>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <span style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700 }}>DMCA Enforcement</span>
+          <span style={{ fontSize: 12, fontWeight: 800, color: dmcaEligible ? '#f87171' : '#64748b' }}>
+            {dmcaEligible ? 'Eligible (Proof Found)' : 'Ineligible / Unproven'}
+          </span>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <span style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700 }}>Risk Score</span>
+          <span style={{ fontSize: 13, fontWeight: 800, fontFamily: 'monospace', color: riskScore != null ? (riskScore > 50 ? '#f87171' : '#4ade80') : '#64748b' }}>
+            {riskScore != null ? `${riskScore}%` : 'Unavailable'}
+          </span>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <span style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700 }}>Confidence</span>
+          <span style={{ fontSize: 13, fontWeight: 800, fontFamily: 'monospace', color: confidence != null ? '#00d4ff' : '#64748b' }}>
+            {confidence != null ? `${confidence}%` : 'Unavailable'}
+          </span>
+        </div>
+      </div>
+
       {/* Candidate Selector Pills */}
       <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
         {(['current', 'sourceA', 'sourceB', 'sourceC', 'sourceD'] as const).map(key => {
           const item = candidatesData[key]
           const isSelected = selectedCandidate === key
+          const confLabel = item.confidence != null ? `${item.confidence}%` : 'Unavailable'
           return (
             <button
               key={key}
@@ -242,7 +305,7 @@ export function EvidenceReasoningCard() {
                 transition: 'all 0.15s ease'
               }}
             >
-              {key === 'current' ? '🔍 Current Media' : item.name.split(' ')[0] + ' ' + item.name.split(' ')[1]} ({item.confidence}%)
+              {key === 'current' ? '🔍 Current Media' : item.name.split(' ')[0] + ' ' + item.name.split(' ')[1]} ({confLabel})
             </button>
           )
         })}
@@ -280,7 +343,7 @@ export function EvidenceReasoningCard() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: 11, color: '#64748b' }}>Confidence Score:</span>
             <span style={{ fontSize: 16, fontWeight: 800, color: current.statusColor, fontFamily: 'monospace' }}>
-              {current.confidence}%
+              {current.confidence != null ? `${current.confidence}%` : 'Unavailable'}
             </span>
           </div>
         </div>

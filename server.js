@@ -122,9 +122,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-// Render (and most PaaS) assign a dynamic port via process.env.PORT.
-// Fall back to 3000 for local development only.
-const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+// Port 3000 is required for AI Studio dev server and reverse proxy
+const PORT = 3000;
 
 // ---------------------------------------------------------------------------
 // Robust, Production-Ready CORS Configuration
@@ -3846,6 +3845,7 @@ if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL && !isTestRunne
   const vite = await createViteServer({
     server: {
       middlewareMode: true,
+      allowedHosts: true,
       hmr: disableHmr ? false : undefined,
       ws: disableHmr ? false : undefined,
     },

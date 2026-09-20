@@ -1001,11 +1001,13 @@ export function ForensicViewer({ result: propResult, compact = false, onClose }:
 
                     <div className="space-y-1">
                       <h4 className="font-bold text-sm text-white">
-                        {earliestData?.earliestAppearance?.title || 'White House Press Briefing 4K Pool Master Feed'}
+                        {earliestData?.earliestAppearance?.title || (result?.scenario ? 'White House Press Briefing 4K Pool Master Feed' : 'Not determined')}
                       </h4>
                       <p className="text-xs text-slate-300">
                         {earliestData?.earliestAppearance?.snippet ||
-                          'First recorded public broadcast captured directly from White House press pool transmission. No synthetic voice clone, face manipulation, or neural frame interpolation detected in original baseline.'}
+                          (result?.scenario
+                            ? 'First recorded public broadcast captured directly from White House press pool transmission. No synthetic voice clone, face manipulation, or neural frame interpolation detected in original baseline.'
+                            : 'No indexed earliest observation found on public search nodes for this specific media asset.')}
                       </p>
                     </div>
 
@@ -1013,25 +1015,27 @@ export function ForensicViewer({ result: propResult, compact = false, onClose }:
                       <div className="space-y-0.5">
                         <div className="text-[10px] text-slate-500 font-mono uppercase">Original Publisher</div>
                         <div className="font-semibold text-slate-200 truncate">
-                          {earliestData?.earliestAppearance?.publisher || 'Associated Press / Reuters Pool'}
+                          {earliestData?.earliestAppearance?.publisher || (result?.scenario ? 'Associated Press / Reuters Pool' : 'Not determined')}
                         </div>
                       </div>
                       <div className="space-y-0.5">
                         <div className="text-[10px] text-slate-500 font-mono uppercase">Domain / Host</div>
                         <div className="font-mono text-cyan-400 truncate">
-                          {earliestData?.earliestAppearance?.domain || 'apnews.com'}
+                          {earliestData?.earliestAppearance?.domain || (result?.scenario ? 'apnews.com' : 'Not available')}
                         </div>
                       </div>
                       <div className="space-y-0.5">
                         <div className="text-[10px] text-slate-500 font-mono uppercase">Earliest Timestamp</div>
                         <div className="font-mono text-slate-200">
-                          {earliestData?.earliestAppearance?.formattedDate || earliestData?.earliestAppearance?.publishedAt || '2026-01-10T08:14:00Z'}
+                          {earliestData?.earliestAppearance?.formattedDate || earliestData?.earliestAppearance?.publishedAt || (result?.scenario ? '2026-01-10T08:14:00Z' : 'Not available')}
                         </div>
                       </div>
                       <div className="space-y-0.5">
                         <div className="text-[10px] text-slate-500 font-mono uppercase">Confidence Score</div>
                         <div className="font-mono text-emerald-400 font-bold">
-                          {((earliestData?.earliestAppearance?.confidenceScore || 0.96) * 100).toFixed(0)}% Corroborated
+                          {earliestData?.earliestAppearance?.confidenceScore != null
+                            ? `${((earliestData.earliestAppearance.confidenceScore) * 100).toFixed(0)}% Corroborated`
+                            : (result?.scenario ? '96% Corroborated' : 'Unavailable')}
                         </div>
                       </div>
                     </div>
@@ -1054,16 +1058,23 @@ export function ForensicViewer({ result: propResult, compact = false, onClose }:
                   {/* Dissemination & Provenance Chronology */}
                   <div className="p-3 bg-[#111928] rounded-xl border border-slate-800 space-y-2.5">
                     <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider font-semibold">
-                        Appearance Timeline & Propagation
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider font-semibold">
+                          Appearance Timeline & Propagation
+                        </span>
+                        {!!(result?.scenario || (result as any)?.is_demo || (result as any)?.mode === 'SIMULATED_SCENARIO') && (
+                          <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-600/50">
+                            [SIMULATED SCENARIO DATA]
+                          </span>
+                        )}
+                      </div>
                       <span className="text-[10px] font-mono text-slate-500">
                         Chronological Order
                       </span>
                     </div>
 
                     <div className="relative pl-4 space-y-3 before:absolute before:left-1.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-700">
-                      {(earliestData?.timelineAppearances || [
+                      {(earliestData?.timelineAppearances || (result?.scenario ? [
                         {
                           order: 1,
                           timestamp: '2026-01-10T08:14:00Z',
@@ -1091,7 +1102,39 @@ export function ForensicViewer({ result: propResult, compact = false, onClose }:
                           type: isManipulated ? 'DERIVATIVE_MODIFICATION' : 'SOCIAL_DISTRIBUTION',
                           isEarliest: false
                         }
-                      ]).map((node, idx) => (
+                      ] : [])).length === 0 ? (
+                        <div className="text-xs text-slate-500 py-2">
+                          No dissemination chronology observed across crawled endpoints yet.
+                        </div>
+                      ) : (earliestData?.timelineAppearances || (result?.scenario ? [
+                        {
+                          order: 1,
+                          timestamp: '2026-01-10T08:14:00Z',
+                          platform: 'AP News Wire / Pool Feed',
+                          domain: 'apnews.com',
+                          title: 'Live 4K Press Briefing Transmission',
+                          type: 'ORIGINAL_MASTER',
+                          isEarliest: true
+                        },
+                        {
+                          order: 2,
+                          timestamp: '2026-01-10T09:12:00Z',
+                          platform: 'YouTube News Syndicate',
+                          domain: 'youtube.com',
+                          title: 'Full Briefing Syndication Broadcast',
+                          type: 'SECONDARY_SYNDICATION',
+                          isEarliest: false
+                        },
+                        {
+                          order: 3,
+                          timestamp: '2026-01-10T11:45:00Z',
+                          platform: 'TikTok & X (Viral Feed)',
+                          domain: 'x.com',
+                          title: isManipulated ? 'Deepfake Neural Voice Clone Derivative' : 'Social Media Quote Clip',
+                          type: isManipulated ? 'DERIVATIVE_MODIFICATION' : 'SOCIAL_DISTRIBUTION',
+                          isEarliest: false
+                        }
+                      ] : [])).map((node, idx) => (
                         <div key={idx} className="relative space-y-0.5">
                           <div className={`absolute -left-[19px] top-1 w-2.5 h-2.5 rounded-full border-2 ${
                             node.isEarliest

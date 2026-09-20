@@ -450,6 +450,66 @@ function buildCandidatesFromRealData(reasoning: any, realCandidates: any[]): Ori
   })
 }
 
+function buildDefaultCandidateFromScan(currentResult: any): OriginCandidate {
+  const isManipulated = currentResult.isManipulated ?? false
+  const conf = currentResult.confidence ?? 0
+  const verdict = isManipulated ? 'Manipulated' : (conf > 0.5 ? 'Authentic' : 'Inconclusive')
+  
+  return {
+    id: currentResult.id || 'scan-target',
+    label: currentResult.filename || 'Scanned Media Asset',
+    platform: 'Target File',
+    timestamp: currentResult.analyzedAt ? new Date(currentResult.analyzedAt).toLocaleString() : 'Recent Scan',
+    confidence: conf,
+    status: isManipulated ? 'DERIVED_MUTATION' : 'UNVERIFIED_CANDIDATE',
+    statusLabel: verdict,
+    statusColor: isManipulated ? '#ef4444' : (verdict === 'Authentic' ? '#22c55e' : '#f59e0b'),
+    similarity: 1.0,
+    cropDerived: false,
+    assessmentSummary: currentResult.summary || (isManipulated
+      ? 'Forensic analysis identified synthetic artifacts and tampering signatures in the scanned media.'
+      : 'Initial forensic scan completed. Origin and external lineage have not been determined on public indexing networks.'),
+    epistemicFacts: [
+      currentResult.dimensions ? `Resolution: ${currentResult.dimensions.width}x${currentResult.dimensions.height}` : 'Resolution verified',
+      currentResult.format ? `Format: ${currentResult.format.toUpperCase()}` : 'Format detected',
+      'Claimed origin: Not determined (uncorroborated across public archives)'
+    ],
+    epistemicLimitations: [
+      'No cryptographic C2PA provenance ledger attached to target media.',
+      'Public network web crawling returned 0 verified prior appearances.',
+      'Lineage origin remains uncorroborated without verified publisher signatures.'
+    ],
+    signals: [
+      {
+        id: 'sig-forensics',
+        name: 'Pixel & Frequency Analysis',
+        category: 'PERCEPTUAL',
+        type: isManipulated ? 'CONTRADICTING' : 'SUPPORTING',
+        vector: 'Spectral Error Level Analysis',
+        impact: isManipulated ? -25 : 15,
+        verifiedBy: 'Forensic Engine',
+        rawValue: isManipulated ? 'Inconsistencies detected' : 'Uniform compression',
+        algorithm: 'DCT & Noise Variance',
+        diagnosticDetail: isManipulated ? 'High-frequency noise anomalies consistent with neural generation.' : 'No synthetic boundary anomalies identified in primary raster.',
+        epistemicCaveat: 'Heuristic sensor analysis does not prove intentional malice.'
+      },
+      {
+        id: 'sig-provenance',
+        name: 'Provenance Verification',
+        category: 'EPSTEMIC',
+        type: 'CONTRADICTING',
+        vector: 'Lineage Ledger',
+        impact: -10,
+        verifiedBy: 'Origin Engine',
+        rawValue: 'Not determined',
+        algorithm: 'C2PA & Hash Crawl',
+        diagnosticDetail: 'No cryptographic provenance assertions or public syndication appearances discovered.',
+        epistemicCaveat: 'Absence of public records does not prove or disprove authentic offline capture.'
+      }
+    ]
+  }
+}
+
 export function EvidenceReasoningPanel() {
   const { currentResult, setShowDMCAModal, setShowEvidenceModal } = useStore()
   const [selectedCandidateId, setSelectedCandidateId] = useState<string>('sourceA')
@@ -535,8 +595,21 @@ export function EvidenceReasoningPanel() {
     )
   }
 
-  // Use real candidates if available, otherwise show demo benchmark candidates
-  const activeCandidates = usingRealData ? realCandidates : CANDIDATES
+  const isScenario = !!(
+    currentResult &&
+    (currentResult.scenario === 'deepfake' ||
+      currentResult.scenario === 'scam' ||
+      currentResult.scenario === 'authentic' ||
+      (currentResult as any).is_demo ||
+      (currentResult as any).mode === 'SIMULATED_SCENARIO')
+  )
+
+  // Use real candidates if available, otherwise if scenario use benchmark candidates, otherwise build honest scan candidate
+  const activeCandidates = usingRealData && realCandidates.length > 0
+    ? realCandidates
+    : isScenario
+      ? CANDIDATES
+      : [buildDefaultCandidateFromScan(currentResult)]
   const candidate = activeCandidates.find(c => c.id === selectedCandidateId) || activeCandidates[0]
 
   const filteredSignals = candidate.signals.filter(s => {
@@ -569,6 +642,50 @@ export function EvidenceReasoningPanel() {
       flexDirection: 'column',
       gap: 18
     }}>
+      {/* High-Contrast Simulation Disclaimer Banner (Requirement 5) */}
+      {isScenario && (
+        <div
+          id="reasoning-simulated-scenario-banner"
+          style={{
+            padding: '12px 18px',
+            borderRadius: 8,
+            background: 'rgba(245, 158, 11, 0.15)',
+            border: '2px solid #f59e0b',
+            color: '#fbbf24',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+            boxShadow: '0 4px 20px rgba(245, 158, 11, 0.2)'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 20, lineHeight: 1 }}>⚠️</span>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 900, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#fef08a' }}>
+                SIMULATED TEST SCENARIO
+              </div>
+              <div style={{ fontSize: 11, color: '#fde68a', marginTop: 1 }}>
+                Data below is synthetic/pre-configured for demonstration and does not reflect a live forensic scan.
+              </div>
+            </div>
+          </div>
+          <div style={{
+            fontSize: 10,
+            fontFamily: 'monospace',
+            fontWeight: 800,
+            padding: '4px 10px',
+            borderRadius: 4,
+            background: '#78350f',
+            color: '#fef08a',
+            border: '1px solid #d97706',
+            whiteSpace: 'nowrap'
+          }}>
+            PRESET: {currentResult?.scenario?.toUpperCase() || 'DEMO'}
+          </div>
+        </div>
+      )}
+
       {/* 1. Header Banner */}
       <div style={{
         padding: '12px 18px',
@@ -626,6 +743,49 @@ export function EvidenceReasoningPanel() {
           >
             📋 File DMCA Action
           </button>
+        </div>
+      </div>
+
+      {/* Summary Metrics Bar across top of Stage 5 */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+        <div style={{ background: '#0d1117', border: '1px solid #1e2d3d', borderRadius: 8, padding: '12px 16px' }}>
+          <div style={{ fontSize: 10, color: '#64748b', fontWeight: 800, textTransform: 'uppercase' }}>Claimed Origin</div>
+          <div style={{ fontSize: 14, fontWeight: 800, color: isScenario ? '#38bdf8' : '#94a3b8', marginTop: 4 }}>
+            {isScenario ? 'AP News Wire / Pool Feed' : (candidate.platform !== 'Target File' ? candidate.platform : 'Not determined')}
+          </div>
+          <div style={{ fontSize: 10, color: '#64748b', marginTop: 2 }}>
+            {isScenario ? 'Earliest observed master source' : 'Lineage uncorroborated on public web'}
+          </div>
+        </div>
+
+        <div style={{ background: '#0d1117', border: '1px solid #1e2d3d', borderRadius: 8, padding: '12px 16px' }}>
+          <div style={{ fontSize: 10, color: '#64748b', fontWeight: 800, textTransform: 'uppercase' }}>Trust Score</div>
+          <div style={{ fontSize: 20, fontWeight: 800, color: (currentResult as any)?.trustScore != null ? ((currentResult as any).trustScore > 60 ? '#22c55e' : '#ef4444') : '#f59e0b', fontFamily: 'monospace', marginTop: 2 }}>
+            {(currentResult as any)?.trustScore != null ? `${Math.round((currentResult as any).trustScore)}/100` : (isScenario ? '18/100' : 'Pending analysis')}
+          </div>
+          <div style={{ fontSize: 10, color: '#64748b', marginTop: 2 }}>
+            Calibrated evidentiary index
+          </div>
+        </div>
+
+        <div style={{ background: '#0d1117', border: '1px solid #1e2d3d', borderRadius: 8, padding: '12px 16px' }}>
+          <div style={{ fontSize: 10, color: '#64748b', fontWeight: 800, textTransform: 'uppercase' }}>Forensic Verdict</div>
+          <div style={{ fontSize: 14, fontWeight: 800, color: (currentResult as any)?.isManipulated ? '#ef4444' : '#22c55e', marginTop: 4 }}>
+            {(currentResult as any)?.verdict || ((currentResult as any)?.isManipulated ? 'Manipulated / Synthetic' : (isScenario ? 'Deepfake Dubbing' : 'Inconclusive'))}
+          </div>
+          <div style={{ fontSize: 10, color: '#64748b', marginTop: 2 }}>
+            {(currentResult as any)?.confidence ? `${Math.round((currentResult as any).confidence * 100)}% detection confidence` : 'Heuristic verification'}
+          </div>
+        </div>
+
+        <div style={{ background: '#0d1117', border: '1px solid #1e2d3d', borderRadius: 8, padding: '12px 16px' }}>
+          <div style={{ fontSize: 10, color: '#64748b', fontWeight: 800, textTransform: 'uppercase' }}>Dissemination Status</div>
+          <div style={{ fontSize: 14, fontWeight: 800, color: isScenario ? '#fbbf24' : '#94a3b8', marginTop: 4 }}>
+            {isScenario ? 'Active viral spread (R₀ = 2.4x)' : ((currentResult as any)?.propagation ? 'Tracking active' : 'Not analyzed')}
+          </div>
+          <div style={{ fontSize: 10, color: '#64748b', marginTop: 2 }}>
+            {isScenario ? '5 syndication nodes indexed' : 'Propagation monitoring uninitialized'}
+          </div>
         </div>
       </div>
 

@@ -256,8 +256,61 @@ export function PropagationGraph() {
   const urgency = activePropagation?.urgency ?? 'high'
   const ppm = activePropagation?.ppm ?? 142
 
+  const isScenario = !!(
+    currentResult &&
+    (currentResult.scenario === 'deepfake' ||
+      currentResult.scenario === 'scam' ||
+      currentResult.scenario === 'authentic' ||
+      (currentResult as any).is_demo ||
+      (currentResult as any).mode === 'SIMULATED_SCENARIO')
+  )
+
   return (
     <div style={{ padding: '20px 24px', width: '100%', minHeight: '100%', background: '#080c10', color: '#f8fafc', display: 'flex', flexDirection: 'column', gap: 18 }}>
+
+      {/* High-Contrast Simulation Disclaimer Banner (Requirement 5) */}
+      {isScenario && (
+        <div
+          id="propagation-simulated-scenario-banner"
+          style={{
+            padding: '12px 18px',
+            borderRadius: 8,
+            background: 'rgba(245, 158, 11, 0.15)',
+            border: '2px solid #f59e0b',
+            color: '#fbbf24',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+            boxShadow: '0 4px 20px rgba(245, 158, 11, 0.2)'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 20, lineHeight: 1 }}>⚠️</span>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 900, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#fef08a' }}>
+                SIMULATED TEST SCENARIO
+              </div>
+              <div style={{ fontSize: 11, color: '#fde68a', marginTop: 1 }}>
+                Data below is synthetic/pre-configured for demonstration and does not reflect a live forensic scan.
+              </div>
+            </div>
+          </div>
+          <div style={{
+            fontSize: 10,
+            fontFamily: 'monospace',
+            fontWeight: 800,
+            padding: '4px 10px',
+            borderRadius: 4,
+            background: '#78350f',
+            color: '#fef08a',
+            border: '1px solid #d97706',
+            whiteSpace: 'nowrap'
+          }}>
+            PRESET: {currentResult?.scenario?.toUpperCase() || 'DEMO'}
+          </div>
+        </div>
+      )}
 
       {/* Header Banner */}
       <div style={{
@@ -399,8 +452,13 @@ export function PropagationGraph() {
             height: 380,
             position: 'relative'
           }}>
-            <div style={{ fontSize: 11, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 8 }}>
-              Cross-Platform Vector Spread Mesh
+            <div style={{ fontSize: 11, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span>Cross-Platform Vector Spread Mesh</span>
+              {isScenario && (
+                <span style={{ fontSize: 9, color: '#fbbf24', background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.3)', padding: '2px 6px', borderRadius: 4, fontFamily: 'monospace' }}>
+                  [SIMULATED SCENARIO TOPOLOGY]
+                </span>
+              )}
             </div>
             <canvas
               ref={canvasRef}
@@ -500,8 +558,24 @@ export function PropagationGraph() {
       {(viewMode === 'mesh' || viewMode === 'timeline') && (
         <div style={{ background: '#0d1117', border: '1px solid #1e2d3d', borderRadius: 10, padding: 18, display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: '#f8fafc' }}>
-              ⏱️ Cross-Platform Repost & Mutation Cascade Timeline
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 13, fontWeight: 800, color: '#f8fafc' }}>
+                ⏱️ Cross-Platform Repost & Mutation Cascade Timeline
+              </span>
+              {isScenario && (
+                <span style={{
+                  fontSize: 9,
+                  color: '#fbbf24',
+                  background: 'rgba(245,158,11,0.15)',
+                  border: '1px solid rgba(245,158,11,0.3)',
+                  padding: '2px 6px',
+                  borderRadius: 4,
+                  fontFamily: 'monospace',
+                  fontWeight: 800
+                }}>
+                  [SIMULATED SCENARIO DATA]
+                </span>
+              )}
             </div>
             <span style={{ fontSize: 11, color: '#64748b' }}>5 nodes traced in cascade order</span>
           </div>
@@ -543,7 +617,7 @@ export function PropagationGraph() {
                     </div>
 
                     <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                         <span style={{ fontSize: 13, fontWeight: 800, color: '#f8fafc' }}>
                           {node.platform}
                         </span>
@@ -560,6 +634,20 @@ export function PropagationGraph() {
                         }}>
                           {node.status}
                         </span>
+                        {isScenario && (
+                          <span style={{
+                            fontSize: 9,
+                            fontWeight: 800,
+                            fontFamily: 'monospace',
+                            padding: '1px 6px',
+                            borderRadius: 3,
+                            background: 'rgba(245, 158, 11, 0.2)',
+                            color: '#fbbf24',
+                            border: '1px solid rgba(245, 158, 11, 0.4)'
+                          }}>
+                            SIMULATED NODE
+                          </span>
+                        )}
                       </div>
                       <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
                         {node.mutationType} • Published +{node.deltaMinutes}m after master

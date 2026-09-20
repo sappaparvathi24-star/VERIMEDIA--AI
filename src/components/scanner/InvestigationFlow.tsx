@@ -123,6 +123,15 @@ export function InvestigationFlow() {
   const [showAdvancedOptions, setShowAdvancedOptions] = useState(false)
 
   // Stepper active stage (1 to 5)
+  const isSimulatedScenario = !!(
+    currentResult &&
+    (currentResult.scenario === 'deepfake' ||
+      currentResult.scenario === 'scam' ||
+      currentResult.scenario === 'authentic' ||
+      currentResult.is_demo ||
+      currentResult.mode === 'SIMULATED_SCENARIO')
+  )
+
   const [currentStage, setCurrentStage] = useState<number>(1)
   const [elapsedTime, setElapsedTime] = useState(0)
 
@@ -949,6 +958,51 @@ export function InvestigationFlow() {
 
       {/* Center: Stage Content View */}
       <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '16px 20px 40px 20px', scrollBehavior: 'smooth' }}>
+        {/* High-Contrast Simulation Disclaimer Banner (Requirement 5) */}
+        {isSimulatedScenario && (
+          <div
+            id="investigation-flow-simulated-banner"
+            style={{
+              marginBottom: 16,
+              padding: '12px 18px',
+              borderRadius: 8,
+              background: 'rgba(245, 158, 11, 0.15)',
+              border: '2px solid #f59e0b',
+              color: '#fbbf24',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+              boxShadow: '0 4px 20px rgba(245, 158, 11, 0.2)'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 20, lineHeight: 1 }}>⚠️</span>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 900, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#fef08a' }}>
+                  SIMULATED TEST SCENARIO
+                </div>
+                <div style={{ fontSize: 11, color: '#fde68a', marginTop: 1 }}>
+                  Data below is synthetic/pre-configured for demonstration and does not reflect a live forensic scan.
+                </div>
+              </div>
+            </div>
+            <div style={{
+              fontSize: 10,
+              fontFamily: 'monospace',
+              fontWeight: 800,
+              padding: '4px 10px',
+              borderRadius: 4,
+              background: '#78350f',
+              color: '#fef08a',
+              border: '1px solid #d97706',
+              whiteSpace: 'nowrap'
+            }}>
+              PRESET: {currentResult?.scenario?.toUpperCase() || 'DEMO'}
+            </div>
+          </div>
+        )}
+
         {/* Stage 1: Forensic Inspection */}
         {currentStage === 1 && (
           <div style={{ width: '100%', minHeight: '100%' }}>

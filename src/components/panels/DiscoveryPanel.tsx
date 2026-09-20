@@ -40,6 +40,8 @@ interface DiscoveredCandidate {
 
 export function DiscoveryPanel() {
   const { currentResult, setActiveTab } = useStore()
+  const isTestScenario = currentResult?.scenario === 'deepfake' || currentResult?.scenario === 'scam' || currentResult?.scenario === 'authentic'
+
   const [providers, setProviders] = useState<Record<string, ProviderInfo>>({})
   const [transparencySources, setTransparencySources] = useState<TransparencySource[]>([])
   const [transparencyNotice, setTransparencyNotice] = useState<string | null>(null)
@@ -51,18 +53,30 @@ export function DiscoveryPanel() {
   const [candidatesList, setCandidatesList] = useState<DiscoveredCandidate[]>([])
   const [queryError, setQueryError] = useState<string | null>(null)
   const [statusMsg, setStatusMsg] = useState<string | null>(null)
+  const [providerMatchCounts, setProviderMatchCounts] = useState<Record<string, { count: number; status: string }>>({})
 
   useEffect(() => {
     fetchProvidersAndTransparency()
+    setQueryError(null)
+    setStatusMsg(null)
+
     if (currentResult?.caption) {
       setTestQuery(currentResult.caption)
-    } else {
+    } else if (isTestScenario) {
       setTestQuery('Championship final broadcast 2026')
+    } else {
+      setTestQuery('')
     }
 
     const invId = currentResult?.investigationId || currentResult?.case_id
-    if (invId) {
+    // Only load pre-baked test scenario candidates if user has explicitly selected one of the test scenarios
+    if (isTestScenario && invId) {
       loadInvestigationCandidates(invId)
+    } else if (currentResult && (currentResult as any).candidates && Array.isArray((currentResult as any).candidates) && (currentResult as any).candidates.length > 0) {
+      setCandidatesList((currentResult as any).candidates)
+    } else {
+      // Clear candidates so that non-scenario scans do not inherit demo/scenario candidates
+      setCandidatesList([])
     }
   }, [currentResult])
 
@@ -105,9 +119,12 @@ export function DiscoveryPanel() {
       const list = Array.isArray(res) ? res : (res?.candidates || res?.results || [])
       if (list.length > 0) {
         setCandidatesList(list)
+      } else {
+        setCandidatesList([])
       }
     } catch (err) {
       console.warn('Could not load candidates for investigation:', err)
+      setCandidatesList([])
     }
   }
 
@@ -121,6 +138,16 @@ export function DiscoveryPanel() {
       const provResult = result?.results?.[selectedProvider] || result
       const candidates = provResult?.candidates || provResult?.results || result?.candidates || []
       
+      const counts: Record<string, { count: number; status: string }> = {}
+      if (result?.providerStatuses) {
+        Object.entries(result.providerStatuses).forEach(([k, v]: [string, any]) => {
+          counts[k] = { count: v.count || 0, status: v.status || 'OK' }
+        })
+      } else {
+        counts[selectedProvider] = { count: candidates.length, status: 'OK' }
+      }
+      setProviderMatchCounts(counts)
+
       if (candidates.length > 0) {
         const formatted: DiscoveredCandidate[] = candidates.map((c: any, i: number) => {
           const url = c.url || c.link || c.contextLink || '#'
@@ -138,17 +165,18 @@ export function DiscoveryPanel() {
             domain: domain || 'web',
             similarity: c.similarity ?? (c.matchScore ? c.matchScore / 100 : 0.88),
             thumbnailUrl: c.thumbnailUrl || c.imageUrl || c.mediaUrl || null,
-            snippet: c.snippet || c.description || c.text || 'Real-time candidate ingested from live Google Search API.'
+            snippet: c.snippet || c.description || c.text || 'Real-time candidate ingested from live search provider.'
           }
         })
         setCandidatesList(formatted)
         setStatusMsg(`Discovered ${formatted.length} live candidates via ${activeProviderObj?.name || selectedProvider}.`)
       } else {
-        const providerName = activeProviderObj?.name || selectedProvider
-        setStatusMsg(`Live query executed via ${providerName}. 0 candidates returned for "${testQuery}".`)
+        setCandidatesList([])
+        setStatusMsg('No matching appearances found across indexed providers for this asset')
       }
     } catch (err: any) {
-      setQueryError(err?.response?.data?.error || err?.message || 'Search failed')
+      setCandidatesList([])
+      setQueryError(err?.response?.data?.error || err?.message || 'Search failed across configured discovery endpoints')
     } finally {
       setIsQuerying(false)
     }
@@ -267,8 +295,13 @@ export function DiscoveryPanel() {
                 <div style={{ fontSize: 12, fontWeight: 800, color: isSelected ? '#38bdf8' : '#e2e8f0' }}>
                   {prov.name}
                 </div>
-                <div style={{ fontSize: 10, fontFamily: 'monospace', color: statusColor(prov) }}>
-                  ● {statusLabel(prov)}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 }}>
+                  <span style={{ fontSize: 10, fontFamily: 'monospace', color: statusColor(prov) }}>
+                    ● {statusLabel(prov)}
+                  </span>
+                  <span style={{ fontSize: 9, fontFamily: 'monospace', color: '#64748b' }}>
+                    {providerMatchCounts[prov.id] !== undefined ? `${providerMatchCounts[prov.id].count} matches` : '0 matches'}
+                  </span>
                 </div>
               </button>
             )
@@ -448,7 +481,7 @@ export function DiscoveryPanel() {
         {candidatesList.length === 0 ? (
           <div style={{
             background: '#0d1117',
-            border: '1px dashed #1e2d3d',
+            border: queryError ? '1px solid rgba(239, 68, 68, 0.4)' : '1px dashed #1e2d3d',
             borderRadius: 8,
             padding: '36px 20px',
             textAlign: 'center',
@@ -458,10 +491,28 @@ export function DiscoveryPanel() {
             alignItems: 'center',
             gap: 8
           }}>
-            <div style={{ fontSize: 28, marginBottom: 4 }}>🔎</div>
-            <div style={{ color: '#94a3b8', fontWeight: 800, fontSize: 14 }}>No Live Candidates Ingested Yet</div>
-            <div style={{ fontSize: 12, maxWidth: 460, lineHeight: 1.5, color: '#64748b' }}>
-              Select an active discovery adapter above (such as <strong>Google Search API</strong>) and enter a target search query, then click <strong>"Discover Candidates"</strong> to fetch real live candidate results.
+            <div style={{ fontSize: 28, marginBottom: 4 }}>
+              {queryError ? '⚠️' : '🔎'}
+            </div>
+            <div style={{ color: queryError ? '#f87171' : '#94a3b8', fontWeight: 800, fontSize: 14 }}>
+              {queryError
+                ? 'Discovery Provider Search Error'
+                : (currentResult || statusMsg
+                    ? 'No matching appearances found across indexed providers for this asset'
+                    : 'No Live Candidates Ingested Yet')}
+            </div>
+            <div style={{ fontSize: 12, maxWidth: 520, lineHeight: 1.5, color: '#64748b' }}>
+              {queryError ? (
+                <span>Error details: {queryError}. Check discovery adapter credentials or select an alternate provider.</span>
+              ) : (currentResult || statusMsg) ? (
+                <span>
+                  Search across verified discovery adapters returned <strong>0 matches</strong> for this media signature. Provider statuses are confirmed at 0 matches.
+                </span>
+              ) : (
+                <span>
+                  Select an active discovery adapter above (such as <strong>Google Search API</strong>) and enter a target search query, then click <strong>"Discover Candidates"</strong> to fetch real live candidate results.
+                </span>
+              )}
             </div>
           </div>
         ) : (

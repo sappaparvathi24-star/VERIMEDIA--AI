@@ -1,6 +1,9 @@
 // VeriMedia AI — Provider Registry & Discovery Manager
 import { YouTubeDiscoveryProvider } from './youtube.js';
 import { GoogleImagesDiscoveryProvider } from './googleImages.js';
+import { RedditDiscoveryProvider } from './reddit.js';
+import { MastodonDiscoveryProvider } from './mastodon.js';
+import { ArchiveOrgDiscoveryProvider } from './archiveOrg.js';
 import { XDiscoveryProvider } from './x.js';
 import { InstagramDiscoveryProvider } from './instagram.js';
 import { getDiscoveryHealth } from '../../proxy/searchProxy.js';
@@ -9,11 +12,12 @@ export class MultiSourceDiscoveryManager {
   constructor(config = {}) {
     this.providers = new Map();
     
-    // Register the 4 primary discovery platforms requested
-    this.registerProvider(new GoogleImagesDiscoveryProvider(config.googleImages));
+    // Register the 5 primary discovery platforms
+    this.registerProvider(new RedditDiscoveryProvider(config.reddit));
     this.registerProvider(new YouTubeDiscoveryProvider(config.youtube));
-    this.registerProvider(new XDiscoveryProvider(config.x));
-    this.registerProvider(new InstagramDiscoveryProvider(config.instagram));
+    this.registerProvider(new MastodonDiscoveryProvider(config.mastodon));
+    this.registerProvider(new ArchiveOrgDiscoveryProvider(config.archiveOrg));
+    this.registerProvider(new GoogleImagesDiscoveryProvider(config.googleImages));
   }
 
   registerProvider(provider) {
@@ -38,7 +42,12 @@ export class MultiSourceDiscoveryManager {
    */
   async searchAll(signals, opts = {}) {
     const results = [];
-    const providerStatuses = {};
+    const providerStatuses = {
+      instagram: { status: 'UNAVAILABLE', count: 0, reason: 'Closed platform' },
+      tiktok: { status: 'UNAVAILABLE', count: 0, reason: 'Closed platform' },
+      facebook: { status: 'UNAVAILABLE', count: 0, reason: 'Closed platform' },
+      x: { status: 'UNAVAILABLE', count: 0, reason: 'Closed platform' }
+    };
 
     let targetProviders = this.getAllProviders();
     if (opts.platforms && Array.isArray(opts.platforms) && opts.platforms.length > 0) {
@@ -85,6 +94,9 @@ export class MultiSourceDiscoveryManager {
 export {
   YouTubeDiscoveryProvider,
   GoogleImagesDiscoveryProvider,
+  RedditDiscoveryProvider,
+  MastodonDiscoveryProvider,
+  ArchiveOrgDiscoveryProvider,
   XDiscoveryProvider,
   InstagramDiscoveryProvider
 };

@@ -39,10 +39,10 @@ export function Dashboard() {
         <GlobalProgressBar />
 
         {/* Content View Routing */}
-        <main style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: 0, scrollBehavior: 'smooth' }}>
+        <main style={{ flex: 1, overflowX: 'hidden', padding: 0, scrollBehavior: 'smooth' }}>
           {/* Workspaces */}
           {activeTab === 'scanner' && (
-            <div style={{ minHeight: '100%', width: '100%', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column' }}>
               <InvestigationFlow />
             </div>
           )}

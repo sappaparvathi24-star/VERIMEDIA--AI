@@ -531,21 +531,20 @@ export async function searchX(query, options = {}) {
 export function getDiscoveryHealth() {
   const googleCreds = getGoogleCseCredentials();
   const ytKey = getYouTubeApiKey();
-  const instaCreds = getInstagramCredentials();
-  const xCreds = getXCredentials();
   const hasGoogleSearch = Boolean(googleCreds.apiKey && googleCreds.cx);
 
   return {
     status: 'ok',
     timestamp: new Date().toISOString(),
     providers: {
-      googleImages: {
-        id: 'googleImages',
-        name: 'Google Search & Images',
-        available: hasGoogleSearch,
-        authRequired: true,
-        status: hasGoogleSearch ? 'configured' : 'not_configured',
-        reason: hasGoogleSearch ? null : 'GOOGLE_CSE_API_KEY or GOOGLE_CSE_CX not set'
+      reddit: {
+        id: 'reddit',
+        name: 'Reddit Public Search',
+        available: true,
+        authRequired: false,
+        status: 'configured',
+        permanentUnavailable: false,
+        reason: null
       },
       youtube: {
         id: 'youtube',
@@ -553,23 +552,71 @@ export function getDiscoveryHealth() {
         available: Boolean(ytKey),
         authRequired: true,
         status: ytKey ? 'configured' : 'not_configured',
+        permanentUnavailable: false,
         reason: ytKey ? null : 'YOUTUBE_API_KEY not set'
+      },
+      mastodon: {
+        id: 'mastodon',
+        name: 'Mastodon Federated Timeline',
+        available: true,
+        authRequired: false,
+        status: 'configured',
+        permanentUnavailable: false,
+        reason: null
+      },
+      archiveOrg: {
+        id: 'archiveOrg',
+        name: 'Wayback Machine (archive.org)',
+        available: true,
+        authRequired: false,
+        status: 'configured',
+        permanentUnavailable: false,
+        reason: null
+      },
+      googleImages: {
+        id: 'googleImages',
+        name: 'Google Search & Images',
+        available: hasGoogleSearch,
+        authRequired: true,
+        status: hasGoogleSearch ? 'configured' : 'not_configured',
+        permanentUnavailable: false,
+        reason: hasGoogleSearch ? null : 'GOOGLE_CSE_API_KEY or GOOGLE_CSE_CX not set'
+      },
+      instagram: {
+        id: 'instagram',
+        name: 'Instagram Graph API',
+        available: false,
+        authRequired: true,
+        status: 'unavailable',
+        permanentUnavailable: true,
+        reason: 'Closed platform: direct unauthenticated media indexing not permitted by Meta TOS'
+      },
+      tiktok: {
+        id: 'tiktok',
+        name: 'TikTok Research API',
+        available: false,
+        authRequired: true,
+        status: 'unavailable',
+        permanentUnavailable: true,
+        reason: 'Closed platform: restricted partner access required'
+      },
+      facebook: {
+        id: 'facebook',
+        name: 'Facebook / Meta Graph API',
+        available: false,
+        authRequired: true,
+        status: 'unavailable',
+        permanentUnavailable: true,
+        reason: 'Closed platform: public feed indexing restricted'
       },
       x: {
         id: 'x',
         name: 'X (Twitter)',
-        available: Boolean(xCreds.accessToken || xCreds.apiKey || hasGoogleSearch),
-        authRequired: false,
-        status: (xCreds.accessToken || xCreds.apiKey || hasGoogleSearch) ? 'configured' : 'not_configured',
-        reason: (xCreds.accessToken || xCreds.apiKey || hasGoogleSearch) ? null : 'X API credentials or Google CSE (site:x.com) not set'
-      },
-      instagram: {
-        id: 'instagram',
-        name: 'Instagram',
-        available: Boolean(instaCreds.accessToken || hasGoogleSearch),
-        authRequired: false,
-        status: (instaCreds.accessToken || hasGoogleSearch) ? 'configured' : 'not_configured',
-        reason: (instaCreds.accessToken || hasGoogleSearch) ? null : 'Instagram Access Token or Google CSE (site:instagram.com) not set'
+        available: false,
+        authRequired: true,
+        status: 'unavailable',
+        permanentUnavailable: true,
+        reason: 'Closed platform: paywalled enterprise API only'
       }
     }
   };
