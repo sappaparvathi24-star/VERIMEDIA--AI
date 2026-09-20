@@ -115,4 +115,80 @@ test('Security Route Audit & Safeguards Test Suite', async (t) => {
       if (originalKeys !== undefined) process.env.ALLOWED_API_KEYS = originalKeys;
     }
   });
+
+  await t.test('6. [Regression] /api/gemini/explain returns 200 with explanation field (Gemini or fallback)', async () => {
+    const appModule = await import('../server.js');
+    const appInstance = appModule.default || appModule.app;
+    const server = appInstance.listen(0);
+    const port = server.address().port;
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/api/gemini/explain`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ signalKey: 'jpeg_artifact', signalName: 'ELA', value: 0.84 })
+      });
+      assert.strictEqual(res.status, 200, '/api/gemini/explain must return 200');
+      const body = await res.json();
+      assert.ok(typeof body.explanation === 'string' && body.explanation.length > 10, 'explanation field must be a non-empty string');
+      assert.ok(typeof body.source === 'string', 'source field must be present');
+    } finally {
+      server.close();
+    }
+  });
+
+  await t.test('7. [Regression] /api/gemini/explain returns 400 when signalKey is missing', async () => {
+    const appModule = await import('../server.js');
+    const appInstance = appModule.default || appModule.app;
+    const server = appInstance.listen(0);
+    const port = server.address().port;
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/api/gemini/explain`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ signalName: 'ELA' })
+      });
+      assert.strictEqual(res.status, 400, '/api/gemini/explain must return 400 when signalKey is missing');
+    } finally {
+      server.close();
+    }
+  });
+
+  await t.test('8. [Regression] /api/gemini/multimodal-analyze returns 200 with analysis field', async () => {
+    const appModule = await import('../server.js');
+    const appInstance = appModule.default || appModule.app;
+    const server = appInstance.listen(0);
+    const port = server.address().port;
+    // 1x1 transparent PNG
+    const tinyPng = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwADhQGAWjR9awAAAABJRU5ErkJggg==';
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/api/gemini/multimodal-analyze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageBase64: tinyPng, mimeType: 'image/png', filename: 'test.png' })
+      });
+      assert.strictEqual(res.status, 200, '/api/gemini/multimodal-analyze must return 200');
+      const body = await res.json();
+      assert.ok(typeof body.analysis === 'string' && body.analysis.length > 5, 'analysis field must be a non-empty string');
+      assert.ok(typeof body.source === 'string', 'source field must be present');
+    } finally {
+      server.close();
+    }
+  });
+
+  await t.test('9. [Regression] /api/gemini/investigation-brief returns 404 for unknown investigationId', async () => {
+    const appModule = await import('../server.js');
+    const appInstance = appModule.default || appModule.app;
+    const server = appInstance.listen(0);
+    const port = server.address().port;
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/api/gemini/investigation-brief`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ investigationId: 'nonexistent-xyz-404' })
+      });
+      assert.strictEqual(res.status, 404, '/api/gemini/investigation-brief must return 404 for unknown id');
+    } finally {
+      server.close();
+    }
+  });
 });

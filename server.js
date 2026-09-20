@@ -291,7 +291,7 @@ function getGenAI() {
 async function callGemini(contents, config = {}) {
   const ai = getGenAI();
   if (!ai) return null;
-  const models = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'];
+  const models = ['gemini-flash-lite-latest', 'gemini-flash-latest'];
   for (const model of models) {
     try {
       const response = await ai.models.generateContent({
@@ -359,7 +359,7 @@ function healthResponse(req, res) {
     uptime_seconds: Math.floor(process.uptime()),
     total_scans: allArtifacts.filter(a => !a.isDemo).length,
     total_investigations: allInvestigations.filter(i => !i.isDemo).length,
-    models: ['gemini-3.1-flash-lite', 'gemini-flash-latest', 'gemini-3.8-flash'],
+    models: ['gemini-flash-lite-latest', 'gemini-flash-latest'],
     timestamp: new Date().toISOString()
   });
 }
@@ -770,6 +770,127 @@ Return ONLY a valid JSON object matching this exact schema:
 app.post('/analyze', analysisLimiter, handleAnalyze);
 app.post('/api/analyze', analysisLimiter, handleAnalyze);
 app.post('/api/v1/analyze', analysisLimiter, handleAnalyze);
+
+// ---------------------------------------------------------------------------
+// POST /api/gemini/explain — Explain a forensic signal in plain language
+// ---------------------------------------------------------------------------
+app.post('/api/gemini/explain', chatLimiter, async (req, res) => {
+  try {
+    const { signalKey = '', signalName = '', value, context = '', mediaType = 'image' } = req.body;
+    if (!signalKey) return res.status(400).json({ error: 'signalKey is required' });
+
+    const valueStr = value != null ? ` Current measured value: ${value}.` : '';
+    const prompt = `You are a forensic media analyst. Explain in 2-3 clear sentences what the forensic signal "${signalName || signalKey}" means for a ${mediaType} file, why the value${valueStr} is significant, and what it indicates about potential manipulation or authenticity. Context: ${context || 'general forensic scan'}. Be specific and factual.`;
+
+    const geminiResult = await callGemini(prompt, { maxOutputTokens: 256, temperature: 0.3 });
+    if (geminiResult?.text) {
+      return res.json({ explanation: geminiResult.text, source: geminiResult.model });
+    }
+
+    // Rule-based fallback explanations
+    const fallbacks = {
+      jpeg_artifact: 'Error Level Analysis (ELA) measures compression block residuals. Elevated values indicate re-encoding or localized editing inconsistent with the file\'s reported compression history.',
+      noise_pattern: 'Sensor noise PRNU (Photo-Response Non-Uniformity) fingerprints the silicon wafer of the capturing camera. A mismatch between measured noise and reported camera model indicates the image was not captured by the claimed device.',
+      edge_consistency: 'Edge coherence measures boundary gradient continuity. Low values reveal splicing, clone-stamping, or inpainting where pixel neighborhoods were replaced.',
+      metadata_coherence: 'EXIF metadata coherence checks whether embedded hardware and timestamp data is internally consistent and matches known camera firmware signatures.',
+      face_landmark: 'Facial landmark mesh analysis detects GAN or diffusion-based face synthesis by checking for boundary blending artifacts, specular highlight misalignment, and unnatural skin texture distributions.',
+      temporal_mismatch: 'Temporal mismatch measures inter-frame motion vector continuity. Discontinuities indicate frame insertion, removal, or synthetic interpolation.',
+      watermark_presence: 'Watermark detection identifies removal artifacts — residual frequency-domain remnants left when a broadcast watermark or steganographic tag has been stripped.',
+      color_histogram: 'Color histogram analysis examines chroma sub-sampling and gamut distribution for signs of re-encoding, color grading, or compositing from a different source.',
+    };
+    const explanation = fallbacks[signalKey] || `${signalName || signalKey} is a forensic integrity signal. The measured value indicates the degree of anomaly detected; higher values generally indicate greater deviation from expected authentic media characteristics.`;
+    return res.json({ explanation, source: 'rule-based-fallback' });
+  } catch (err) {
+    console.error('[/api/gemini/explain]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/gemini/multimodal-analyze — Vision analysis of a base64 image
+// ---------------------------------------------------------------------------
+app.post('/api/gemini/multimodal-analyze', analysisLimiter, async (req, res) => {
+  try {
+    const { imageBase64, mimeType = 'image/jpeg', prompt: userPrompt, filename = 'image' } = req.body;
+    if (!imageBase64) return res.status(400).json({ error: 'imageBase64 is required' });
+
+    // Strip data: URI prefix if present
+    const base64Data = imageBase64.replace(/^data:[^;]+;base64,/, '');
+    const ai = getGenAI();
+
+    if (ai) {
+      const systemPrompt = userPrompt || 'You are a forensic media analyst. Describe what you see in this image and identify any visual signs of manipulation, AI generation, deepfake synthesis, splicing, or authenticity concerns. Be specific and factual.';
+      const contents = [
+        {
+          role: 'user',
+          parts: [
+            { inlineData: { mimeType, data: base64Data } },
+            { text: systemPrompt }
+          ]
+        }
+      ];
+      const models = ['gemini-flash-lite-latest', 'gemini-flash-latest'];
+      for (const model of models) {
+        try {
+          const response = await ai.models.generateContent({ model, contents, config: { temperature: 0.2, maxOutputTokens: 512 } });
+          if (response?.text) {
+            return res.json({ analysis: response.text, source: model, filename });
+          }
+        } catch (_) {}
+      }
+    }
+
+    return res.json({
+      analysis: `Visual inspection of "${filename}": Gemini Vision is unavailable (API key not configured or quota exceeded). Upload the image through the Forensic Panel for pixel-level ELA and EXIF analysis via the local forensic pipeline.`,
+      source: 'unavailable-fallback',
+      filename
+    });
+  } catch (err) {
+    console.error('[/api/gemini/multimodal-analyze]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/gemini/investigation-brief — Generate investigation dossier brief
+// ---------------------------------------------------------------------------
+app.post('/api/gemini/investigation-brief', chatLimiter, async (req, res) => {
+  try {
+    const { investigationId, userNotes = '' } = req.body;
+    if (!investigationId) return res.status(400).json({ error: 'investigationId is required' });
+
+    const inv = provenanceService.getInvestigation(investigationId);
+    if (!inv) return res.status(404).json({ error: `Investigation ${investigationId} not found` });
+
+    const artifacts = provenanceService.getArtifacts(investigationId);
+    const findings = provenanceService.getFindings ? provenanceService.getFindings(investigationId) : [];
+
+    const invSummary = `
+Investigation: "${inv.title}"
+Status: ${inv.status || 'active'}
+Created: ${inv.createdAt}
+Artifacts: ${artifacts.length} media file(s) — ${artifacts.map(a => `${a.filename} (${a.mimeType})`).join(', ') || 'none'}
+Findings: ${findings.length} forensic finding(s)
+${userNotes ? `Analyst Notes: ${userNotes}` : ''}
+`.trim();
+
+    const prompt = `You are a senior forensic intelligence analyst. Write a concise 3-paragraph executive investigation brief for the following case. Focus on what is known, what the forensic evidence shows, and what action is recommended. Do not fabricate specifics not present in the data.\n\n${invSummary}`;
+
+    const geminiResult = await callGemini(prompt, { maxOutputTokens: 512, temperature: 0.4 });
+    if (geminiResult?.text) {
+      return res.json({ dossier: geminiResult.text, source: geminiResult.model, investigationId });
+    }
+
+    return res.json({
+      dossier: `Investigation Brief: "${inv.title}"\n\nThis investigation contains ${artifacts.length} artifact(s) and ${findings.length} forensic finding(s). ${findings.length > 0 ? 'Forensic analysis has been completed.' : 'No forensic findings are recorded yet — upload media to trigger analysis.'} ${userNotes ? `Analyst notes: ${userNotes}` : ''}\n\nRecommended action: Review forensic findings in the Forensic Panel and escalate if anomalies are confirmed.`,
+      source: 'rule-based-fallback',
+      investigationId
+    });
+  } catch (err) {
+    console.error('[/api/gemini/investigation-brief]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ---------------------------------------------------------------------------
 // POST /dmca-reasoning and POST /dmca/generate
@@ -2863,7 +2984,7 @@ Respond ONLY with valid JSON conforming to this structure:
   "searchQueriesUsed": ["${targetQuery} earliest original source", "${targetQuery} first publication date"]
 }`;
 
-    const candidateModels = ['gemini-3.6-flash', 'gemini-3.1-flash-lite', 'gemini-3.8-flash', 'gemini-flash-latest'];
+    const candidateModels = ['gemini-flash-lite-latest', 'gemini-flash-latest'];
     for (const model of candidateModels) {
       try {
         const response = await ai.models.generateContent({
