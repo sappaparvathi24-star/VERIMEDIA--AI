@@ -30,7 +30,7 @@ export function DiscoveryPanel() {
   const { currentResult, setActiveTab } = useStore()
   const [providers, setProviders] = useState<Record<string, ProviderInfo>>({})
   const [providersLoading, setProvidersLoading] = useState(true)
-  const [selectedProvider, setSelectedProvider] = useState<string>('reddit')
+  const [selectedProvider, setSelectedProvider] = useState<string>('googleImages')
   const [testQuery, setTestQuery] = useState('')
   const [isQuerying, setIsQuerying] = useState(false)
   const [candidatesList, setCandidatesList] = useState<DiscoveredCandidate[]>([])
@@ -48,54 +48,6 @@ export function DiscoveryPanel() {
     const invId = currentResult?.investigationId || currentResult?.case_id
     if (invId) {
       loadInvestigationCandidates(invId)
-    } else {
-      // Seed initial sample candidates for preview
-      setCandidatesList([
-        {
-          id: 'CAND-01',
-          title: 'Official Broadcast Stream Master 1080p',
-          url: 'https://cdn.rights-holder.org/broadcast/final2026.mp4',
-          author: 'RightsHolderOfficial',
-          publishedAt: '2026-06-01T18:00:00Z',
-          platform: 'Web / CDN',
-          domain: 'rights-holder.org',
-          similarity: 1.0,
-          snippet: 'Root broadcast transmission stream with uncompressed chroma and embedded SMPTE timecode.'
-        },
-        {
-          id: 'CAND-02',
-          title: 'Full Match Highlights & Dramatic Finish',
-          url: 'https://youtube.com/watch?v=k9X812m_live',
-          author: 'SportsCentral',
-          publishedAt: '2026-06-01T18:30:00Z',
-          platform: 'YouTube',
-          domain: 'youtube.com',
-          similarity: 0.96,
-          snippet: 'Direct 16:9 syndicate capture with secondary H.264 re-encode and channel watermark overlay.'
-        },
-        {
-          id: 'CAND-03',
-          title: 'Incredible Play Clip [Cropped 9:16 Vertical]',
-          url: 'https://tiktok.com/@viralclips/video/7238192837',
-          author: 'viralclips',
-          publishedAt: '2026-06-01T20:15:00Z',
-          platform: 'TikTok',
-          domain: 'tiktok.com',
-          similarity: 0.89,
-          snippet: 'Vertical 9:16 aspect crop removing broadcast scorebug. Watermark stripped.'
-        },
-        {
-          id: 'CAND-04',
-          title: 'Controversial Moment with AI Voice Commentary',
-          url: 'https://x.com/sports_insider/status/1792839182',
-          author: 'sports_insider',
-          publishedAt: '2026-06-01T22:40:00Z',
-          platform: 'X / Twitter',
-          domain: 'x.com',
-          similarity: 0.82,
-          snippet: 'Synthetic audio replacement replacing broadcast commentary with cloned voiceover.'
-        }
-      ])
     }
   }, [currentResult])
 
@@ -117,8 +69,13 @@ export function DiscoveryPanel() {
       const data = await getProviders()
       if (data?.providers) {
         setProviders(data.providers)
-        const first = Object.values(data.providers as Record<string, ProviderInfo>).find(p => p.available && !p.permanentUnavailable)
-        if (first) setSelectedProvider(first.id)
+        const provs = data.providers as Record<string, ProviderInfo>
+        if (provs.googleImages?.available) {
+          setSelectedProvider('googleImages')
+        } else {
+          const first = Object.values(provs).find(p => p.available && !p.permanentUnavailable)
+          if (first) setSelectedProvider(first.id)
+        }
       }
     } catch (e) {
       console.error('Failed to load providers', e)
@@ -135,24 +92,33 @@ export function DiscoveryPanel() {
     try {
       const result = await searchMultiSource(testQuery.trim(), [selectedProvider])
       const provResult = result?.results?.[selectedProvider] || result
-      const candidates = provResult?.candidates || provResult?.results || []
+      const candidates = provResult?.candidates || provResult?.results || result?.candidates || []
       
       if (candidates.length > 0) {
-        const formatted = candidates.map((c: any, i: number) => ({
-          id: c.id || `CAND-SEARCH-${Date.now()}-${i}`,
-          title: c.title || c.url || 'Discovered Media Candidate',
-          url: c.url || '#',
-          author: c.author || 'Unknown Uploader',
-          publishedAt: c.publishedAt || new Date().toISOString(),
-          platform: c.platform || activeProviderObj?.name || selectedProvider,
-          domain: c.domain || (c.url ? new URL(c.url).hostname : selectedProvider),
-          similarity: c.similarity ?? (0.75 + Math.random() * 0.2),
-          snippet: c.snippet || c.description || 'Normalized candidate ingested from live provider index.'
-        }))
+        const formatted: DiscoveredCandidate[] = candidates.map((c: any, i: number) => {
+          const url = c.url || c.link || c.contextLink || '#'
+          let domain = c.domain || c.displayLink || ''
+          if (!domain && url && url !== '#') {
+            try { domain = new URL(url).hostname.replace(/^www\./, '') } catch (_) {}
+          }
+          return {
+            id: c.id || `CAND-LIVE-${Date.now()}-${i}`,
+            title: c.title || c.snippet?.slice(0, 60) || 'Discovered Media Candidate',
+            url,
+            author: c.author || c.displayLink || domain || 'Indexed Web Source',
+            publishedAt: c.publishedAt || c.retrievedAt || new Date().toISOString(),
+            platform: c.platform || activeProviderObj?.name || selectedProvider,
+            domain: domain || 'web',
+            similarity: c.similarity ?? (c.matchScore ? c.matchScore / 100 : 0.88),
+            thumbnailUrl: c.thumbnailUrl || c.imageUrl || c.mediaUrl || null,
+            snippet: c.snippet || c.description || c.text || 'Real-time candidate ingested from live Google Search API.'
+          }
+        })
         setCandidatesList(formatted)
-        setStatusMsg(`Discovered ${formatted.length} candidates via ${activeProviderObj?.name || selectedProvider}.`)
+        setStatusMsg(`Discovered ${formatted.length} live candidates via ${activeProviderObj?.name || selectedProvider}.`)
       } else {
-        setStatusMsg(`Search completed. 0 candidates found for "${testQuery}".`)
+        const providerName = activeProviderObj?.name || selectedProvider
+        setStatusMsg(`Live query executed via ${providerName}. 0 candidates returned for "${testQuery}".`)
       }
     } catch (err: any) {
       setQueryError(err?.response?.data?.error || err?.message || 'Search failed')
@@ -374,8 +340,28 @@ export function DiscoveryPanel() {
           <span style={{ fontSize: 11, color: '#64748b' }}>Sorted by Perceptual Hash Similarity</span>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {candidatesList.map((cand, idx) => {
+        {candidatesList.length === 0 ? (
+          <div style={{
+            background: '#0d1117',
+            border: '1px dashed #1e2d3d',
+            borderRadius: 8,
+            padding: '36px 20px',
+            textAlign: 'center',
+            color: '#64748b',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 8
+          }}>
+            <div style={{ fontSize: 28, marginBottom: 4 }}>🔎</div>
+            <div style={{ color: '#94a3b8', fontWeight: 800, fontSize: 14 }}>No Live Candidates Ingested Yet</div>
+            <div style={{ fontSize: 12, maxWidth: 460, lineHeight: 1.5, color: '#64748b' }}>
+              Select an active discovery adapter above (such as <strong>Google Search API</strong>) and enter a target search query, then click <strong>"Discover Candidates"</strong> to fetch real live candidate results.
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {candidatesList.map((cand, idx) => {
             const sim = cand.similarity ?? 0.85
             const simPct = Math.round(sim * 100)
             const isOriginal = simPct >= 99
@@ -501,6 +487,7 @@ export function DiscoveryPanel() {
             )
           })}
         </div>
+        )}
       </div>
     </div>
   )

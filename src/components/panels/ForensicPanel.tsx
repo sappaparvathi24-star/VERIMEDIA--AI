@@ -5,7 +5,7 @@ import { Tooltip } from '../ui/Tooltip'
 import { uploadArtifactAsync, pollForensicJob } from '../../services/api'
 import { ForensicViewer } from './ForensicViewer'
 import type { Scenario } from '../../types'
-import { Columns2, Activity, ShieldCheck, Sparkles } from 'lucide-react'
+import { Columns2, Activity, ShieldCheck, Sparkles, RefreshCw } from 'lucide-react'
 
 const PRESETS: { key: Scenario; label: string; icon: string }[] = [
   { key: 'deepfake', label: 'AI Deepfake', icon: '🤖' },
@@ -258,6 +258,28 @@ export function ForensicPanel() {
           }}>
             {currentResult.ml?.label === 'SAFE' ? 'AUTHENTIC' : (currentResult.ml?.label || 'SUSPECT')}
           </div>
+
+          <button
+            onClick={() => {
+              useStore.getState().setCurrentResult(null)
+              useStore.getState().setActiveTab('scanner')
+            }}
+            style={{
+              padding: '6px 14px',
+              borderRadius: 6,
+              background: 'linear-gradient(135deg, #00d4ff 0%, #0077ff 100%)',
+              color: '#040d1a',
+              border: 'none',
+              fontSize: 11,
+              fontWeight: 800,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6
+            }}
+          >
+            <RefreshCw size={13} /> Check Another Image
+          </button>
         </div>
       </div>
 

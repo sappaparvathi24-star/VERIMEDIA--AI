@@ -359,11 +359,32 @@ export function EvidenceReasoningCard() {
       </div>
 
       {/* Action Footer */}
-      <div style={{ display: 'flex', gap: 10, paddingTop: 6, borderTop: '1px solid #1e2d3d' }}>
+      <div style={{ display: 'flex', gap: 10, paddingTop: 6, borderTop: '1px solid #1e2d3d', flexWrap: 'wrap' }}>
+        <button
+          onClick={() => useStore.getState().clearResults()}
+          style={{
+            flex: '1 1 auto',
+            background: 'linear-gradient(135deg, #00d4ff 0%, #0077ff 100%)',
+            border: 'none',
+            color: '#040d1a',
+            padding: '10px 16px',
+            borderRadius: 6,
+            fontSize: 12,
+            fontWeight: 800,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 6
+          }}
+        >
+          🔄 Check Another Image
+        </button>
+
         <button
           onClick={() => setShowEvidenceModal(true)}
           style={{
-            flex: 1,
+            flex: '1 1 auto',
             background: 'rgba(56, 189, 248, 0.12)',
             border: '1px solid rgba(56, 189, 248, 0.3)',
             color: '#38bdf8',
@@ -381,7 +402,7 @@ export function EvidenceReasoningCard() {
           <button
             onClick={() => setShowDMCAModal(true)}
             style={{
-              flex: 1,
+              flex: '1 1 auto',
               background: 'rgba(239, 68, 68, 0.2)',
               border: '1px solid rgba(239, 68, 68, 0.4)',
               color: '#f87171',

@@ -23,6 +23,7 @@ import {
   ZoomIn,
   Eye,
   Info,
+  RefreshCw,
   FileText,
   Clock,
   Terminal,
@@ -954,8 +955,34 @@ export function SequentialForensicReport({ result, onClose, onFileDMCA }: Props)
           )}
         </div>
 
-        {/* Next / Continue Interactive Button */}
-        <div>
+        {/* Next / Continue Interactive Button & Check Another Image */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button
+            onClick={() => {
+              useStore.getState().setCurrentResult(null)
+              useStore.getState().setActiveTab('scanner')
+              useStore.getState().setShowEvidenceModal(false)
+              if (onClose) onClose()
+            }}
+            style={{
+              padding: '12px 20px',
+              borderRadius: 8,
+              background: '#1e293b',
+              border: '1px solid #3b82f6',
+              color: '#38bdf8',
+              fontSize: 13,
+              fontWeight: 800,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <RefreshCw size={15} />
+            <span>Check Another Image</span>
+          </button>
+
           {!isLastStep ? (
             <button
               onClick={() => setCurrentStepIndex(c => Math.min(STEPS.length - 1, c + 1))}

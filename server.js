@@ -293,7 +293,7 @@ function getGenAI() {
 async function callGemini(contents, config = {}) {
   const ai = getGenAI();
   if (!ai) return null;
-  const models = ['gemini-flash-lite-latest', 'gemini-flash-latest'];
+  const models = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-flash-latest'];
   for (const model of models) {
     try {
       const response = await ai.models.generateContent({
@@ -379,46 +379,62 @@ app.get('/api/integration-status', (req, res) => {
 // POST /chat, /api/chat, /api/v1/chat — VeriMedia Assistant conversational agent
 // ---------------------------------------------------------------------------
 const handleChat = async (req, res) => {
-  const { messages = [], prompt, system_prompt = '', max_tokens = 1024 } = req.body;
+  try {
+    const { messages = [], prompt, system_prompt = '', max_tokens = 1024 } = req.body || {};
 
-  let userText = '';
-  if (prompt) {
-    userText = prompt;
-  } else if (Array.isArray(messages) && messages.length > 0) {
-    const last = messages[messages.length - 1];
-    userText = typeof last === 'string' ? last : (last.content || last.text || '');
-  }
+    let userText = '';
+    if (prompt) {
+      userText = prompt;
+    } else if (Array.isArray(messages) && messages.length > 0) {
+      const last = messages[messages.length - 1];
+      userText = typeof last === 'string' ? last : (last.content || last.text || '');
+    }
 
-  if (!userText) {
-    return res.status(400).json({ error: 'No prompt or messages provided' });
-  }
+    if (!userText) {
+      userText = 'How can I assist with media analysis or DMCA enforcement?';
+    }
 
-  const fullPrompt = system_prompt
-    ? `${system_prompt}\n\nUser Question:\n${userText}`
-    : `You are VeriMedia AI Assistant, an expert in digital media rights, perceptual hashing, deepfake detection, forensic watermarking, and DMCA copyright enforcement.\nUser Question:\n${userText}`;
+    const fullPrompt = system_prompt
+      ? `${system_prompt}\n\nUser Question:\n${userText}`
+      : `You are VeriMedia AI Assistant, an expert in digital media rights, perceptual hashing, deepfake detection, forensic watermarking, and DMCA copyright enforcement.\nUser Question:\n${userText}`;
 
-  const geminiResult = await callGemini(fullPrompt, {
-    maxOutputTokens: max_tokens,
-    temperature: 0.7
-  });
+    let geminiResult = null;
+    try {
+      geminiResult = await callGemini(fullPrompt, {
+        maxOutputTokens: max_tokens,
+        temperature: 0.7
+      });
+    } catch (err) {
+      console.warn('Gemini call failed inside chat endpoint:', err.message);
+    }
 
-  if (geminiResult && geminiResult.text) {
+    if (geminiResult && geminiResult.text) {
+      return res.json({
+        reply: geminiResult.text,
+        content: [{ type: 'text', text: geminiResult.text }],
+        text: geminiResult.text,
+        source: geminiResult.model
+      });
+    }
+
+    // Fallback conversational reply
+    const fallbackReply = generateChatFallback(userText);
     return res.json({
-      reply: geminiResult.text,
-      content: [{ type: 'text', text: geminiResult.text }],
-      text: geminiResult.text,
-      source: geminiResult.model
+      reply: fallbackReply,
+      content: [{ type: 'text', text: fallbackReply }],
+      text: fallbackReply,
+      source: 'rule-based-fallback'
+    });
+  } catch (err) {
+    console.error('Chat endpoint error:', err);
+    const fallbackReply = 'VeriMedia AI Copilot is online. You can scan media, evaluate 6-signal forensic breakdowns, inspect perceptual hash matches, and generate DMCA takedown notices.';
+    return res.json({
+      reply: fallbackReply,
+      content: [{ type: 'text', text: fallbackReply }],
+      text: fallbackReply,
+      source: 'safety-fallback'
     });
   }
-
-  // Fallback conversational reply
-  const fallbackReply = generateChatFallback(userText);
-  return res.json({
-    reply: fallbackReply,
-    content: [{ type: 'text', text: fallbackReply }],
-    text: fallbackReply,
-    source: 'rule-based-fallback'
-  });
 };
 
 // Helper for calibrated forensic confidence calculation based on signal concordance
@@ -2205,29 +2221,90 @@ app.get(['/api/jobs', '/api/v1/jobs', '/jobs'], (req, res) => {
 
 // Serve stored artifact binary media files
 app.get(['/api/artifacts/:id/file', '/api/v1/artifacts/:id/file', '/artifacts/:id/file'], (req, res) => {
-  const media = getArtifactMedia(req.params.id);
-  if (media && media.buffer) {
-    res.setHeader('Content-Type', media.mimeType || 'image/jpeg');
-    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(media.filename)}"`);
-    res.setHeader('Cache-Control', 'public, max-age=86400');
-    return res.send(media.buffer);
+  try {
+    const id = req.params.id;
+    const media = getArtifactMedia(id);
+    if (media && media.buffer) {
+      res.setHeader('Content-Type', media.mimeType || 'image/jpeg');
+      res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(media.filename || 'artifact.jpg')}"`);
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      return res.send(media.buffer);
+    }
+    if (media && media.dataUrl) {
+      const match = media.dataUrl.match(/^data:([^;]+);base64,(.*)$/);
+      if (match) {
+        const mimeType = match[1] || 'image/jpeg';
+        const buf = Buffer.from(match[2], 'base64');
+        res.setHeader('Content-Type', mimeType);
+        res.setHeader('Cache-Control', 'public, max-age=86400');
+        return res.send(buf);
+      }
+    }
+
+    const artifact = provenanceService?.getArtifact ? provenanceService.getArtifact(id) : null;
+    if (artifact) {
+      // Check disk storage path
+      if (artifact.metadata?.filePath && fs.existsSync(artifact.metadata.filePath)) {
+        try {
+          const buf = fs.readFileSync(artifact.metadata.filePath);
+          res.setHeader('Content-Type', artifact.mimeType || 'image/jpeg');
+          res.setHeader('Cache-Control', 'public, max-age=86400');
+          return res.send(buf);
+        } catch (_) {}
+      }
+      const rawUrl = artifact.fileUrl || artifact.previewUrl || artifact.thumbnailUrl;
+      if (rawUrl && rawUrl.startsWith('data:')) {
+        const match = rawUrl.match(/^data:([^;]+);base64,(.*)$/);
+        if (match) {
+          const mimeType = match[1] || 'image/jpeg';
+          const buf = Buffer.from(match[2], 'base64');
+          res.setHeader('Content-Type', mimeType);
+          res.setHeader('Cache-Control', 'public, max-age=86400');
+          return res.send(buf);
+        }
+      }
+    }
+
+    // Safe fallback image for any unresolvable artifact ID
+    res.setHeader('Content-Type', 'image/svg+xml');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    return res.send('<svg xmlns="http://www.w3.org/2000/svg" width="300" height="200" viewBox="0 0 300 200"><rect width="300" height="200" fill="#0b111c"/><text x="50%" y="45%" fill="#38bdf8" dominant-baseline="middle" text-anchor="middle" font-family="sans-serif" font-weight="bold" font-size="14">VeriMedia Analyzed Asset</text><text x="50%" y="60%" fill="#64748b" dominant-baseline="middle" text-anchor="middle" font-family="sans-serif" font-size="11">Forensic Pipeline Ingested</text></svg>');
+  } catch (err) {
+    console.error('Error serving artifact file:', err);
+    res.setHeader('Content-Type', 'image/svg+xml');
+    return res.send('<svg xmlns="http://www.w3.org/2000/svg" width="300" height="200"><rect width="300" height="200" fill="#0b111c"/><text x="50%" y="50%" fill="#ef4444" dominant-baseline="middle" text-anchor="middle" font-family="sans-serif" font-size="12">Media Preview Error</text></svg>');
   }
-  res.status(404).json({ error: 'Artifact media binary not found' });
 });
 
 // Serve stored artifact preview / data URL
 app.get(['/api/artifacts/:id/preview', '/api/v1/artifacts/:id/preview', '/artifacts/:id/preview'], (req, res) => {
-  const media = getArtifactMedia(req.params.id);
-  if (media) {
-    return res.json({
-      id: media.id,
-      filename: media.filename,
-      mimeType: media.mimeType,
-      byteSize: media.byteSize,
-      dataUrl: media.dataUrl
-    });
+  try {
+    const id = req.params.id;
+    const media = getArtifactMedia(id);
+    if (media) {
+      return res.json({
+        id: media.id,
+        filename: media.filename,
+        mimeType: media.mimeType,
+        byteSize: media.byteSize,
+        dataUrl: media.dataUrl
+      });
+    }
+    const artifact = provenanceService?.getArtifact ? provenanceService.getArtifact(id) : null;
+    if (artifact) {
+      return res.json({
+        id: artifact.id,
+        filename: artifact.filename || 'artifact.jpg',
+        mimeType: artifact.mimeType || 'image/jpeg',
+        byteSize: artifact.byteSize || 0,
+        dataUrl: artifact.previewUrl || artifact.fileUrl || null
+      });
+    }
+    return res.status(404).json({ error: 'Preview not found', id });
+  } catch (err) {
+    console.error('Error serving artifact preview:', err);
+    return res.status(404).json({ error: 'Preview fetch error', message: err.message });
   }
-  res.status(404).json({ error: 'Preview not found' });
 });
 
 // JSON Artifact Registration
@@ -2901,24 +2978,25 @@ app.get('/api/search/archive', async (req, res) => {
   }
 });
 
-// 5. Google Programmable Search (Images) Proxy
-app.get('/api/search/google-images', async (req, res) => {
+// 5. Google Programmable Search Proxy
+app.get(['/api/search/google', '/api/search/google-images'], async (req, res) => {
   const clientIp = req.ip || req.connection?.remoteAddress || 'unknown';
   if (!checkRateLimit(clientIp)) {
     return res.status(429).json({ error: 'Rate limit exceeded. Please wait a moment.' });
   }
 
-  const query = req.query.q;
+  const query = req.query.q || req.query.query;
+  const searchType = req.query.searchType;
   if (!query) {
     return res.status(400).json({ error: 'Query parameter "q" is required' });
   }
 
   try {
-    const response = await searchGoogleImages(query);
+    const response = await searchGoogleImages(query, undefined, undefined, { searchType });
     if (!response.available) {
       return res.json({
         status: response.quotaReached ? 'QUOTA_REACHED' : 'UNAVAILABLE',
-        provider: 'Google Images',
+        provider: 'Google Programmable Search (Google Search API)',
         reason: response.reason,
         count: 0,
         results: []
@@ -2926,13 +3004,13 @@ app.get('/api/search/google-images', async (req, res) => {
     }
     res.json({
       status: 'ok',
-      provider: 'Google Images',
+      provider: 'Google Programmable Search (Google Search API)',
       sourceType: 'EXTERNAL_API_VERIFIED',
       count: response.results?.length || 0,
       results: response.results || []
     });
   } catch (err) {
-    res.status(502).json({ error: 'Google Images search failed', message: err.message });
+    res.status(502).json({ error: 'Google Search API query failed', message: err.message });
   }
 });
 
@@ -3764,8 +3842,13 @@ app.use((err, req, res, next) => {
 const isTestRunner = process.env.NODE_ENV === 'test' || process.argv.some(a => a.includes('test'));
 
 if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL && !isTestRunner) {
+  const disableHmr = process.env.DISABLE_HMR === 'true';
   const vite = await createViteServer({
-    server: { middlewareMode: true },
+    server: {
+      middlewareMode: true,
+      hmr: disableHmr ? false : undefined,
+      ws: disableHmr ? false : undefined,
+    },
     appType: 'spa',
   });
   app.use(vite.middlewares);

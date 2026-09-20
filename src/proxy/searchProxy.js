@@ -310,7 +310,7 @@ export async function searchGoogleImages(query, apiKey, cx) {
   const effectiveKey = apiKey !== undefined ? apiKey : creds.apiKey;
   const effectiveCx = cx !== undefined ? cx : creds.cx;
 
-  if (!query || !query.trim()) return [];
+  if (!query || !query.trim()) return { available: true, results: [] };
   if (!effectiveKey || !effectiveCx) {
     return {
       available: false,
@@ -328,7 +328,7 @@ export async function searchGoogleImages(query, apiKey, cx) {
     };
   }
 
-  const cacheKey = `google:${query.trim().toLowerCase()}`;
+  const cacheKey = `google_img:${query.trim().toLowerCase()}`;
   const cached = getCached(cacheKey);
   if (cached) return cached;
 
@@ -349,6 +349,66 @@ export async function searchGoogleImages(query, apiKey, cx) {
       byteSize: item.image?.byteSize || null,
       width: item.image?.width || null,
       height: item.image?.height || null
+    }));
+
+    const payload = {
+      available: true,
+      results
+    };
+
+    setCached(cacheKey, payload);
+    return payload;
+  } catch (err) {
+    return {
+      available: false,
+      reason: err.message,
+      results: []
+    };
+  }
+}
+
+/**
+ * 5b. Google Programmable Search (Web Search API)
+ */
+export async function searchGoogleWeb(query, apiKey, cx) {
+  const creds = getGoogleCseCredentials();
+  const effectiveKey = apiKey !== undefined ? apiKey : creds.apiKey;
+  const effectiveCx = cx !== undefined ? cx : creds.cx;
+
+  if (!query || !query.trim()) return { available: true, results: [] };
+  if (!effectiveKey || !effectiveCx) {
+    return {
+      available: false,
+      reason: 'Google Programmable Search key/cx not configured on this deployment',
+      results: []
+    };
+  }
+
+  if (!checkGoogleQuota()) {
+    return {
+      available: false,
+      quotaReached: true,
+      reason: 'Daily search quota reached (100 free queries/day limit)',
+      results: []
+    };
+  }
+
+  const cacheKey = `google_web:${query.trim().toLowerCase()}`;
+  const cached = getCached(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const url = `https://www.googleapis.com/customsearch/v1?num=10&q=${encodeURIComponent(query.trim())}&key=${effectiveKey}&cx=${effectiveCx}`;
+    incrementGoogleQuota();
+
+    const data = await fetchJson(url);
+    const items = data?.items || [];
+    const results = items.map(item => ({
+      title: item.title,
+      link: item.link,
+      displayLink: item.displayLink,
+      snippet: item.snippet,
+      htmlSnippet: item.htmlSnippet
     }));
 
     const payload = {
@@ -473,18 +533,19 @@ export function getDiscoveryHealth() {
   const ytKey = getYouTubeApiKey();
   const instaCreds = getInstagramCredentials();
   const xCreds = getXCredentials();
+  const hasGoogleSearch = Boolean(googleCreds.apiKey && googleCreds.cx);
 
   return {
     status: 'ok',
     timestamp: new Date().toISOString(),
     providers: {
-      reddit: {
-        id: 'reddit',
-        name: 'Reddit Search',
-        available: true,
-        authRequired: false,
-        status: 'configured',
-        reason: null
+      googleImages: {
+        id: 'googleImages',
+        name: 'Google Search & Images',
+        available: hasGoogleSearch,
+        authRequired: true,
+        status: hasGoogleSearch ? 'configured' : 'not_configured',
+        reason: hasGoogleSearch ? null : 'GOOGLE_CSE_API_KEY or GOOGLE_CSE_CX not set'
       },
       youtube: {
         id: 'youtube',
@@ -494,62 +555,21 @@ export function getDiscoveryHealth() {
         status: ytKey ? 'configured' : 'not_configured',
         reason: ytKey ? null : 'YOUTUBE_API_KEY not set'
       },
-      mastodon: {
-        id: 'mastodon',
-        name: 'Mastodon Federated Public Timeline',
-        available: true,
+      x: {
+        id: 'x',
+        name: 'X (Twitter)',
+        available: Boolean(xCreds.accessToken || xCreds.apiKey || hasGoogleSearch),
         authRequired: false,
-        status: 'configured',
-        instances: MASTODON_INSTANCE_ALLOWLIST,
-        reason: null
-      },
-      archiveOrg: {
-        id: 'archiveOrg',
-        name: 'Wayback Machine (archive.org)',
-        available: true,
-        authRequired: false,
-        status: 'configured',
-        reason: null
-      },
-      googleImages: {
-        id: 'googleImages',
-        name: 'Google Programmable Search (Images)',
-        available: Boolean(googleCreds.apiKey && googleCreds.cx),
-        authRequired: true,
-        status: (googleCreds.apiKey && googleCreds.cx) ? 'configured' : 'not_configured',
-        reason: (googleCreds.apiKey && googleCreds.cx) ? null : 'GOOGLE_CSE_API_KEY or GOOGLE_CSE_CX not set'
+        status: (xCreds.accessToken || xCreds.apiKey || hasGoogleSearch) ? 'configured' : 'not_configured',
+        reason: (xCreds.accessToken || xCreds.apiKey || hasGoogleSearch) ? null : 'X API credentials or Google CSE (site:x.com) not set'
       },
       instagram: {
         id: 'instagram',
-        name: 'Meta / Instagram Graph API',
-        available: false,
-        permanentUnavailable: true,
-        status: instaCreds.accessToken ? 'configured' : 'not_implemented',
-        reason: 'No public media-search API exists. Credentials configured for direct Graph API queries.'
-      },
-      x: {
-        id: 'x',
-        name: 'X (formerly Twitter)',
-        available: false,
-        permanentUnavailable: true,
-        status: (xCreds.accessToken || xCreds.apiKey) ? 'configured' : 'not_implemented',
-        reason: 'No public media-search API exists. Credentials configured for direct API queries.'
-      },
-      tiktok: {
-        id: 'tiktok',
-        name: 'TikTok',
-        available: false,
-        permanentUnavailable: true,
-        status: process.env.TIKTOK_CLIENT_KEY ? 'configured' : 'not_implemented',
-        reason: 'No public media-search API exists'
-      },
-      facebook: {
-        id: 'facebook',
-        name: 'Facebook',
-        available: false,
-        permanentUnavailable: true,
-        status: instaCreds.appId ? 'configured' : 'not_implemented',
-        reason: 'No public media-search API exists'
+        name: 'Instagram',
+        available: Boolean(instaCreds.accessToken || hasGoogleSearch),
+        authRequired: false,
+        status: (instaCreds.accessToken || hasGoogleSearch) ? 'configured' : 'not_configured',
+        reason: (instaCreds.accessToken || hasGoogleSearch) ? null : 'Instagram Access Token or Google CSE (site:instagram.com) not set'
       }
     }
   };

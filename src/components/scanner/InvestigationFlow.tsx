@@ -868,9 +868,9 @@ export function InvestigationFlow() {
           <button
             onClick={handleReset}
             className="vm-btn vm-btn-primary"
-            style={{ padding: '6px 14px', fontSize: 11, display: 'flex', alignItems: 'center', gap: 6 }}
+            style={{ padding: '6px 14px', fontSize: 11, display: 'flex', alignItems: 'center', gap: 6, background: 'linear-gradient(135deg, #00d4ff 0%, #0077ff 100%)', color: '#040d1a', fontWeight: 800 }}
           >
-            <RefreshCw size={13} /> New Investigation
+            <RefreshCw size={13} /> Check Another Image
           </button>
         </div>
       </div>

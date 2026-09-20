@@ -1,21 +1,19 @@
-// VeriMedia AI — Provider Registry & Discovery Manager (Phase 15)
-import { RedditDiscoveryProvider } from './reddit.js';
+// VeriMedia AI — Provider Registry & Discovery Manager
 import { YouTubeDiscoveryProvider } from './youtube.js';
-import { MastodonDiscoveryProvider } from './mastodon.js';
-import { ArchiveOrgDiscoveryProvider } from './archiveOrg.js';
 import { GoogleImagesDiscoveryProvider } from './googleImages.js';
+import { XDiscoveryProvider } from './x.js';
+import { InstagramDiscoveryProvider } from './instagram.js';
 import { getDiscoveryHealth } from '../../proxy/searchProxy.js';
 
 export class MultiSourceDiscoveryManager {
   constructor(config = {}) {
     this.providers = new Map();
     
-    // Register the 5 honest providers
-    this.registerProvider(new RedditDiscoveryProvider(config.reddit));
-    this.registerProvider(new YouTubeDiscoveryProvider(config.youtube));
-    this.registerProvider(new MastodonDiscoveryProvider(config.mastodon));
-    this.registerProvider(new ArchiveOrgDiscoveryProvider(config.archiveOrg));
+    // Register the 4 primary discovery platforms requested
     this.registerProvider(new GoogleImagesDiscoveryProvider(config.googleImages));
+    this.registerProvider(new YouTubeDiscoveryProvider(config.youtube));
+    this.registerProvider(new XDiscoveryProvider(config.x));
+    this.registerProvider(new InstagramDiscoveryProvider(config.instagram));
   }
 
   registerProvider(provider) {
@@ -30,23 +28,30 @@ export class MultiSourceDiscoveryManager {
     return Array.from(this.providers.values());
   }
 
-  /**
-   * Returns complete Discovery Transparency matrix.
-   * NOTE: Instagram, TikTok, Facebook, X are PERMANENTLY marked UNAVAILABLE.
-   */
   getTransparencyReport() {
     const health = getDiscoveryHealth();
     return health.providers;
   }
 
   /**
-   * Searches across all active/available providers in parallel.
+   * Searches across selected or all active providers in parallel.
    */
   async searchAll(signals, opts = {}) {
     const results = [];
     const providerStatuses = {};
 
-    const searchPromises = this.getAllProviders().map(async (provider) => {
+    let targetProviders = this.getAllProviders();
+    if (opts.platforms && Array.isArray(opts.platforms) && opts.platforms.length > 0) {
+      targetProviders = targetProviders.filter(p => 
+        opts.platforms.includes(p.id) || 
+        opts.platforms.includes(p.name) || 
+        (opts.platforms.includes('google-search-api') && (p.id === 'googleImages' || p.id === 'googleSearch'))
+      );
+    } else if (opts.provider) {
+      targetProviders = targetProviders.filter(p => p.id === opts.provider || p.name === opts.provider);
+    }
+
+    const searchPromises = targetProviders.map(async (provider) => {
       try {
         const res = await provider.search(signals, opts);
         providerStatuses[provider.id] = {
@@ -68,12 +73,6 @@ export class MultiSourceDiscoveryManager {
 
     await Promise.all(searchPromises);
 
-    // Also include the permanent unavailable platforms in the status report
-    providerStatuses.instagram = { status: 'UNAVAILABLE', count: 0, reason: 'No public media-search API exists' };
-    providerStatuses.tiktok = { status: 'UNAVAILABLE', count: 0, reason: 'No public media-search API exists' };
-    providerStatuses.facebook = { status: 'UNAVAILABLE', count: 0, reason: 'No public media-search API exists' };
-    providerStatuses.x = { status: 'UNAVAILABLE', count: 0, reason: 'No public media-search API exists' };
-
     return {
       candidates: results,
       totalCount: results.length,
@@ -84,11 +83,8 @@ export class MultiSourceDiscoveryManager {
 }
 
 export {
-  RedditDiscoveryProvider,
   YouTubeDiscoveryProvider,
-  MastodonDiscoveryProvider,
-  ArchiveOrgDiscoveryProvider,
-  GoogleImagesDiscoveryProvider
+  GoogleImagesDiscoveryProvider,
+  XDiscoveryProvider,
+  InstagramDiscoveryProvider
 };
-
-export default MultiSourceDiscoveryManager;

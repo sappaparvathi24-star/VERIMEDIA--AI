@@ -46,7 +46,7 @@ interface AppState {
   stats: ScanStats
 
   // Actions
-  setCurrentResult: (r: DetectionResult) => void
+  setCurrentResult: (r: DetectionResult | null) => void
   addResult: (r: DetectionResult) => void
   setScanning: (v: boolean) => void
   setScanError: (e: string | null) => void

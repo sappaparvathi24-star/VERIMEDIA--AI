@@ -334,6 +334,19 @@ export function ForensicViewer({ result: propResult, compact = false, onClose }:
             <FileCode className="w-4 h-4" />
             <span className="hidden md:inline">Metadata & XAI</span>
           </button>
+
+          {/* Check Another Image Button */}
+          <button
+            onClick={() => {
+              useStore.getState().clearResults()
+              if (onClose) onClose()
+            }}
+            className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-cyan-400 to-blue-500 hover:from-cyan-300 hover:to-blue-400 text-slate-950 text-xs font-bold flex items-center gap-1.5 shadow-md transition cursor-pointer"
+            title="Clear and analyze another image"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>Check Another Image</span>
+          </button>
         </div>
       </div>
 

@@ -284,6 +284,36 @@ export const generateDMCANoticeGemini = async (payload: any) => {
   }).then(r => r.data)
 }
 
+// ── Google Search API: Direct Service Layer Integration ─────────────────────
+export interface GoogleSearchResultItem {
+  title: string
+  link: string
+  displayLink?: string
+  snippet?: string
+  imageUrl?: string
+  thumbnailUrl?: string
+  contextLink?: string
+  byteSize?: number | null
+  width?: number | null
+  height?: number | null
+}
+
+export interface GoogleSearchApiResponse {
+  status: string
+  provider: string
+  count: number
+  results: GoogleSearchResultItem[]
+  reason?: string | null
+}
+
+export const searchGoogleApi = async (query: string, searchType?: 'image' | 'web'): Promise<GoogleSearchApiResponse> => {
+  return api.get('/search/google', { params: { q: query, searchType } }).then(r => r.data)
+}
+
+export const searchGoogleImages = async (query: string): Promise<GoogleSearchApiResponse> => {
+  return api.get('/search/google-images', { params: { q: query } }).then(r => r.data)
+}
+
 // ── Google Search API: Earliest Known Appearance (Source) ───────────────────
 export interface EarliestAppearanceResult {
   found: boolean

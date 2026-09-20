@@ -73,7 +73,7 @@ const STAT_DESCRIPTIONS: Record<string, string> = {
 }
 
 export function HeaderBar() {
-  const { activeTab, stats, health, setShowHeroOverlay, setShowMonitoringModal, setShowCommandPalette } = useStore()
+  const { activeTab, stats, health, currentResult, setCurrentResult, setActiveTab, setShowHeroOverlay, setShowMonitoringModal, setShowCommandPalette, setShowEvidenceModal } = useStore()
 
   const current = PAGE_TITLES[activeTab] || PAGE_TITLES.scanner
 
@@ -172,6 +172,36 @@ export function HeaderBar() {
             </Tooltip>
           ))}
         </div>
+
+        {/* Check Another Image Button */}
+        <Tooltip content="Upload and analyze another image or media asset" position="bottom">
+          <button
+            onClick={() => {
+              setCurrentResult(null)
+              setActiveTab('scanner')
+              setShowEvidenceModal(false)
+            }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              background: 'linear-gradient(135deg, #00d4ff 0%, #0077ff 100%)',
+              border: 'none',
+              padding: '6px 13px',
+              borderRadius: 6,
+              color: '#040d1a',
+              fontSize: 11,
+              fontWeight: 800,
+              cursor: 'pointer',
+              boxShadow: '0 0 14px rgba(0, 212, 255, 0.4)',
+              transition: 'all 0.15s'
+            }}
+            className="hover:scale-105"
+          >
+            <span>📷</span>
+            <span>Check Another Image</span>
+          </button>
+        </Tooltip>
 
         {/* Gemini AI Intelligence Button */}
         <Tooltip content="Gemini AI Intelligence: Multimodal Copilot, Executive Dossiers & Technical Explainer" position="bottom">
