@@ -1,6 +1,7 @@
 // VeriMedia AI — Supabase Persistence Engine
 // Supports async hydrateAll() and snapshotAll() across all 19 entity models.
 import { supabaseAdmin, isSupabaseConfigured } from './supabaseClient.js';
+import { getDatabase } from './database.js';
 
 export class PersistenceManager {
   constructor() {
@@ -226,6 +227,95 @@ export class PersistenceManager {
 
   saveFinding(fnd) { if (fnd?.id) this.inMemoryStore.set(`fnd_${fnd.id}`, fnd); }
   loadFindings() { return Array.from(this.inMemoryStore.values()).filter(x => x.id?.startsWith('FND-')); }
+
+  saveAuditEvent(event) {
+    if (!event || !event.id) return;
+    this.inMemoryStore.set(`aud_${event.id}`, event);
+
+    try {
+      const db = getDatabase();
+      if (db) {
+        db.prepare(`
+          INSERT INTO audit_events (
+            id, investigation_id, actor, action, object_type, object_id,
+            before_state_json, after_state_json, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          event.id,
+          event.investigationId || null,
+          event.actor || 'SYSTEM',
+          event.action,
+          event.objectType,
+          event.objectId || null,
+          event.beforeState ? JSON.stringify(event.beforeState) : null,
+          event.afterState ? JSON.stringify(event.afterState) : null,
+          event.createdAt || new Date().toISOString()
+        );
+      }
+    } catch (_) {
+      // In-memory fallback is active
+    }
+  }
+
+  loadAuditEvents(filter = {}) {
+    let events = Array.from(this.inMemoryStore.values()).filter(x => x.id?.startsWith('AUD-') || x.action);
+
+    try {
+      const db = getDatabase();
+      if (db) {
+        let query = 'SELECT * FROM audit_events WHERE 1=1';
+        const params = [];
+        if (filter.investigationId) {
+          query += ' AND investigation_id = ?';
+          params.push(filter.investigationId);
+        }
+        if (filter.actor) {
+          query += ' AND actor = ?';
+          params.push(filter.actor);
+        }
+        if (filter.action) {
+          query += ' AND action = ?';
+          params.push(filter.action);
+        }
+        query += ' ORDER BY created_at DESC';
+        if (filter.limit) {
+          query += ' LIMIT ?';
+          params.push(Number(filter.limit));
+        }
+
+        const dbRows = db.prepare(query).all(...params);
+        if (dbRows && dbRows.length > 0) {
+          const parsedDbRows = dbRows.map(r => ({
+            id: r.id,
+            investigationId: r.investigation_id,
+            actor: r.actor,
+            action: r.action,
+            objectType: r.object_type,
+            objectId: r.object_id,
+            beforeState: r.before_state_json ? JSON.parse(r.before_state_json) : null,
+            afterState: r.after_state_json ? JSON.parse(r.after_state_json) : null,
+            createdAt: r.created_at
+          }));
+          return parsedDbRows;
+        }
+      }
+    } catch (_) {}
+
+    if (filter.investigationId) {
+      events = events.filter(e => e.investigationId === filter.investigationId);
+    }
+    if (filter.actor) {
+      events = events.filter(e => e.actor === filter.actor);
+    }
+    if (filter.action) {
+      events = events.filter(e => e.action === filter.action);
+    }
+    events.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    if (filter.limit) {
+      events = events.slice(0, Number(filter.limit));
+    }
+    return events;
+  }
 }
 
 export const persistence = new PersistenceManager();

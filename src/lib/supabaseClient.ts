@@ -87,14 +87,14 @@ export async function getToken(): Promise<string | null> {
     const { data: { session } } = await supabase.auth.getSession();
     if (session?.access_token) return session.access_token;
   }
-  const stored = localStorage.getItem(LOCAL_SESSION_KEY);
+  const stored = typeof localStorage !== 'undefined' ? localStorage.getItem(LOCAL_SESSION_KEY) : null;
   if (stored) {
     try {
       const parsed = JSON.parse(stored);
       return parsed.token || 'demo-bearer-token';
     } catch (_) {}
   }
-  return null;
+  return 'demo-bearer-token';
 }
 
 export async function signInWithEmail(email: string, password: string) {
