@@ -105,11 +105,57 @@ export interface DetectionResult {
   is_demo?: boolean
   mode?: string
   disclaimer?: string
+  visual_findings?: string[]
+  subject_description?: string
+  detected_anomalies?: string[]
+  forensics?: {
+    engine?: string
+    authenticity?: string
+    trustScore?: number
+    manipulationProbability?: number
+    confidence?: number
+    verdict?: string
+    summary?: string
+    subjectDescription?: string
+    visualFindings?: string[]
+    detectedAnomalies?: string[]
+    recommendedAction?: string
+    riskLevel?: string
+    ela?: {
+      meanError?: number
+      maxError?: number
+      variance?: number
+      hasCompressionAnomaly?: boolean
+    }
+    exif?: {
+      make?: string
+      model?: string
+      lensModel?: string
+      software?: string
+      createDate?: string
+      iso?: number
+      fNumber?: number
+      exposureTime?: number
+    }
+    stats?: {
+      width?: number
+      height?: number
+      channels?: number
+      entropy?: number
+      luminance?: number
+    }
+  }
   artifact?: {
     id: string
     filename: string
     sha256?: string
     perceptualHash?: string
+    dimensions?: { width: number; height: number } | null
+    byteSize?: number
+    mimeType?: string
+    fileUrl?: string
+    previewUrl?: string
+    dataUrl?: string
     matchedReferenceId?: string | null
   }
 }

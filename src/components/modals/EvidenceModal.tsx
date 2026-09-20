@@ -4,18 +4,18 @@ import type { DetectionResult } from '../../types'
 import { D3ProvenanceTree } from '../charts/D3ProvenanceTree'
 
 const DECISION_STYLES: Record<string, { bg: string; color: string; border: string }> = {
-  'ALLOW':             { bg: 'rgba(34,197,94,0.1)',  color: '#22c55e', border: '#22c55e' },
-  'ATTRIBUTION':       { bg: 'rgba(245,158,11,0.1)', color: '#f59e0b', border: '#f59e0b' },
-  'REVIEW REQUIRED':   { bg: 'rgba(99,102,241,0.1)', color: '#6366f1', border: '#6366f1' },
-  'SUSPECT':           { bg: 'rgba(249,115,22,0.1)', color: '#f97316', border: '#f97316' },
-  'TAKEDOWN':          { bg: 'rgba(239,68,68,0.1)',  color: '#ef4444', border: '#ef4444' },
-  'EMERGENCY_TAKEDOWN':{ bg: 'rgba(220,38,38,0.15)', color: '#dc2626', border: '#dc2626' },
+  'ALLOW':              { bg: 'rgba(34,197,94,0.1)',  color: '#22c55e', border: '#22c55e' },
+  'ATTRIBUTION':        { bg: 'rgba(245,158,11,0.1)', color: '#f59e0b', border: '#f59e0b' },
+  'REVIEW REQUIRED':    { bg: 'rgba(99,102,241,0.1)', color: '#6366f1', border: '#6366f1' },
+  'SUSPECT':            { bg: 'rgba(249,115,22,0.1)', color: '#f97316', border: '#f97316' },
+  'TAKEDOWN':           { bg: 'rgba(239,68,68,0.1)',  color: '#ef4444', border: '#ef4444' },
+  'EMERGENCY_TAKEDOWN': { bg: 'rgba(220,38,38,0.15)', color: '#dc2626', border: '#dc2626' },
 }
 
 function Bar({ value, color }: { value: number; color: string }) {
   return (
     <div style={{ flex: 1, height: 6, background: '#1e2d3d', borderRadius: 3, overflow: 'hidden' }}>
-      <div style={{ height: '100%', width: `${value * 100}%`, background: color, borderRadius: 3, transition: 'width 0.8s ease' }} />
+      <div style={{ height: '100%', width: `${Math.min(100, Math.max(0, value * 100))}%`, background: color, borderRadius: 3, transition: 'width 0.6s ease' }} />
     </div>
   )
 }
@@ -25,9 +25,9 @@ function Signal({ label, value, invert = false }: { label: string; value: number
   const color = displayVal < 0.35 ? '#22c55e' : displayVal < 0.65 ? '#f59e0b' : '#ef4444'
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-      <span style={{ width: 160, fontSize: 11, color: '#8899aa', flexShrink: 0 }}>{label}</span>
+      <span style={{ width: 140, fontSize: 11, color: '#94a3b8', flexShrink: 0 }}>{label}</span>
       <Bar value={displayVal} color={color} />
-      <span style={{ fontSize: 10, fontFamily: 'monospace', color, width: 36, textAlign: 'right' }}>
+      <span style={{ fontSize: 11, fontFamily: 'monospace', color, width: 36, textAlign: 'right', fontWeight: 700 }}>
         {Math.round(displayVal * 100)}%
       </span>
     </div>
@@ -63,7 +63,9 @@ export function EvidenceModal({ result }: Props) {
   }
   const trust = result?.trust || { trust_score: 0 }
   const propagation = result?.propagation || { urgency: 'low', velocity: 0, ppm: 0, indicator: 'STABLE' }
-  const authorship = result?.authorship || { confidence: 0, key_match: false, stego_detected: false, exif_consistent: false }
+  const authorship = result?.authorship || { confidence: 0, origin_node: 'Source', embedding_distance: 0 }
+  const artifact = result?.artifact
+  const visualFindings = result?.visual_findings || result?.forensics?.visualFindings || []
 
   return (
     <div className="modal-backdrop" onClick={() => setShowEvidenceModal(false)}>
@@ -71,8 +73,8 @@ export function EvidenceModal({ result }: Props) {
         onClick={e => e.stopPropagation()}
         className="vm-card"
         style={{
-          width: 'min(960px, 96vw)',
-          maxHeight: '94vh',
+          width: 'min(920px, 95vw)',
+          maxHeight: '92vh',
           overflow: 'auto',
           padding: 0,
           border: `1px solid ${ds.border}`,
@@ -80,50 +82,35 @@ export function EvidenceModal({ result }: Props) {
       >
         {/* Header */}
         <div style={{
-          padding: '16px 24px',
+          padding: '14px 20px',
           background: ds.bg,
           borderBottom: `1px solid ${ds.border}`,
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         }}>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontSize: 11, fontFamily: 'monospace', color: '#8899aa' }}>
-                {(result.job_id || '').slice(0, 8).toUpperCase()}
-              </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{
-                padding: '3px 10px', borderRadius: 4,
+                padding: '3px 8px', borderRadius: 4,
                 background: ds.bg, color: ds.color, border: `1px solid ${ds.border}`,
-                fontSize: 11, fontWeight: 700, fontFamily: 'monospace', letterSpacing: '0.08em',
+                fontSize: 11, fontWeight: 800, fontFamily: 'monospace',
               }}>
                 {ai_analysis.decision}
               </span>
               <span style={{
-                padding: '3px 10px', borderRadius: 4,
-                background: '#0d1117', color: '#8899aa',
+                padding: '2px 8px', borderRadius: 4,
+                background: '#0d1117', color: '#94a3b8',
                 border: '1px solid #1e2d3d', fontSize: 11, fontFamily: 'monospace',
               }}>
                 {ai_analysis.severity}
               </span>
-              {ai_analysis.source === 'claude' && (
-                <span style={{
-                  padding: '2px 8px', borderRadius: 4,
-                  background: 'rgba(168,85,247,0.1)', color: '#a855f7',
-                  border: '1px solid #a855f7', fontSize: 10, fontFamily: 'monospace',
-                }}>
-                  ✦ Claude AI
-                </span>
-              )}
             </div>
-            <div style={{ fontSize: 13, color: '#e2e8f0', marginTop: 6 }}>
-              <span style={{ color: '#00d4ff' }}>@{result.username}</span>
-              <span style={{ color: '#4a5568' }}> · </span>
-              <span style={{ color: '#8899aa' }}>{result.platform}</span>
-              <span style={{ color: '#4a5568' }}> · </span>
-              <span style={{ color: '#8899aa' }}>{result.content_type} / {result.scenario}</span>
+            <div style={{ fontSize: 12, color: '#cbd5e1', marginTop: 4 }}>
+              <span style={{ color: '#38bdf8', fontWeight: 700 }}>@{result.username}</span>
+              <span style={{ color: '#64748b' }}> · {result.platform} · {result.caption || result.scenario}</span>
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             {/* Modal Tabs */}
             <div style={{ display: 'flex', gap: 4, background: '#080c10', padding: 3, borderRadius: 6, border: '1px solid #1e2d3d' }}>
               <button
@@ -131,7 +118,7 @@ export function EvidenceModal({ result }: Props) {
                 style={{
                   padding: '4px 10px',
                   borderRadius: 4,
-                  fontSize: 10,
+                  fontSize: 11,
                   fontWeight: 700,
                   background: modalTab === 'signals' ? '#1e293b' : 'transparent',
                   border: modalTab === 'signals' ? '1px solid #38bdf8' : 'none',
@@ -139,14 +126,14 @@ export function EvidenceModal({ result }: Props) {
                   cursor: 'pointer'
                 }}
               >
-                🔬 Forensic Signals
+                🔬 Forensics
               </button>
               <button
                 onClick={() => setModalTab('tree')}
                 style={{
                   padding: '4px 10px',
                   borderRadius: 4,
-                  fontSize: 10,
+                  fontSize: 11,
                   fontWeight: 700,
                   background: modalTab === 'tree' ? '#1e293b' : 'transparent',
                   border: modalTab === 'tree' ? '1px solid #38bdf8' : 'none',
@@ -154,13 +141,13 @@ export function EvidenceModal({ result }: Props) {
                   cursor: 'pointer'
                 }}
               >
-                🌳 D3 Provenance Tree
+                🌳 Provenance Tree
               </button>
             </div>
 
             <button
               onClick={() => setShowEvidenceModal(false)}
-              style={{ background: 'none', border: 'none', color: '#8899aa', fontSize: 20, cursor: 'pointer' }}
+              style={{ background: 'none', border: 'none', color: '#8899aa', fontSize: 18, cursor: 'pointer', padding: '4px 8px' }}
             >
               ✕
             </button>
@@ -168,159 +155,115 @@ export function EvidenceModal({ result }: Props) {
         </div>
 
         {/* Body */}
-        <div style={{ padding: '20px 24px' }}>
-          {result.is_demo && (
-            <div style={{
-              marginBottom: 16,
-              padding: '8px 14px',
-              background: 'rgba(245,158,11,0.12)',
-              border: '1px solid rgba(245,158,11,0.35)',
-              borderRadius: 6,
-              color: '#fbbf24',
-              fontSize: 12,
-              fontFamily: 'monospace',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8
-            }}>
-              <span>⚠️</span>
-              <span>{result.disclaimer || 'DEMONSTRATION SCENARIO — For validation and scenario testing. Upload a real media file for live bitstream analysis.'}</span>
-            </div>
-          )}
-
-          {result.artifact && (
-            <div style={{
-              marginBottom: 16,
-              padding: '8px 14px',
-              background: 'rgba(56,189,248,0.12)',
-              border: '1px solid rgba(56,189,248,0.35)',
-              borderRadius: 6,
-              color: '#38bdf8',
-              fontSize: 12,
-              fontFamily: 'monospace',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8
-            }}>
-              <span>🔬</span>
-              <span>REAL ARTIFACT: {result.artifact.filename} (ID: {result.artifact.id}) {result.artifact.sha256 ? `• SHA: ${result.artifact.sha256.slice(0, 16)}...` : ''}</span>
-            </div>
-          )}
-
+        <div style={{ padding: '16px 20px' }}>
           {modalTab === 'tree' ? (
-            <div style={{ marginTop: 6 }}>
-              <D3ProvenanceTree result={result} height={480} />
+            <div style={{ marginTop: 4 }}>
+              <D3ProvenanceTree result={result} height={460} />
             </div>
           ) : (
             <>
-              {/* Score strip */}
-              <div style={{
-                display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20,
-              }}>
+              {/* Media Artifact details if available */}
+              {artifact && (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 14,
+                  background: '#0d1117',
+                  border: '1px solid #1e2d3d',
+                  borderRadius: 8,
+                  padding: 12,
+                  marginBottom: 16
+                }}>
+                  {(artifact.fileUrl || artifact.dataUrl) && (
+                    <img
+                      src={artifact.fileUrl || artifact.dataUrl}
+                      alt="Artifact"
+                      referrerPolicy="no-referrer"
+                      style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 6, border: '1px solid #334155' }}
+                    />
+                  )}
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#f8fafc' }}>
+                      {artifact.filename}
+                    </div>
+                    <div style={{ fontSize: 11, color: '#38bdf8', fontFamily: 'monospace', marginTop: 2 }}>
+                      {artifact.dimensions ? `${artifact.dimensions.width}×${artifact.dimensions.height}px • ` : ''}
+                      SHA-256: {artifact.sha256?.slice(0, 16)}...
+                    </div>
+                    {visualFindings.length > 0 && (
+                      <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
+                        {visualFindings[0]}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Metric Cards */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 16 }}>
                 {[
-                  { label: 'Similarity',   value: result.similarity,      color: '#00d4ff'  },
-                  { label: 'Integrity',    value: integrity.score,         color: '#22c55e'  },
-                  { label: 'Trust Score',  value: trust.trust_score,       color: '#f59e0b'  },
-                  { label: 'AI Confidence',value: ai_analysis.confidence,  color: '#a855f7'  },
+                  { label: 'Similarity',    value: result.similarity,      color: '#00d4ff'  },
+                  { label: 'Integrity',     value: integrity.score,         color: '#22c55e'  },
+                  { label: 'Trust Score',   value: trust.trust_score,       color: '#f59e0b'  },
+                  { label: 'AI Confidence', value: ai_analysis.confidence,  color: '#a855f7'  },
                 ].map(item => (
                   <div key={item.label} style={{
-                    background: '#0d1117', border: '1px solid #1e2d3d', borderRadius: 8, padding: 12,
+                    background: '#0d1117', border: '1px solid #1e2d3d', borderRadius: 6, padding: '8px 12px',
                   }}>
-                    <div style={{ fontSize: 22, fontWeight: 800, color: item.color, fontFamily: 'monospace' }}>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: item.color, fontFamily: 'monospace' }}>
                       {Math.round(item.value * 100)}%
                     </div>
-                    <div style={{ fontSize: 10, color: '#8899aa', marginTop: 2, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                    <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                       {item.label}
                     </div>
                   </div>
                 ))}
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                {/* ML Signals */}
-                <div style={{ background: '#0d1117', border: '1px solid #1e2d3d', borderRadius: 8, padding: 16 }}>
-                  <p style={{ fontSize: 11, color: '#8899aa', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 12 }}>
-                    ML Signals — <span style={{ color: ml.label === 'TAMPERED' ? '#ef4444' : ml.label === 'SUSPICIOUS' ? '#f59e0b' : '#22c55e' }}>{ml.label}</span>
-                  </p>
-                  <Signal label="Spatial Diff"   value={ml.signals.spatial_diff} />
-                  <Signal label="Color Shift"    value={ml.signals.color_diff} />
-                  <Signal label="Frame Variance" value={ml.signals.frame_diff} />
-                  <Signal label="Temporal Diff"  value={ml.signals.temporal_diff} />
-                  <Signal label="Noise Score"    value={ml.signals.noise_score} />
-                  <Signal label="Watermark"      value={ml.signals.watermark_detected} invert />
+              {/* Signals Grid */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                <div style={{ background: '#0d1117', border: '1px solid #1e2d3d', borderRadius: 8, padding: 14 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 10 }}>
+                    Signal Metrics
+                  </div>
+                  <Signal label="Spatial Discrepancy" value={ml.signals.spatial_diff} />
+                  <Signal label="Color Variance"      value={ml.signals.color_diff} />
+                  <Signal label="Frame Edit Rate"     value={ml.signals.frame_diff} />
+                  <Signal label="Noise Pattern"       value={ml.signals.noise_score} />
                 </div>
 
-                {/* Integrity Signals */}
-                <div style={{ background: '#0d1117', border: '1px solid #1e2d3d', borderRadius: 8, padding: 16 }}>
-                  <p style={{ fontSize: 11, color: '#8899aa', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 12 }}>
-                    Integrity Analysis — {integrity.flags.length} flag{integrity.flags.length !== 1 ? 's' : ''}
-                  </p>
-                  <Signal label="Face Landmark"   value={integrity.signals.face_landmark} />
-                  <Signal label="Lip-sync"        value={integrity.signals.lipsync} />
-                  <Signal label="Noise Pattern"   value={integrity.signals.noise_pattern} />
-                  <Signal label="JPEG Artifact"   value={integrity.signals.jpeg_artifact} />
-                  <Signal label="Edge Consist."   value={integrity.signals.edge_consistency} invert />
-                  <Signal label="Temporal Mismatch" value={integrity.signals.temporal_mismatch} />
+                <div style={{ background: '#0d1117', border: '1px solid #1e2d3d', borderRadius: 8, padding: 14 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 10 }}>
+                    Forensic Verification
+                  </div>
+                  <Signal label="Face Landmark"       value={integrity.signals.face_landmark} />
+                  <Signal label="Lip-Sync Match"      value={integrity.signals.lipsync} />
+                  <Signal label="Sensor Resampling"   value={integrity.signals.noise_pattern} />
+                  <Signal label="JPEG Compression"    value={integrity.signals.jpeg_artifact} />
                 </div>
               </div>
 
-              {/* AI Reasoning */}
+              {/* Reasoning & Recommended Action */}
               <div style={{
                 background: '#0d1117', border: `1px solid ${ds.border}`,
-                borderRadius: 8, padding: 16, marginTop: 16,
+                borderRadius: 8, padding: 14, marginTop: 14,
               }}>
-                <p style={{ fontSize: 11, color: '#8899aa', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 10 }}>
-                  AI Reasoning Points
-                </p>
-                {ai_analysis.reasoning_points.map((point, i) => (
-                  <div key={i} style={{ display: 'flex', gap: 10, marginBottom: 8 }}>
-                    <span style={{ color: ds.color, fontSize: 12, marginTop: 1 }}>▸</span>
-                    <span style={{ fontSize: 12, color: '#cbd5e1', lineHeight: 1.5 }}>{point}</span>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 8 }}>
+                  Analysis & Action
+                </div>
+                {ai_analysis.reasoning_points.slice(0, 3).map((point, i) => (
+                  <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 4, fontSize: 12, color: '#cbd5e1' }}>
+                    <span style={{ color: ds.color }}>▸</span>
+                    <span>{point}</span>
                   </div>
                 ))}
                 <div style={{
-                  marginTop: 12, padding: '10px 14px',
-                  background: ds.bg, borderRadius: 6, borderLeft: `3px solid ${ds.color}`,
+                  marginTop: 8, padding: '8px 12px',
+                  background: ds.bg, borderRadius: 6,
+                  fontSize: 12, color: ds.color, fontWeight: 700
                 }}>
-                  <p style={{ fontSize: 12, color: ds.color, fontWeight: 600 }}>⚡ {ai_analysis.action}</p>
+                  Recommended Action: {ai_analysis.action}
                 </div>
-              </div>
-
-              {/* Propagation + Authorship row */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 16 }}>
-                <div style={{ background: '#0d1117', border: '1px solid #1e2d3d', borderRadius: 8, padding: 14 }}>
-                  <p style={{ fontSize: 11, color: '#8899aa', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>
-                    Viral Propagation
-                  </p>
-                  <p style={{ fontSize: 22, fontWeight: 800, color: propagation.urgency === 'critical' ? '#dc2626' : propagation.urgency === 'high' ? '#ef4444' : propagation.urgency === 'medium' ? '#f59e0b' : '#22c55e', fontFamily: 'monospace' }}>
-                    {propagation.ppm} ppm
-                  </p>
-                  <p style={{ fontSize: 11, color: '#8899aa', marginTop: 4 }}>
-                    {propagation.indicator} · urgency: <span style={{ fontWeight: 700, color: '#e2e8f0' }}>{(propagation.urgency || 'low').toUpperCase()}</span>
-                  </p>
-                </div>
-                <div style={{ background: '#0d1117', border: '1px solid #1e2d3d', borderRadius: 8, padding: 14 }}>
-                  <p style={{ fontSize: 11, color: '#8899aa', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>
-                    Origin Authorship
-                  </p>
-                  <p style={{ fontSize: 22, fontWeight: 800, color: '#00d4ff', fontFamily: 'monospace' }}>
-                    {Math.round(authorship.confidence * 100)}%
-                  </p>
-                  <p style={{ fontSize: 11, color: '#8899aa', marginTop: 4 }}>
-                    {authorship.origin_node || 'Origin'} · Δ{(authorship.embedding_distance ?? 0).toFixed(3)}
-                  </p>
-                </div>
-              </div>
-
-              {/* Fingerprint */}
-              <div style={{
-                marginTop: 16, background: '#080c10', border: '1px solid #1e2d3d',
-                borderRadius: 6, padding: '10px 14px', fontFamily: 'monospace',
-              }}>
-                <span style={{ fontSize: 10, color: '#4a5568' }}>FINGERPRINT: </span>
-                <span style={{ fontSize: 11, color: '#00d4ff' }}>{(result.fingerprint_hash || '').toUpperCase()}</span>
-                <span style={{ fontSize: 10, color: '#4a5568', marginLeft: 16 }}>PROCESS: </span>
-                <span style={{ fontSize: 11, color: '#22c55e' }}>{(result.processing_ms || 0).toFixed(0)}ms</span>
               </div>
             </>
           )}
@@ -328,7 +271,7 @@ export function EvidenceModal({ result }: Props) {
 
         {/* Footer actions */}
         <div style={{
-          padding: '14px 24px',
+          padding: '12px 20px',
           borderTop: '1px solid #1e2d3d',
           display: 'flex', gap: 10, justifyContent: 'flex-end',
         }}>
@@ -343,7 +286,7 @@ export function EvidenceModal({ result }: Props) {
                 setShowDMCAModal(true)
               }}
             >
-              📋 File DMCA Notice
+              📋 Generate DMCA Notice
             </button>
           )}
         </div>

@@ -4,53 +4,53 @@ import type { TabId } from '../../types'
 
 const PAGE_TITLES: Record<TabId, { title: string; subtitle: string; icon: string }> = {
   scanner: {
-    title: 'Media Scanner & Ingestion Hub',
-    subtitle: 'Upload local media artifacts, audio or select synthetic test scenarios for 5-engine deepfake analysis',
+    title: 'Media Scanner',
+    subtitle: 'Upload media, audio, or test scenarios for instant analysis',
     icon: '⚡'
   },
   forensic: {
     title: 'Engine 1 — Media Forensics',
-    subtitle: 'Ensemble multi-signal extraction: ELA, PRNU sensor noise, EXIF/C2PA metadata, facial Delaunay mesh & perceptual hashes',
+    subtitle: 'Multi-signal deepfake detection, ELA & sensor analysis',
     icon: '🔬'
   },
   discovery: {
     title: 'Engine 2 — Discovery Intelligence',
-    subtitle: 'Provider-agnostic discovery orchestrator with normalized platform observation adapters & Sybil defense',
+    subtitle: 'Multi-platform search & normalized candidate ingestion',
     icon: '🌐'
   },
   origin: {
-    title: 'Engine 3 — Provenance & Origin Intelligence',
-    subtitle: 'D3 provenance tree, transformation flow & earliest observed source attribution with epistemic certainty demarcations',
+    title: 'Engine 3 — Provenance & Origin',
+    subtitle: 'Earliest source attribution & transformation lineage',
     icon: '🌳'
   },
   propagation: {
     title: 'Engine 4 — Propagation Intelligence',
-    subtitle: 'Content genealogy graph, viral velocity vectors & multi-platform spread topology',
+    subtitle: 'Viral spread velocity & multi-platform cascade graph',
     icon: '📡'
   },
   reasoning: {
     title: 'Engine 5 — Evidence Reasoning',
-    subtitle: 'Explainable AI reasoning dossier, structured confidence calculus & IBM AI governance audit matrix',
+    subtitle: 'Calibrated confidence scores & explainable signal weights',
     icon: '⚖️'
   },
   cases: {
-    title: 'Copyright Cases & DMCA Enforcement',
-    subtitle: 'Active takedown claims ledger, automated DMCA notice generator, and platform enforcement tracking',
+    title: 'DMCA & Enforcement Cases',
+    subtitle: 'Enforcement tracking & automated infringement notices',
     icon: '📋'
   },
   trends: {
-    title: 'Detection Analytics & Threat Volume',
-    subtitle: 'Historical scan distribution, threat rates, platform breakdown, and detection performance trends',
+    title: 'Threat Trends & Analytics',
+    subtitle: 'Platform threat rates, volume distribution & metrics',
     icon: '📈'
   },
   system: {
-    title: 'System Health & Engine Diagnostics',
-    subtitle: 'Unified Express backend status, database synchronization, discovery adapters, and background jobs',
+    title: 'System & Ingestion Jobs',
+    subtitle: 'Backend health, DB sync & provider status',
     icon: '⚙️'
   },
   feed: {
-    title: 'Real-Time Media Ingestion Feed',
-    subtitle: 'Live monitored platform event stream and detection logs',
+    title: 'Live Media Stream',
+    subtitle: 'Real-time platform detection logs & alerts',
     icon: '📡'
   }
 }

@@ -8,7 +8,20 @@ import type {
   HealthStatus,
 } from '../types'
 
-const BASE = import.meta.env.VITE_API_BASE_URL || ''
+export const getApiBaseUrl = (): string => {
+  if (import.meta.env.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL.replace(/\/$/, '')
+  }
+  if (typeof window !== 'undefined') {
+    // If running on Vercel preview or production without explicit env variable, route to the Render backend
+    if (window.location.hostname.includes('vercel.app')) {
+      return 'https://verimedia-ai-1.onrender.com'
+    }
+  }
+  return ''
+}
+
+const BASE = getApiBaseUrl()
 
 const api = axios.create({
   baseURL: `${BASE}/api`,
@@ -52,6 +65,33 @@ export const getWhatWeKnow = (id: string) =>
 
 export const getWhatRemainsUnknown = (id: string) =>
   api.get(`/investigations/${id}/what-remains-unknown`).then(r => r.data)
+
+export const registerMediaArtifact = async (file: File) => {
+  const token = await getToken()
+  const formData = new FormData()
+  formData.append('media', file)
+  formData.append('file', file)
+
+  const base = getApiBaseUrl()
+  const res = await axios.post(`${base}/api/artifacts/register`, formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    },
+    validateStatus: () => true
+  })
+
+  if (typeof res.data === 'string' && res.data.trim().startsWith('<')) {
+    throw new Error('API server returned HTML instead of JSON. Ensure the backend URL is reachable.')
+  }
+
+  if (res.status >= 400 || !res.data) {
+    const errMsg = typeof res.data === 'object' && res.data?.error ? res.data.error : `Upload failed (HTTP ${res.status})`
+    throw new Error(errMsg)
+  }
+
+  return res.data
+}
 
 export const uploadArtifactFile = async (investigationId: string, file: File) => {
   const token = await getToken()

@@ -36,7 +36,7 @@ interface OriginCandidate {
 const CANDIDATES: OriginCandidate[] = [
   {
     id: 'sourceA',
-    label: 'Source A (YouTube Official Master)',
+    label: 'Source A (YouTube Master)',
     platform: 'YouTube',
     timestamp: '2026-01-10T08:14:00Z',
     confidence: 0.84,
@@ -45,139 +45,126 @@ const CANDIDATES: OriginCandidate[] = [
     statusColor: '#22c55e',
     similarity: 0.96,
     cropDerived: false,
-    assessmentSummary: 'Source A represents the earliest public observation across all indexed broadcast nodes. Multi-signal ensemble analysis reveals intact full 16:9 canvas dimensions, continuous station bug alpha transparency, and consistent OCR headline text. Later appearances across Reddit, TikTok, and X exhibit downstream geometric cropping and transcode generation loss.',
+    assessmentSummary: 'Earliest public observation across indexed nodes. Retains full 16:9 canvas dimensions and continuous station watermark. Downstream variants show geometric cropping and re-compression.',
     epistemicFacts: [
-      'Temporal precedence verified via UTC timestamp (precedes next candidate by 30h 08m).',
-      'Uncropped 1920x1080 canvas geometry preserves full spatial context.',
-      'Perceptual hash match exceeds 96% correlation against query asset.'
+      'Temporal precedence verified via UTC timestamp (leads by 30h+).',
+      'Uncropped 1920x1080 canvas preserves full spatial context.',
+      'Perceptual hash match exceeds 96% correlation.'
     ],
     epistemicLimitations: [
-      'Earliest observed public broadcast does NOT establish legal copyright title.',
-      'Algorithmic indexing cannot inspect unbroadcast, air-gapped, or offline master tapes.',
-      'C2PA hardware-root cryptographic manifest is absent from legacy broadcast transport stream.'
+      'Earliest public observation does not establish legal copyright title.',
+      'Unindexed private offline archives cannot be algorithmically evaluated.',
+      'Legacy broadcast stream lacks C2PA hardware cryptographic signature.'
     ],
     signals: [
       {
         id: 'sig-1',
-        name: 'Earliest Observed Broadcast Timestamp',
+        name: 'Earliest Broadcast Timestamp',
         category: 'TEMPORAL',
         type: 'SUPPORTING',
         vector: 'UTC Ingestion & Broadcast Timeline',
         impact: 28,
-        verifiedBy: 'Engine 2 Discovery Orchestrator',
+        verifiedBy: 'Discovery Orchestrator',
         rawValue: '2026-01-10 08:14:00 UTC (Δt = -30h vs nearest node)',
-        algorithm: 'Multi-Source UTC Timestamp Normalizer',
-        diagnosticDetail: 'First observed public appearance indexed across YouTube, Reddit, X, and TikTok crawlers with verified server-side HTTP headers.',
+        algorithm: 'Multi-Source UTC Normalizer',
+        diagnosticDetail: 'First indexed public appearance across YouTube, Reddit, X, and TikTok crawlers with verified server headers.',
         epistemicCaveat: 'Proves temporal priority on indexed platforms; does not eliminate unindexed private storage.'
       },
       {
         id: 'sig-2',
-        name: 'Perceptual pHash & High-Frequency Match',
+        name: 'Perceptual pHash Match',
         category: 'PERCEPTUAL',
         type: 'SUPPORTING',
-        vector: 'DCT-64 Perceptual Matrix & Spatial Frequency',
+        vector: 'DCT-64 Perceptual Matrix',
         impact: 24,
-        verifiedBy: 'Engine 1 Perceptual Matrix',
-        rawValue: 'Hamming distance = 2 / 64 (96.88% perceptual match)',
+        verifiedBy: 'Perceptual Matrix',
+        rawValue: 'Hamming distance = 2 / 64 (96.88% visual match)',
         algorithm: 'Discrete Cosine Transform (DCT) 64-bit Hash',
-        diagnosticDetail: 'Spatial luminance distribution matches master keyframes with robust tolerance to gamma remapping and minor bitrate variation.',
+        diagnosticDetail: 'Spatial luminance distribution matches master keyframes with robust tolerance to gamma remapping.',
         epistemicCaveat: 'Perceptual similarity confirms visual congruence, not original creative intent.'
       },
       {
         id: 'sig-3',
-        name: 'Broadcast Station Watermark Integrity',
+        name: 'Broadcast Station Watermark',
         category: 'WATERMARK',
         type: 'SUPPORTING',
-        vector: 'Spatial Alpha Channel & Steganographic Bug',
+        vector: 'Spatial Alpha Channel',
         impact: 15,
-        verifiedBy: 'Spatial Steganography & Logo Engine',
+        verifiedBy: 'Steganography Engine',
         rawValue: 'Alpha continuity: 0.942, Zero secondary spatial blending',
-        algorithm: 'Alpha-Channel Edge Discontinuity Detector',
-        diagnosticDetail: 'Continuous station bug observed without edge boundary smearing, proving watermark was rendered during initial broadcast multiplexing.',
+        algorithm: 'Alpha Edge Discontinuity Detector',
+        diagnosticDetail: 'Continuous station bug observed without edge boundary smearing.',
         epistemicCaveat: 'Watermarks can be spoofed if broadcast graphics package is compromised.'
       },
       {
         id: 'sig-4',
-        name: 'OCR Headline & Lower-Third Coherence',
+        name: 'OCR Lower-Third Banner Coherence',
         category: 'OCR',
         type: 'SUPPORTING',
-        vector: 'Lower-Third Typography & Character Distance',
+        vector: 'Lower-Third Typography',
         impact: 12,
-        verifiedBy: 'Tesseract OCR Context Matcher',
-        rawValue: 'Levenshtein Distance = 0.00 (100% string congruence)',
+        verifiedBy: 'OCR Context Matcher',
+        rawValue: 'Levenshtein Distance = 0.00 (100% string match)',
         algorithm: 'Tesseract OCR + Levenshtein String Metric',
-        diagnosticDetail: 'Character recognition across breaking news lower-third banner matches verified syndicated news feed verbatim.',
+        diagnosticDetail: 'Character recognition across breaking news banner matches syndicated news feed verbatim.',
         epistemicCaveat: 'OCR verifies text identity, but captions can be copied across derived videos.'
       },
       {
         id: 'sig-5',
-        name: 'Subsequent Candidates Show Derived Geometry',
+        name: 'Uncropped Master Geometry',
         category: 'GEOMETRIC',
         type: 'SUPPORTING',
-        vector: 'Bounding Box & Aspect Ratio Derivation',
+        vector: 'Aspect Ratio & Canvas Derivation',
         impact: 10,
         verifiedBy: 'Geometric Lineage Solver',
         rawValue: 'Crop Area: 100% Master (Sources C/D are 56% subsets)',
-        algorithm: 'Spatial Saliency & Bounding Box Geometric Projection',
-        diagnosticDetail: 'Downstream nodes (TikTok, X) contain cropped subsets of Source A geometry. A cropped derivative cannot produce the uncropped master.',
+        algorithm: 'Spatial Saliency & Bounding Box Projection',
+        diagnosticDetail: 'Downstream nodes (TikTok, X) contain cropped subsets. A cropped derivative cannot produce the uncropped master.',
         epistemicCaveat: 'Geometric superiority is strong proof of structural lineage.'
       },
       {
         id: 'sig-6',
-        name: 'Unsigned C2PA Cryptographic Hardware Key',
+        name: 'Unsigned C2PA Hardware Key',
         category: 'HARDWARE',
         type: 'CONTRADICTING',
-        vector: 'Content Credentials (C2PA) Root of Trust',
+        vector: 'Content Credentials (C2PA) Root',
         impact: -12,
-        verifiedBy: 'C2PA Manifest Cryptographic Validator',
+        verifiedBy: 'C2PA Manifest Validator',
         rawValue: 'Status: UNSIGNED / MISSING_HARDWARE_ROOT',
-        algorithm: 'X.509 Certificate Chain & PKI Manifest Verifier',
-        diagnosticDetail: 'Asset does not contain embedded cryptographically signed provenance headers from camera sensor chip.',
-        epistemicCaveat: 'Standard for legacy broadcast formats; compensated by ensemble multi-signal corroboration.'
+        algorithm: 'X.509 Certificate Chain & PKI Verifier',
+        diagnosticDetail: 'Asset does not contain embedded cryptographically signed provenance headers from camera sensor.',
+        epistemicCaveat: 'Standard for legacy broadcast formats; compensated by multi-signal corroboration.'
       },
       {
         id: 'sig-7',
-        name: 'Platform Transcode Quantization Variance',
+        name: 'Platform Transcode Variance',
         category: 'COMPRESSION',
         type: 'CONTRADICTING',
-        vector: 'Discrete Cosine Transform Block Residuals (ELA)',
+        vector: 'Block Residuals (ELA)',
         impact: -8,
-        verifiedBy: 'Engine 1 ELA Variance Analyzer',
-        rawValue: 'Mean Square Residual Error = 0.0042 (+14% ELA drift)',
-        algorithm: 'Error Level Analysis (ELA) with Quantization Matrix 85',
-        diagnosticDetail: 'YouTube VP9 server re-encoding introduces mild 8x8 DCT block quantization noise, introducing minor forensic variance.',
-        epistemicCaveat: 'Platform re-compression must not be confused with intentional deepfake manipulation.'
-      },
-      {
-        id: 'sig-8',
-        name: 'Air-Gapped Offline Prior Creation Uncertainty',
-        category: 'EPSTEMIC',
-        type: 'CONTRADICTING',
-        vector: 'Theoretical Search Space Horizon Limit',
-        impact: -5,
-        verifiedBy: 'Epistemic Demarcation Engine',
-        rawValue: 'Horizon Limit: Open Web & Social APIs Only',
-        algorithm: 'Bayesian Observation Horizon Bounding',
-        diagnosticDetail: 'Web scrapers cannot access physical storage media or unindexed local studio production drives created before the broadcast date.',
-        epistemicCaveat: 'Establishes the epistemic demarcation between observed priority and metaphysical ground truth.'
+        verifiedBy: 'ELA Variance Analyzer',
+        rawValue: 'Mean Square Error = 0.0042 (+14% ELA drift)',
+        algorithm: 'Error Level Analysis (ELA) Matrix 85',
+        diagnosticDetail: 'YouTube VP9 re-encoding introduces mild 8x8 DCT block quantization noise.',
+        epistemicCaveat: 'Platform re-compression must not be confused with deepfake manipulation.'
       }
     ]
   },
   {
     id: 'sourceB',
-    label: 'Source B (Reddit /r/sports Repost)',
+    label: 'Source B (Reddit Repost)',
     platform: 'Reddit',
     timestamp: '2026-01-11T14:22:00Z',
     confidence: 0.42,
     status: 'DERIVED_REPOST',
-    statusLabel: 'DERIVED REPOST (2ND GENERATION)',
+    statusLabel: 'DERIVED REPOST (2ND GEN)',
     statusColor: '#a855f7',
     similarity: 0.91,
     cropDerived: false,
-    assessmentSummary: 'Source B is a secondary distribution node published 30 hours after Source A. Visual and acoustic analysis confirms high similarity, but macroblock compression artifacts and second-generation transcode loss identify it as a repost rather than the originating source.',
+    assessmentSummary: 'Secondary distribution published 30 hours after Source A. Visual and acoustic analysis confirms high similarity, but macroblock compression artifacts identify it as a downstream repost.',
     epistemicFacts: [
-      'Published 30h 08m after Source A was broadcast.',
-      'Maintains full 16:9 canvas dimensions but exhibits downscaled bitrate.'
+      'Published 30h 08m after Source A broadcast.',
+      'Maintains 16:9 canvas dimensions with reduced bitrate.'
     ],
     epistemicLimitations: [
       'Post metadata retains no original camera or author attribution.'
@@ -185,12 +172,12 @@ const CANDIDATES: OriginCandidate[] = [
     signals: [
       {
         id: 'sig-b1',
-        name: 'Visual Matrix & Canvas Congruence',
+        name: 'Visual Matrix Congruence',
         category: 'PERCEPTUAL',
         type: 'SUPPORTING',
         vector: 'pHash Correlation with Source A',
         impact: 22,
-        verifiedBy: 'Engine 1 Perceptual Matrix',
+        verifiedBy: 'Perceptual Matrix',
         rawValue: 'Hamming distance = 4 / 64 (91.2% visual match)',
         algorithm: 'DCT-64 Perceptual Hash',
         diagnosticDetail: 'Visual content matches master asset with minor high-frequency roll-off.',
@@ -198,12 +185,12 @@ const CANDIDATES: OriginCandidate[] = [
       },
       {
         id: 'sig-b2',
-        name: 'Audio Waveform & Viseme Alignment',
+        name: 'Audio Waveform Alignment',
         category: 'ACOUSTIC',
         type: 'SUPPORTING',
-        vector: 'Audio Cross-Correlation & Waveform Envelope',
+        vector: 'Waveform Envelope Match',
         impact: 20,
-        verifiedBy: 'Acoustic Fingerprint Engine',
+        verifiedBy: 'Acoustic Engine',
         rawValue: 'Spectrogram Correlation = 0.978',
         algorithm: 'Chromaprint Audio Fingerprinting',
         diagnosticDetail: 'Audio track aligns with Source A broadcast with zero phase or pitch alterations.',
@@ -214,12 +201,12 @@ const CANDIDATES: OriginCandidate[] = [
         name: 'Delayed Temporal Observation',
         category: 'TEMPORAL',
         type: 'CONTRADICTING',
-        vector: 'Ingestion Timestamp Precedence',
+        vector: 'Ingestion Precedence',
         impact: -35,
         verifiedBy: 'Discovery Orchestrator',
         rawValue: '2026-01-11 14:22:00 UTC (+30.1h lag)',
         algorithm: 'Temporal Offset Calculation',
-        diagnosticDetail: 'Indexed 30 hours after Source A had already recorded 120k views across primary platforms.',
+        diagnosticDetail: 'Indexed 30 hours after Source A had already accumulated 120k views.',
         epistemicCaveat: 'Conclusive evidence of downstream secondary posting.'
       },
       {
@@ -227,19 +214,19 @@ const CANDIDATES: OriginCandidate[] = [
         name: 'Generation-Loss Compression Artifacts',
         category: 'COMPRESSION',
         type: 'CONTRADICTING',
-        vector: 'Quantization Matrix & Macroblock Analysis',
+        vector: 'Quantization & Macroblock Analysis',
         impact: -18,
         verifiedBy: 'Forensic Video Decoder',
-        rawValue: 'Bitrate: 2.1 Mbps (Source A: 8.4 Mbps), CRF: 28',
-        algorithm: 'H.264 Rate-Distortion & Quantization Step Analyzer',
-        diagnosticDetail: 'Noticeable macroblocking around high-motion vectors proves re-encoding downstream of master.',
+        rawValue: 'Bitrate: 2.1 Mbps (Master: 8.4 Mbps), CRF: 28',
+        algorithm: 'H.264 Rate-Distortion Step Analyzer',
+        diagnosticDetail: 'Macroblocking around high-motion vectors proves re-encoding downstream of master.',
         epistemicCaveat: 'Re-compression loss confirms derived status.'
       }
     ]
   },
   {
     id: 'sourceC',
-    label: 'Source C (TikTok 1:1 Crop Clip)',
+    label: 'Source C (TikTok 1:1 Crop)',
     platform: 'TikTok',
     timestamp: '2026-01-12T09:05:00Z',
     confidence: 0.28,
@@ -248,10 +235,10 @@ const CANDIDATES: OriginCandidate[] = [
     statusColor: '#f59e0b',
     similarity: 0.78,
     cropDerived: true,
-    assessmentSummary: 'Source C represents a tertiary spatial crop formatted for vertical/square display. Over 44% of the original canvas is missing. A cropped clip cannot mathematically be the origin of the full uncropped 16:9 master asset.',
+    assessmentSummary: 'Tertiary spatial crop formatted for vertical/square display (44% canvas loss). A cropped clip cannot mathematically be the origin of the uncropped 16:9 master asset.',
     epistemicFacts: [
-      'Subject pixels map to sub-region (240, 0) - (880, 720) of Source A.',
-      'Broadcast watermark on upper-right was cropped out.'
+      'Pixels map to sub-region (240, 0) - (880, 720) of Source A.',
+      'Upper-right broadcast watermark was cropped out.'
     ],
     epistemicLimitations: [
       'Origin account is an aggregator with automated viral clipping scripts.'
@@ -259,12 +246,12 @@ const CANDIDATES: OriginCandidate[] = [
     signals: [
       {
         id: 'sig-c1',
-        name: 'Salient Subject Feature Keypoints',
+        name: 'Subject Feature Keypoints',
         category: 'GEOMETRIC',
         type: 'SUPPORTING',
-        vector: 'ORB / SIFT Feature Keypoint Descriptor',
+        vector: 'ORB / SIFT Keypoint Descriptor',
         impact: 28,
-        verifiedBy: 'Feature Keypoint Matcher',
+        verifiedBy: 'Keypoint Matcher',
         rawValue: 'Keypoint inliers = 342 / 380 (90.0%)',
         algorithm: 'Scale-Invariant Feature Transform (SIFT)',
         diagnosticDetail: 'Central subject keypoints match Source A focal region identically.',
@@ -272,7 +259,7 @@ const CANDIDATES: OriginCandidate[] = [
       },
       {
         id: 'sig-c2',
-        name: 'Severe Aspect Ratio Reduction (44% Loss)',
+        name: 'Aspect Ratio Reduction (44% Loss)',
         category: 'GEOMETRIC',
         type: 'CONTRADICTING',
         vector: 'Canvas Surface Area Ratio',
@@ -300,19 +287,19 @@ const CANDIDATES: OriginCandidate[] = [
   },
   {
     id: 'sourceD',
-    label: 'Source D (X / Twitter Synthesized Clip)',
+    label: 'Source D (X Tampered Clip)',
     platform: 'X / Twitter',
     timestamp: '2026-01-13T19:40:00Z',
     confidence: 0.14,
     status: 'DERIVED_MUTATION',
-    statusLabel: 'SYNTHETIC TAMPERING & DEEPFAKE DUB',
+    statusLabel: 'SYNTHETIC TAMPERING DETECTED',
     statusColor: '#ef4444',
     similarity: 0.65,
     cropDerived: true,
-    assessmentSummary: 'Source D contains severe forensic anomalies. Neural facial landmark jitter and a 140ms viseme-phoneme lipsync desync indicate synthetic AI voiceover replacement. Synthetic banner text was overlaid to mask the origin station watermark.',
+    assessmentSummary: 'Tampered derivative with deepfake voiceover and synthetic text banner placed directly over the origin station watermark to obscure origin.',
     epistemicFacts: [
-      'Facial landmark Delaunay triangulation exhibits temporal high-frequency jitter.',
-      'Voiceover audio track is synthetic (ElevenLabs speech synthesis profile detected).'
+      'Facial landmark triangulation exhibits high-frequency jitter.',
+      'Voiceover audio track is synthetic (ElevenLabs speech profile detected).'
     ],
     epistemicLimitations: [
       'Account flagged for coordinated disinformation dissemination.'
@@ -320,41 +307,41 @@ const CANDIDATES: OriginCandidate[] = [
     signals: [
       {
         id: 'sig-d1',
-        name: 'Background Lighting & Scene Match',
+        name: 'Background Lighting Match',
         category: 'PERCEPTUAL',
         type: 'SUPPORTING',
-        vector: 'Static Background Histogram',
+        vector: 'Background Histogram',
         impact: 14,
         verifiedBy: 'Color Gamut Analyzer',
         rawValue: 'Histogram Correlation = 0.82',
-        algorithm: 'RGB Color Space Histogram Distance',
+        algorithm: 'RGB Histogram Distance',
         diagnosticDetail: 'Studio background set matches Source A lighting and camera angle.',
         epistemicCaveat: 'Shows base footage was extracted from Source A.'
       },
       {
         id: 'sig-d2',
-        name: 'Facial Landmark Jitter & Deepfake Dubbing',
+        name: 'Facial Landmark Jitter & Deepfake Dub',
         category: 'HARDWARE',
         type: 'CONTRADICTING',
-        vector: 'Delaunay Triangulation & Lipsync Desync',
+        vector: 'Delaunay Lipsync Desync',
         impact: -50,
-        verifiedBy: 'Engine 1 Face & Audio Forensics',
+        verifiedBy: 'Face & Audio Forensics',
         rawValue: 'Lipsync Desync = 140ms, Landmark Drift = +72%',
-        algorithm: 'Viseme-Phoneme SyncNet + MediaPipe Landmark Tracker',
+        algorithm: 'Viseme-Phoneme SyncNet + MediaPipe Tracker',
         diagnosticDetail: 'Facial boundaries show warping artifacts and speech spectrogram lacks natural breathing transients.',
         epistemicCaveat: 'Conclusive indicator of AI speech synthesis and facial reenactment.'
       },
       {
         id: 'sig-d3',
-        name: 'Synthetic Overlay Masking Origin Watermark',
+        name: 'Synthetic Overlay Masking Watermark',
         category: 'WATERMARK',
         type: 'CONTRADICTING',
-        vector: 'Steganographic Watermark Occlusion',
+        vector: 'Watermark Occlusion',
         impact: -25,
-        verifiedBy: 'Spatial Steganography Engine',
+        verifiedBy: 'Steganography Engine',
         rawValue: 'Occlusion Area: (1600, 40) - (1900, 180)',
         algorithm: 'Alpha Edge Occlusion Matrix',
-        diagnosticDetail: 'Black banner and synthetic text placed directly over the region where Source A station bug resides.',
+        diagnosticDetail: 'Synthetic banner placed directly over the region where the origin station bug resides.',
         epistemicCaveat: 'Indicates intentional obfuscation of origin.'
       }
     ]
@@ -412,8 +399,8 @@ export function EvidenceReasoningPanel() {
     }}>
       {/* 1. Header Banner */}
       <div style={{
-        padding: '16px 20px',
-        borderRadius: 10,
+        padding: '12px 18px',
+        borderRadius: 8,
         background: 'linear-gradient(90deg, rgba(168, 85, 247, 0.12) 0%, rgba(13, 17, 23, 0.95) 100%)',
         border: '1px solid rgba(168, 85, 247, 0.3)',
         display: 'flex',
@@ -424,19 +411,16 @@ export function EvidenceReasoningPanel() {
       }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 13, fontFamily: 'monospace', color: '#c084fc', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+            <span style={{ fontSize: 12, fontFamily: 'monospace', color: '#c084fc', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
               Engine 5 — Evidence Reasoning
             </span>
-            <span style={{ fontSize: 10, background: 'rgba(168, 85, 247, 0.2)', color: '#d8b4fe', padding: '2px 8px', borderRadius: 4, fontWeight: 700 }}>
-              EXPLAINABLE AI (XAI) PATTERN
+            <span style={{ fontSize: 10, background: 'rgba(168, 85, 247, 0.2)', color: '#d8b4fe', padding: '1px 6px', borderRadius: 4, fontWeight: 700 }}>
+              EXPLAINABLE AI
             </span>
           </div>
-          <h2 style={{ fontSize: 18, fontWeight: 800, color: '#f8fafc', marginTop: 4 }}>
-            Multi-Signal Origin Assessment & Calibrated Evidence Calculus
+          <h2 style={{ fontSize: 16, fontWeight: 800, color: '#f8fafc', marginTop: 2, marginBottom: 0 }}>
+            Origin Assessment & Calibrated Evidence
           </h2>
-          <div style={{ fontSize: 12, color: '#cbd5e1', marginTop: 2 }}>
-            Auditable epistemic reasoning displaying candidate assessment, confidence percentage calibration, and granular forensic evidence with interactive diagnostic tooltips.
-          </div>
         </div>
 
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -446,14 +430,14 @@ export function EvidenceReasoningPanel() {
               background: 'rgba(56, 189, 248, 0.15)',
               border: '1px solid rgba(56, 189, 248, 0.35)',
               color: '#38bdf8',
-              padding: '6px 12px',
-              borderRadius: 6,
+              padding: '5px 12px',
+              borderRadius: 5,
               fontSize: 11,
               fontWeight: 700,
               cursor: 'pointer'
             }}
           >
-            📄 Export Evidence PDF
+            📄 Export Dossier
           </button>
           <button
             onClick={() => setShowDMCAModal(true)}
@@ -461,8 +445,8 @@ export function EvidenceReasoningPanel() {
               background: 'rgba(239, 68, 68, 0.2)',
               border: '1px solid #ef4444',
               color: '#f87171',
-              padding: '6px 14px',
-              borderRadius: 6,
+              padding: '5px 12px',
+              borderRadius: 5,
               fontSize: 11,
               fontWeight: 700,
               cursor: 'pointer'
@@ -915,27 +899,22 @@ export function EvidenceReasoningPanel() {
       <div style={{
         background: '#080c10',
         border: '1px solid #1e2d3d',
-        borderLeft: '4px solid #ef4444',
-        borderRadius: 8,
-        padding: '14px 18px',
+        borderLeft: '3px solid #f59e0b',
+        borderRadius: 6,
+        padding: '10px 14px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         flexWrap: 'wrap',
-        gap: 12
+        gap: 10
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={{ fontSize: 22 }}>⚖️</span>
-          <div>
-            <div style={{ fontSize: 12, fontWeight: 800, color: '#f87171' }}>
-              EPISTEMIC BOUNDARY: OBSERVATION PRECEDENCE ≠ STATUTORY LEGAL COPYRIGHT
-            </div>
-            <div style={{ fontSize: 11, color: '#cbd5e1', marginTop: 2, lineHeight: 1.4 }}>
-              VeriMedia establishes <em>temporal observation precedence</em> and <em>structural derivation lineage</em>. Earliest public crawler observation does not constitute statutory copyright title or creative ownership under US Copyright Office or WIPO standards. Formal chain-of-title review is required for judicial proceedings.
-            </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: 16 }}>⚖️</span>
+          <div style={{ fontSize: 11, color: '#cbd5e1' }}>
+            <strong style={{ color: '#fbbf24' }}>Legal Scope:</strong> Earliest observed broadcast establishes temporal priority, not statutory copyright ownership. Formal chain-of-title review is required for court filings.
           </div>
         </div>
-        <span style={{ fontSize: 10, fontFamily: 'monospace', color: '#fca5a5', background: 'rgba(239,68,68,0.2)', padding: '4px 10px', borderRadius: 4, fontWeight: 800 }}>
+        <span style={{ fontSize: 9, fontFamily: 'monospace', color: '#94a3b8', background: '#1e293b', padding: '2px 8px', borderRadius: 4 }}>
           GOVERNANCE CLAUSE §4.2
         </span>
       </div>
