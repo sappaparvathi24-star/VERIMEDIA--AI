@@ -3,7 +3,9 @@ import { useStore } from '../../store'
 import { useDetection } from '../../hooks/useDetection'
 import { Tooltip } from '../ui/Tooltip'
 import { registerMediaArtifact } from '../../services/api'
+import { ForensicViewer } from './ForensicViewer'
 import type { Scenario } from '../../types'
+import { Columns2, Activity, ShieldCheck, Sparkles } from 'lucide-react'
 
 const PRESETS: { key: Scenario; label: string; icon: string }[] = [
   { key: 'deepfake', label: 'AI Deepfake', icon: '🤖' },
@@ -37,6 +39,7 @@ export function ForensicPanel() {
   const { runDetection } = useDetection()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isUploading, setIsUploading] = useState(false)
+  const [activeSubTab, setActiveSubTab] = useState<'viewer' | 'matrix'>('viewer')
 
   const handleRunPreset = (preset: Scenario) => {
     runDetection({
@@ -241,7 +244,94 @@ export function ForensicPanel() {
         </div>
       </div>
 
-      {/* Media Artifact & Vision Findings (When available) */}
+      {/* View Mode Sub-tabs */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        background: '#0d1117',
+        border: '1px solid #1e2d3d',
+        borderRadius: 8,
+        padding: '6px 10px',
+        flexWrap: 'wrap',
+        gap: 8
+      }}>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button
+            onClick={() => setActiveSubTab('viewer')}
+            style={{
+              padding: '6px 14px',
+              borderRadius: 6,
+              fontSize: 12,
+              fontWeight: 700,
+              background: activeSubTab === 'viewer' ? '#1e293b' : 'transparent',
+              border: activeSubTab === 'viewer' ? '1px solid #00d4ff' : '1px solid transparent',
+              color: activeSubTab === 'viewer' ? '#38bdf8' : '#94a3b8',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6
+            }}
+          >
+            <Columns2 className="w-4 h-4" />
+            <span>Dual-Pane Forensic Viewer</span>
+          </button>
+
+          <button
+            onClick={() => setActiveSubTab('matrix')}
+            style={{
+              padding: '6px 14px',
+              borderRadius: 6,
+              fontSize: 12,
+              fontWeight: 700,
+              background: activeSubTab === 'matrix' ? '#1e293b' : 'transparent',
+              border: activeSubTab === 'matrix' ? '1px solid #00d4ff' : '1px solid transparent',
+              color: activeSubTab === 'matrix' ? '#38bdf8' : '#94a3b8',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6
+            }}
+          >
+            <Activity className="w-4 h-4" />
+            <span>Multi-Signal Matrix & Anomalies</span>
+          </button>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 11, color: '#64748b' }}>Benchmark Presets:</span>
+          {PRESETS.slice(0, 3).map(p => (
+            <button
+              key={p.key}
+              onClick={() => handleRunPreset(p.key)}
+              disabled={isScanning}
+              style={{
+                background: '#131b29',
+                border: '1px solid #223348',
+                color: '#cbd5e1',
+                padding: '4px 8px',
+                borderRadius: 4,
+                fontSize: 11,
+                cursor: 'pointer'
+              }}
+            >
+              {p.icon} {p.label.split(' ')[0]}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Forensic Viewer Mode */}
+      {activeSubTab === 'viewer' && (
+        <div style={{ flex: 1, minHeight: 520 }}>
+          <ForensicViewer result={currentResult} />
+        </div>
+      )}
+
+      {/* Deep Signal Matrix Mode */}
+      {activeSubTab === 'matrix' && (
+        <>
+          {/* Media Artifact & Vision Findings (When available) */}
       {artifact && (
         <div style={{
           display: 'grid',
@@ -413,6 +503,8 @@ export function ForensicPanel() {
           </div>
         ))}
       </div>
+      </>
+      )}
     </div>
   )
 }
