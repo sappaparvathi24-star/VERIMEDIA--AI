@@ -724,30 +724,45 @@ class ProvenanceService {
         });
       }
 
+      // Run real video metadata analysis if we have a file path on disk
+      const filePath = art.metadata?.filePath || null;
+      let videoMeta = null;
+      if (mimeType && mimeType.startsWith('video/') && filePath) {
+        videoMeta = await analyzeVideoMetadata(filePath);
+      }
+
+      const isRealVideoAnalysis = Boolean(videoMeta && videoMeta.supported && videoMeta.status === 'ANALYZED');
+
       const run = this.store.createAnalysisRun({
         investigationId,
         artifactId,
         method: 'VIDEO_AUDIO_FORENSIC_ENGINE',
-        status: 'SKIPPED',
+        status: isRealVideoAnalysis ? 'COMPLETED' : 'SKIPPED',
         metadata: {
           mimeType,
-          reason: 'video/audio forensic analysis not implemented'
+          reason: isRealVideoAnalysis ? null : 'video file path not available for ffprobe analysis',
+          videoMetadata: videoMeta
         }
       });
 
       const skippedPayload = {
         isAnalyzed: true,
         analyzedAt: new Date().toISOString(),
-        isRealAnalysis: false,
-        status: 'SKIPPED',
-        reason: 'video/audio forensic analysis not implemented',
-        source: null,
+        isRealAnalysis: isRealVideoAnalysis,
+        status: isRealVideoAnalysis ? 'COMPLETED' : 'SKIPPED',
+        reason: isRealVideoAnalysis ? null : 'Video file was not persisted to disk — ffprobe requires a file path. Enable disk persistence to unlock video forensics.',
+        source: isRealVideoAnalysis ? 'FFPROBE_METADATA' : null,
         authenticity: null,
         trustScore: null,
         manipulationProbability: null,
         confidence: null,
-        verdict: 'Analysis Skipped — Video/Audio Forensics Not Implemented',
-        summary: 'Forensic evaluation was skipped because video and audio forensic pipelines (frame extraction, spectral analysis, voice cloning detection) are not implemented.',
+        verdict: isRealVideoAnalysis
+          ? `Video Technical Analysis: ${videoMeta.codec?.toUpperCase() || 'UNKNOWN'} codec, ${videoMeta.duration?.toFixed(1)}s, ${videoMeta.resolution?.width}×${videoMeta.resolution?.height}`
+          : 'Video forensics require disk persistence — file path unavailable',
+        summary: isRealVideoAnalysis
+          ? `Extracted technical metadata via ffprobe: codec=${videoMeta.codec}, duration=${videoMeta.duration}s, fps=${videoMeta.fps}, resolution=${videoMeta.resolution?.width}×${videoMeta.resolution?.height}, audio=${videoMeta.audioCodec || 'none'}`
+          : 'Forensic evaluation was skipped because the video file is not persisted to disk (in-memory only upload). Enable disk persistence to allow ffprobe analysis.',
+        videoMetadata: videoMeta,
         action: 'MANUAL_REVIEW_REQUIRED',
         riskLevel: 'UNKNOWN',
         limitations: [
@@ -818,6 +833,12 @@ class ProvenanceService {
         callGeminiFn
       });
     }
+
+    // 5b. OCR — extract any text embedded in the image
+    const ocrResult = await performOCR(buffer, { language: 'eng' });
+
+    // 5c. C2PA manifest detection
+    const c2paResult = await detectC2PA(buffer, mimeType);
 
     // 6. Record Technical Analysis Run in Provenance Ledger
     const run = this.store.createAnalysisRun({
@@ -897,6 +918,39 @@ class ProvenanceService {
       });
       obsList.push(obsVision);
     }
+
+    // 7b. OCR observation
+    if (ocrResult.supported) {
+      const obsOcr = this.store.createObservation({
+        runId: run.id,
+        artifactId,
+        observationType: 'OCR_TEXT',
+        target: 'embedded_text',
+        value: {
+          text: ocrResult.text,
+          wordCount: ocrResult.wordCount,
+          confidence: ocrResult.confidence,
+          hasText: ocrResult.hasText
+        },
+        confidence: ocrResult.confidence || 0.5
+      });
+      obsList.push(obsOcr);
+    }
+
+    // 7c. C2PA observation
+    const obsC2pa = this.store.createObservation({
+      runId: run.id,
+      artifactId,
+      observationType: 'C2PA_STATUS',
+      target: 'content_authenticity_manifest',
+      value: {
+        status: c2paResult.status,
+        manifest: c2paResult.manifest,
+        message: c2paResult.message
+      },
+      confidence: c2paResult.isRealAnalysis ? 0.98 : 0.0
+    });
+    obsList.push(obsC2pa);
 
     // 8. Create Corroborating Evidence Object
     const isAuthentic = visionResult && visionResult.authenticity
@@ -1002,6 +1056,8 @@ class ProvenanceService {
       ela: elaResult,
       exif: exifResult,
       stats: statsResult,
+      ocr: ocrResult,
+      c2pa: c2paResult,
       engine: visionResult?.engine || 'Physical Pixel & Metadata Forensics Engine'
     };
 
@@ -1027,6 +1083,32 @@ class ProvenanceService {
       dataUrl: storedMedia?.dataUrl || null,
       fileUrl: `/api/artifacts/${art.id}/file`
     };
+  }
+
+  /**
+   * Record a human reviewer decision on an investigation.
+   * Persists decision, actor, notes, and timestamp to the investigation record.
+   */
+  updateInvestigationDecision(investigationId, { decision, actor, notes = '' } = {}) {
+    const inv = this.store.getInvestigation(investigationId);
+    if (!inv) {
+      throw new Error(`Investigation not found: ${investigationId}`);
+    }
+    inv.humanDecision = decision;
+    inv.humanDecisionActor = actor || 'ANALYST';
+    inv.humanDecisionNotes = notes;
+    inv.humanDecisionAt = new Date().toISOString();
+    inv.status = decision === 'ALLOW' ? 'CLOSED_ALLOWED'
+      : decision === 'TAKEDOWN' || decision === 'EMERGENCY_TAKEDOWN' ? 'CLOSED_TAKEDOWN'
+      : decision === 'REVIEW_REQUIRED' ? 'UNDER_REVIEW'
+      : 'CLOSED';
+    inv.updatedAt = new Date().toISOString();
+    this.store.investigations.set(investigationId, inv);
+    const { persistence } = this.store;
+    if (persistence && typeof persistence.saveInvestigation === 'function') {
+      persistence.saveInvestigation(inv);
+    }
+    return inv;
   }
 }
 

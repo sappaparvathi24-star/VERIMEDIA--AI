@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
+import fs from 'fs';
 import crypto from 'crypto';
 import multer from 'multer';
 import sharp from 'sharp';
@@ -61,6 +62,36 @@ import {
 } from './src/middleware/auth.js';
 
 dotenv.config();
+
+// ---------------------------------------------------------------------------
+// Media file persistence — write uploaded buffers to data/media/<sha256>.<ext>
+// so they survive server restarts and can be re-served / re-analyzed.
+// ---------------------------------------------------------------------------
+const MEDIA_DIR = path.join(process.cwd(), 'data', 'media');
+try {
+  fs.mkdirSync(MEDIA_DIR, { recursive: true });
+} catch (_) {}
+
+/**
+ * Persist a media buffer to disk. Returns the file path.
+ * @param {Buffer} buffer
+ * @param {string} sha256
+ * @param {string} mimeType
+ * @returns {string|null}
+ */
+function persistMediaToDisk(buffer, sha256, mimeType) {
+  try {
+    const ext = mimeType.split('/')[1]?.split(';')[0]?.replace('jpeg', 'jpg') || 'bin';
+    const filePath = path.join(MEDIA_DIR, `${sha256}.${ext}`);
+    if (!fs.existsSync(filePath)) {
+      fs.writeFileSync(filePath, buffer);
+    }
+    return filePath;
+  } catch (err) {
+    console.warn('[MediaPersist] Could not write to disk:', err.message);
+    return null;
+  }
+}
 
 // Seed default auth entities (organizations and users per 12_SECURITY_SPEC.md §5-6)
 seedDefaultAuthEntities();
@@ -861,6 +892,9 @@ const handleV1Detect = async (req, res) => {
       }
     }
 
+    // Persist buffer to disk so video forensics (ffprobe) and re-analysis work after restart
+    const diskPath = persistMediaToDisk(buffer, sha256, mimeType);
+
     artifact = provenanceService.createArtifact({
       investigationId: invId,
       filename,
@@ -873,7 +907,8 @@ const handleV1Detect = async (req, res) => {
         ...(exif ? { exif } : {}),
         originalName: uploadedFile.originalname,
         uploadedAt: new Date().toISOString(),
-        uploadedBy: req.user?.email || 'analyst@verimedia.ai'
+        uploadedBy: req.user?.email || 'analyst@verimedia.ai',
+        ...(diskPath ? { filePath: diskPath } : {})
       }
     });
 
@@ -1294,16 +1329,50 @@ support@verimedia.ai`;
   });
 });
 
-app.patch(['/api/v1/cases/:caseId', '/api/v1/cases/:caseId/'], (req, res) => {
+app.patch(['/api/v1/cases/:caseId', '/api/v1/cases/:caseId/'], requireAuth, (req, res) => {
   const { caseId } = req.params;
-  const { status, notes } = req.body || {};
-  res.json({
-    id: caseId,
-    case_id: caseId,
-    status: status || 'updated',
-    notes: notes || '',
-    updatedAt: new Date().toISOString()
-  });
+  const { status, decision, notes } = req.body || {};
+  try {
+    // Map the case ID to an investigation ID (caseId may be investigation ID or legacy case ID)
+    const inv = provenanceService.getInvestigation(caseId)
+      || provenanceService.getInvestigations().find(i => i.caseId === caseId || i.id === caseId);
+
+    if (inv) {
+      // Record real human review decision
+      const resolvedDecision = decision || status;
+      const updated = provenanceService.updateInvestigationDecision(inv.id, {
+        decision: resolvedDecision,
+        actor: req.user?.email || 'ANALYST',
+        notes: notes || ''
+      });
+
+      logAuditEvent({
+        investigationId: inv.id,
+        actor: req.user?.email,
+        action: AuditAction.INVESTIGATION_UPDATE,
+        objectType: AuditObjectType.INVESTIGATION,
+        objectId: inv.id,
+        afterState: { decision: resolvedDecision, notes, status: updated.status },
+        req
+      });
+
+      return res.json({
+        id: inv.id,
+        case_id: caseId,
+        status: updated.status,
+        humanDecision: updated.humanDecision,
+        humanDecisionActor: updated.humanDecisionActor,
+        humanDecisionAt: updated.humanDecisionAt,
+        notes: updated.humanDecisionNotes || notes || '',
+        updatedAt: updated.updatedAt
+      });
+    }
+
+    // Investigation not found — return honest 404 rather than fake success
+    return res.status(404).json({ error: `Investigation ${caseId} not found` });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -1449,6 +1518,8 @@ app.post('/api/investigations/:id/artifacts/upload', uploadLimiter, requireAuth,
       }
     }
 
+    const diskPath2 = persistMediaToDisk(buffer, sha256, mimeType);
+
     const artifact = provenanceService.createArtifact({
       investigationId: req.params.id,
       filename,
@@ -1461,7 +1532,8 @@ app.post('/api/investigations/:id/artifacts/upload', uploadLimiter, requireAuth,
         ...(exif ? { exif } : {}),
         originalName: req.file.originalname,
         uploadedAt: new Date().toISOString(),
-        uploadedBy: req.user?.email || 'analyst@verimedia.ai'
+        uploadedBy: req.user?.email || 'analyst@verimedia.ai',
+        ...(diskPath2 ? { filePath: diskPath2 } : {})
       }
     });
 
