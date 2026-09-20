@@ -927,42 +927,20 @@ const handleV1Detect = async (req, res) => {
     });
 
     if (mimeType.startsWith('video/') || mimeType.startsWith('audio/')) {
-      const skippedAnalysis = {
-        isAnalyzed: true,
-        analyzedAt: new Date().toISOString(),
-        isRealAnalysis: false,
-        status: 'SKIPPED',
-        reason: 'video/audio forensic analysis not implemented',
-        authenticity: null,
-        trustScore: null,
-        manipulationProbability: null,
-        confidence: null,
-        verdict: 'Analysis Skipped — Video/Audio Forensics Not Implemented',
-        summary: 'Forensic evaluation was skipped because video and audio forensic pipelines are not implemented.',
-        action: 'MANUAL_REVIEW_REQUIRED',
-        riskLevel: 'UNKNOWN',
-        limitations: [
-          'Video and audio forensic pipelines are not implemented in this version.',
-          'No automated authenticity, frame extraction, or spectral voice checks could be performed.'
-        ],
-        signals: {
-          spatial_diff: null,
-          noise_score: null,
-          face_landmark: null,
-          edge_consistency: null,
-          color_diff: null,
-          color_histogram: null,
-          frame_diff: null,
-          temporal_diff: null,
-          watermark_detected: null,
-          lipsync: null
-        }
-      };
-      artifact.metadata = {
-        ...(artifact.metadata || {}),
-        forensicAnalysis: skippedAnalysis,
-        status: 'SKIPPED'
-      };
+      // Route through the real service — it will run ffprobe if filePath is available,
+      // or return an honest SKIPPED with reason if the file is not on disk.
+      try {
+        await provenanceService.runImageForensicAnalysis({
+          investigationId: invId,
+          artifactId: artifact.id,
+          buffer,
+          mimeType,
+          exif,
+          callGeminiFn: callGemini
+        });
+      } catch (err) {
+        console.warn('[Forensics] Video/audio analysis failed:', err.message);
+      }
     } else if (mimeType.startsWith('image/')) {
       try {
         await provenanceService.runImageForensicAnalysis({
