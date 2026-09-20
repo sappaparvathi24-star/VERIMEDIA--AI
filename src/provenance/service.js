@@ -17,6 +17,9 @@ import {
   runGeminiMultimodalForensicVision,
   storeArtifactMedia
 } from '../forensics/imageForensics.js';
+import { performOCR } from '../forensics/ocr.js';
+import { detectC2PA } from '../forensics/c2paForensics.js';
+import { analyzeVideoMetadata } from '../forensics/videoForensics.js';
 
 class ProvenanceService {
   constructor(store = defaultStore) {
