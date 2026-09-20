@@ -1,14 +1,13 @@
 import { useEffect } from 'react'
 import { Dashboard } from './pages/Dashboard'
-import { HeroOverlay } from './components/modals/HeroOverlay'
-import { MonitoringJobModal } from './components/modals/MonitoringJobModal'
+import { SimpleView } from './pages/SimpleView'
 import { ErrorBoundary } from './components/common/ErrorBoundary'
 import { AuthGate } from './components/auth/AuthGate'
 import { useStore } from './store'
 import { getHealth } from './services/api'
 
 export default function App() {
-  const { setHealth } = useStore()
+  const { setHealth, viewMode } = useStore()
 
   useEffect(() => {
     getHealth().then(setHealth).catch(() => {})
@@ -17,9 +16,13 @@ export default function App() {
   return (
     <ErrorBoundary fallbackTitle="VeriMedia Application Error">
       <AuthGate>
-        <div style={{ height: '100vh', width: '100vw', overflow: 'hidden' }}>
-          <Dashboard />
-        </div>
+        {viewMode === 'simple' ? (
+          <SimpleView />
+        ) : (
+          <div style={{ height: '100vh', width: '100vw', overflow: 'hidden' }}>
+            <Dashboard />
+          </div>
+        )}
       </AuthGate>
     </ErrorBoundary>
   )

@@ -29,6 +29,10 @@ interface AppState {
   showCommandPalette: boolean
   selectedCaseId: string | null
 
+  // View mode — 'simple' shows the Simple Mode front door for non-technical users;
+  // 'advanced' shows the full analyst Dashboard.
+  viewMode: 'simple' | 'advanced'
+
   // Stats
   stats: ScanStats
 
@@ -47,6 +51,7 @@ interface AppState {
   setShowHeroOverlay: (v: boolean) => void
   setShowCommandPalette: (v: boolean) => void
   setSelectedCaseId: (id: string | null) => void
+  setViewMode: (m: 'simple' | 'advanced') => void
   updateStats: (r: DetectionResult) => void
   clearResults: () => void
 }
@@ -66,6 +71,7 @@ export const useStore = create<AppState>((set, get) => ({
   showHeroOverlay: false,
   showCommandPalette: false,
   selectedCaseId: null,
+  viewMode: 'simple',
   stats: { total: 1, threats: 1, dmca: 1, clean: 0 },
 
   setCurrentResult: (r) => set({ currentResult: r }),
@@ -82,6 +88,7 @@ export const useStore = create<AppState>((set, get) => ({
   setShowHeroOverlay: (v) => set({ showHeroOverlay: v }),
   setShowCommandPalette: (v) => set({ showCommandPalette: v }),
   setSelectedCaseId: (id) => set({ selectedCaseId: id }),
+  setViewMode: (m) => set({ viewMode: m }),
   updateStats: (r) => set(s => {
     const d = r.ai_analysis.decision
     return {
