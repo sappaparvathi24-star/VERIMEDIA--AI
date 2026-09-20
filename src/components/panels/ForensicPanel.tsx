@@ -479,6 +479,50 @@ export function ForensicPanel() {
         </div>
       )}
 
+      {/* OCR Extracted Text */}
+      {forensics?.ocr?.supported && (
+        <div style={{ background: '#0d1117', border: '1px solid #1e2d3d', borderRadius: 8, padding: '12px 14px' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#a855f7', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
+            OCR — Extracted Text {forensics.ocr.wordCount > 0 ? `(${forensics.ocr.wordCount} words, ${Math.round(forensics.ocr.confidence * 100)}% confidence)` : '(no text detected)'}
+          </div>
+          {forensics.ocr.hasText ? (
+            <pre style={{ fontSize: 11, color: '#cbd5e1', fontFamily: 'monospace', background: '#080c10', padding: 10, borderRadius: 6, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 120, overflowY: 'auto', margin: 0 }}>
+              {forensics.ocr.text}
+            </pre>
+          ) : (
+            <span style={{ fontSize: 11, color: '#4a5568' }}>No readable text found in this image.</span>
+          )}
+        </div>
+      )}
+
+      {/* C2PA Content Authenticity */}
+      {forensics?.c2pa && (
+        <div style={{ background: '#0d1117', border: '1px solid #1e2d3d', borderRadius: 8, padding: '12px 14px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#8899aa', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Content Authenticity (C2PA)
+            </div>
+            <span style={{
+              fontSize: 10, fontWeight: 800, fontFamily: 'monospace', padding: '2px 7px', borderRadius: 4,
+              background: forensics.c2pa.status === 'C2PA_PRESENT' ? 'rgba(34,197,94,0.15)'
+                : forensics.c2pa.status === 'C2PA_NOT_DETECTED' ? 'rgba(100,116,139,0.2)'
+                : 'rgba(245,158,11,0.15)',
+              color: forensics.c2pa.status === 'C2PA_PRESENT' ? '#4ade80'
+                : forensics.c2pa.status === 'C2PA_NOT_DETECTED' ? '#64748b'
+                : '#fbbf24',
+            }}>
+              {forensics.c2pa.status}
+            </span>
+          </div>
+          <div style={{ fontSize: 11, color: '#64748b' }}>{forensics.c2pa.message}</div>
+          {forensics.c2pa.manifest && (
+            <div style={{ marginTop: 6, fontSize: 10, color: '#94a3b8', fontFamily: 'monospace' }}>
+              Generator: {forensics.c2pa.manifest.claim_generator || '—'} · Assertions: {forensics.c2pa.manifest.assertions ?? 0}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Decision Summary Footer */}
       <div style={{
         display: 'grid',

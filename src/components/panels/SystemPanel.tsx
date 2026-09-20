@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '../../store'
-import { getHealth, getProviders, testProvider, getSearchTransparency } from '../../services/api'
+import { getHealth, getProviders, testProvider, getSearchTransparency, getAuditEvents } from '../../services/api'
 
 export function SystemPanel() {
   const { health, setHealth, stats } = useStore()
@@ -9,6 +9,8 @@ export function SystemPanel() {
   const [transparency, setTransparency] = useState<any | null>(null)
   const [testingProvider, setTestingProvider] = useState<string | null>(null)
   const [testResult, setTestResult] = useState<any | null>(null)
+  const [auditEvents, setAuditEvents] = useState<any[]>([])
+  const [auditLoading, setAuditLoading] = useState(false)
 
   async function refresh() {
     setLoading(true)
@@ -45,8 +47,20 @@ export function SystemPanel() {
     }
   }
 
+  async function fetchAudit() {
+    setAuditLoading(true)
+    try {
+      const data = await getAuditEvents({ limit: 50 })
+      if (data?.events) setAuditEvents(data.events)
+    } catch (_) {}
+    setAuditLoading(false)
+  }
+
   useEffect(() => {
     refresh()
+    fetchAudit()
+    const t = setInterval(fetchAudit, 30_000)
+    return () => clearInterval(t)
   }, [])
 
   return (
@@ -263,6 +277,58 @@ export function SystemPanel() {
             </a>
           ))}
         </div>
+      </div>
+
+      {/* Audit Trail */}
+      <div style={{ padding: 16, background: '#0d1117', border: '1px solid #1e2d3d', borderRadius: 8, marginTop: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+          <p style={{ fontSize: 11, color: '#8899aa', fontWeight: 700, textTransform: 'uppercase', margin: 0 }}>
+            Audit Trail {auditLoading ? '◌' : `(${auditEvents.length})`}
+          </p>
+          <button
+            onClick={fetchAudit}
+            style={{ fontSize: 10, color: '#38bdf8', background: 'transparent', border: 'none', cursor: 'pointer' }}
+          >
+            ↻ Refresh
+          </button>
+        </div>
+        {auditEvents.length === 0 ? (
+          <div style={{ fontSize: 11, color: '#4a5568', textAlign: 'center', padding: 16 }}>
+            {auditLoading ? 'Loading audit events…' : 'No audit events recorded yet'}
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, fontFamily: 'monospace' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid #1e2d3d' }}>
+                  {['Timestamp', 'Actor', 'Action', 'Object Type', 'Object ID'].map(h => (
+                    <th key={h} style={{ padding: '6px 8px', textAlign: 'left', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {auditEvents.slice(0, 50).map((ev: any) => (
+                  <tr key={ev.id} style={{ borderBottom: '1px solid #111827' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.02)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    <td style={{ padding: '5px 8px', color: '#64748b' }}>
+                      {new Date(ev.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                    </td>
+                    <td style={{ padding: '5px 8px', color: '#94a3b8', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {ev.actor || '—'}
+                    </td>
+                    <td style={{ padding: '5px 8px', color: '#38bdf8', fontWeight: 700 }}>{ev.action}</td>
+                    <td style={{ padding: '5px 8px', color: '#8899aa' }}>{ev.objectType}</td>
+                    <td style={{ padding: '5px 8px', color: '#4a5568', maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {ev.objectId || '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   )

@@ -488,6 +488,20 @@ app.get('/api/audit-logs', requireAuth, (req, res) => {
   }
 });
 
+// Short alias used by SystemPanel UI
+app.get('/api/audit', requireAuth, (req, res) => {
+  try {
+    const { investigationId, limit } = req.query;
+    const events = getAuditEvents({
+      investigationId: investigationId ? String(investigationId) : null,
+      limit: limit ? parseInt(limit, 10) : 50
+    });
+    res.json({ events, count: events.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/v1/audit-logs', requireAuth, (req, res) => {
   try {
     const { investigationId, action, objectType, limit, offset } = req.query;

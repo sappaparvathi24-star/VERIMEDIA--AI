@@ -192,6 +192,12 @@ export const listCases = (limit = 50): Promise<CaseRecord[]> =>
 export const updateCase = (caseId: string, status: CaseStatus, notes?: string) =>
   api.patch(`/v1/cases/${caseId}`, { status, notes }).then(r => r.data)
 
+export const recordDecision = (caseId: string, decision: string, notes?: string) =>
+  api.patch(`/v1/cases/${caseId}`, { decision, notes }).then(r => r.data)
+
+export const getAuditEvents = (params?: { limit?: number; investigationId?: string }) =>
+  api.get('/audit', { params }).then(r => r.data)
+
 export const getHealth = (): Promise<HealthStatus> =>
   api.get<HealthStatus>('/health').then(r => r.data)
 
