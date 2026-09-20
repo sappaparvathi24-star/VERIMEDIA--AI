@@ -182,6 +182,16 @@ export function CommandPalette() {
       action: () => { setActiveTab('system'); setShowCommandPalette(false) }
     },
     {
+      id: 'nav-debug',
+      category: 'NAVIGATION',
+      title: 'API Network Logs & Backend Fidelity Debugger',
+      subtitle: 'Inspect real-time HTTP requests, ELA binary fidelity, and cURL replay commands',
+      icon: '🪲',
+      badge: 'LIVE',
+      badgeColor: '#06b6d4',
+      action: () => { setActiveTab('debug'); setShowCommandPalette(false) }
+    },
+    {
       id: 'nav-feed',
       category: 'NAVIGATION',
       title: 'Real-Time Ingestion Event Feed',

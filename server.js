@@ -1855,6 +1855,8 @@ const handleRegisterArtifact = async (req, res) => {
       }
     }
 
+    const diskPath = persistMediaToDisk(buffer, sha256, mimeType);
+
     const artifact = provenanceService.createArtifact({
       investigationId: invId,
       filename,
@@ -1867,8 +1869,17 @@ const handleRegisterArtifact = async (req, res) => {
         ...(exif ? { exif } : {}),
         originalName: uploadedFile.originalname,
         uploadedAt: new Date().toISOString(),
-        uploadedBy: req.user?.email || 'analyst@verimedia.ai'
+        uploadedBy: req.user?.email || 'analyst@verimedia.ai',
+        ...(diskPath ? { filePath: diskPath } : {})
       }
+    });
+
+    // Store binary media buffer for inspection, UI preview & serving
+    storeArtifactMedia(artifact.id, {
+      buffer,
+      mimeType,
+      filename,
+      originalName: uploadedFile.originalname
     });
 
     let forensicAnalysis = null;

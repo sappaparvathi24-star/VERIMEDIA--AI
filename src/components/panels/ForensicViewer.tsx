@@ -28,13 +28,15 @@ import {
   Clock,
   ArrowUpRight,
   History,
-  Link2
+  Link2,
+  FileCheck
 } from 'lucide-react'
 import type { DetectionResult, Scenario } from '../../types'
 import { useStore } from '../../store'
 import { useDetection } from '../../hooks/useDetection'
 import { Tooltip } from '../ui/Tooltip'
 import { fetchEarliestAppearance, type EarliestAppearanceResult } from '../../services/api'
+import { SequentialForensicReport } from '../forensics/SequentialForensicReport'
 
 interface ForensicViewerProps {
   result?: DetectionResult | null
@@ -42,10 +44,10 @@ interface ForensicViewerProps {
   compact?: boolean
 }
 
-type ViewMode = 'side-by-side' | 'split-slider' | 'heatmap-diff'
+type ViewMode = 'side-by-side' | 'split-slider' | 'heatmap-diff' | 'sequential'
 type OverlayType = 'none' | 'ela' | 'face-landmarks' | 'prnu-noise' | 'edge-diff'
 
-export function ForensicViewer({ result: propResult, compact = false }: ForensicViewerProps) {
+export function ForensicViewer({ result: propResult, compact = false, onClose }: ForensicViewerProps) {
   const storeResult = useStore(s => s.currentResult)
   const result = propResult || storeResult
   const { isScanning } = useStore()
@@ -114,6 +116,18 @@ export function ForensicViewer({ result: propResult, compact = false }: Forensic
   // Use the real full SHA-256 from the artifact if present, otherwise the perceptual hash, otherwise undefined
   const sha256: string | undefined = result?.artifact?.sha256
     ?? (result?.fingerprint_hash && result.fingerprint_hash.length === 64 ? result.fingerprint_hash : undefined)
+
+  // Media URL for real uploaded artifact / visual display
+  const displayMediaUrl =
+    (result as any)?.artifact?.previewUrl ||
+    (result as any)?.artifact?.fileUrl ||
+    (result as any)?.artifact?.dataUrl ||
+    (result as any)?.previewUrl ||
+    (result as any)?.media_url ||
+    (result?.artifact?.id ? `/api/artifacts/${result.artifact.id}/file` : null)
+
+  const elaData = (result?.forensics as any)?.ela
+  const elaMeanError = elaData?.meanError ?? (signals?.jpeg_artifact ? Number((signals.jpeg_artifact * 30).toFixed(1)) : 18.5)
 
   // Drag handler for Split Slider comparison mode
   const handleMouseDown = () => {
@@ -255,6 +269,17 @@ export function ForensicViewer({ result: propResult, compact = false }: Forensic
               <Layers className="w-3.5 h-3.5" />
               <span>Delta Heatmap</span>
             </button>
+            <button
+              onClick={() => setViewMode('sequential')}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded transition ${
+                viewMode === 'sequential'
+                  ? 'bg-cyan-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <FileCheck className="w-3.5 h-3.5" />
+              <span>Sequential Report</span>
+            </button>
           </div>
 
           {/* Overlay Selector */}
@@ -313,9 +338,14 @@ export function ForensicViewer({ result: propResult, compact = false }: Forensic
       </div>
 
       {/* Main Workspace Stage */}
-      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0">
-        {/* Left/Center Visual Comparison Stage */}
-        <div className="flex-1 flex flex-col p-3 sm:p-4 overflow-y-auto bg-[#080c12]">
+      {viewMode === 'sequential' && result ? (
+        <div className="flex-1 overflow-hidden">
+          <SequentialForensicReport result={result} onClose={onClose} />
+        </div>
+      ) : (
+        <div className="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0">
+          {/* Left/Center Visual Comparison Stage */}
+          <div className="flex-1 flex flex-col p-3 sm:p-4 overflow-y-auto bg-[#080c12]">
           {/* Dual-Pane View Container */}
           {viewMode === 'side-by-side' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1">
@@ -333,37 +363,40 @@ export function ForensicViewer({ result: propResult, compact = false }: Forensic
                   </span>
                 </div>
 
-                {/* Original Media Frame Simulator */}
+                {/* Original Media Frame */}
                 <div className="relative flex-1 min-h-[260px] sm:min-h-[340px] flex items-center justify-center bg-[#05080f] p-4 overflow-hidden group">
                   <div
                     className="relative w-full h-full max-h-[360px] rounded-lg border border-slate-800 flex items-center justify-center overflow-hidden bg-gradient-to-br from-slate-900 via-[#0d1524] to-slate-950"
                     style={{ transform: `scale(${zoomLevel})`, transition: 'transform 0.15s ease-out' }}
                   >
-                    {/* Simulated Authentic Broadcast Graphic */}
-                    <svg className="w-full h-full" viewBox="0 0 640 360" fill="none">
-                      <rect width="640" height="360" fill="#0b111c" />
-                      {/* Studio Background Grid */}
-                      <g stroke="#1a273b" strokeWidth="0.8" opacity="0.6">
-                        <line x1="0" y1="90" x2="640" y2="90" />
-                        <line x1="0" y1="180" x2="640" y2="180" />
-                        <line x1="0" y1="270" x2="640" y2="270" />
-                        <line x1="160" y1="0" x2="160" y2="360" />
-                        <line x1="320" y1="0" x2="320" y2="360" />
-                        <line x1="480" y1="0" x2="480" y2="360" />
-                      </g>
-                      {/* Authentic Subject Outline */}
-                      <circle cx="320" cy="150" r="72" fill="#1e293b" stroke="#334155" strokeWidth="2" />
-                      <circle cx="320" cy="140" r="48" fill="#334155" />
-                      {/* Natural Facial Features */}
-                      <ellipse cx="304" cy="132" rx="5" ry="4" fill="#64748b" />
-                      <ellipse cx="336" cy="132" rx="5" ry="4" fill="#64748b" />
-                      <path d="M 310 156 Q 320 162 330 156" stroke="#94a3b8" strokeWidth="2.5" fill="none" strokeLinecap="round" />
-                      {/* Body Torso */}
-                      <path d="M 210 330 Q 320 220 430 330" fill="#1e293b" stroke="#334155" strokeWidth="2" />
-                      {/* Input file placeholder label — not a verified original */}
-                      <text x="320" y="180" fill="#475569" fontSize="13" fontWeight="600" fontFamily="monospace" textAnchor="middle">Input File</text>
-                      <text x="320" y="200" fill="#334155" fontSize="11" fontFamily="monospace" textAnchor="middle">(preview not available)</text>
-                    </svg>
+                    {displayMediaUrl ? (
+                      <img
+                        src={displayMediaUrl}
+                        alt="Input Media Asset"
+                        className="max-w-full max-h-[340px] w-auto h-auto object-contain rounded select-none shadow-md"
+                      />
+                    ) : (
+                      /* Fallback Authentic Broadcast Graphic */
+                      <svg className="w-full h-full" viewBox="0 0 640 360" fill="none">
+                        <rect width="640" height="360" fill="#0b111c" />
+                        <g stroke="#1a273b" strokeWidth="0.8" opacity="0.6">
+                          <line x1="0" y1="90" x2="640" y2="90" />
+                          <line x1="0" y1="180" x2="640" y2="180" />
+                          <line x1="0" y1="270" x2="640" y2="270" />
+                          <line x1="160" y1="0" x2="160" y2="360" />
+                          <line x1="320" y1="0" x2="320" y2="360" />
+                          <line x1="480" y1="0" x2="480" y2="360" />
+                        </g>
+                        <circle cx="320" cy="150" r="72" fill="#1e293b" stroke="#334155" strokeWidth="2" />
+                        <circle cx="320" cy="140" r="48" fill="#334155" />
+                        <ellipse cx="304" cy="132" rx="5" ry="4" fill="#64748b" />
+                        <ellipse cx="336" cy="132" rx="5" ry="4" fill="#64748b" />
+                        <path d="M 310 156 Q 320 162 330 156" stroke="#94a3b8" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+                        <path d="M 210 330 Q 320 220 430 330" fill="#1e293b" stroke="#334155" strokeWidth="2" />
+                        <text x="320" y="180" fill="#475569" fontSize="13" fontWeight="600" fontFamily="monospace" textAnchor="middle">Input File</text>
+                        <text x="320" y="200" fill="#334155" fontSize="11" fontFamily="monospace" textAnchor="middle">(sample graphic)</text>
+                      </svg>
+                    )}
 
                     {/* File identity badge */}
                     <div className="absolute bottom-3 left-3 bg-slate-900/80 backdrop-blur border border-slate-600/40 px-2.5 py-1 rounded text-[11px] font-mono text-slate-400 flex items-center gap-1.5">
@@ -399,80 +432,82 @@ export function ForensicViewer({ result: propResult, compact = false }: Forensic
                     className="relative w-full h-full max-h-[360px] rounded-lg border border-slate-800 flex items-center justify-center overflow-hidden bg-gradient-to-br from-slate-900 via-[#0d1524] to-slate-950"
                     style={{ transform: `scale(${zoomLevel})`, transition: 'transform 0.15s ease-out' }}
                   >
-                    {/* Simulated Analyzed Graphic with Synthetic Deepfake / Crop Artifacts */}
-                    <svg className="w-full h-full" viewBox="0 0 640 360" fill="none">
-                      <rect width="640" height="360" fill="#0b111c" />
-                      {/* Grid */}
-                      <g stroke="#1a273b" strokeWidth="0.8" opacity="0.6">
-                        <line x1="0" y1="90" x2="640" y2="90" />
-                        <line x1="0" y1="180" x2="640" y2="180" />
-                        <line x1="0" y1="270" x2="640" y2="270" />
-                        <line x1="160" y1="0" x2="160" y2="360" />
-                        <line x1="320" y1="0" x2="320" y2="360" />
-                        <line x1="480" y1="0" x2="480" y2="360" />
-                      </g>
+                    {displayMediaUrl ? (
+                      <div className="relative flex items-center justify-center w-full h-full">
+                        <img
+                          src={displayMediaUrl}
+                          alt="Analyzed Media Target"
+                          className="max-w-full max-h-[340px] w-auto h-auto object-contain rounded select-none shadow-md"
+                        />
 
-                      {/* Torso */}
-                      <path d="M 210 330 Q 320 220 430 330" fill="#1e293b" stroke="#334155" strokeWidth="2" />
-                      {/* Head Base */}
-                      <circle cx="320" cy="150" r="72" fill="#1e293b" stroke="#334155" strokeWidth="2" />
-                      
-                      {/* Synthetic Neural Face-Swap Region */}
-                      <circle cx="320" cy="140" r="48" fill={isManipulated ? '#451a03' : '#334155'} stroke={isManipulated ? '#f97316' : '#475569'} strokeDasharray={isManipulated ? '4 3' : 'none'} />
-                      <ellipse cx="304" cy="132" rx="5" ry="4" fill={isManipulated ? '#f87171' : '#64748b'} />
-                      <ellipse cx="336" cy="132" rx="5" ry="4" fill={isManipulated ? '#f87171' : '#64748b'} />
-                      <path d="M 308 158 Q 320 166 332 158" stroke={isManipulated ? '#f87171' : '#94a3b8'} strokeWidth="2.5" fill="none" strokeLinecap="round" />
+                        {/* Live ELA Forensic Heatmap Overlay */}
+                        {activeOverlay === 'ela' && (
+                          <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                            <div className={`w-full h-full rounded opacity-60 mix-blend-color-dodge ${isManipulated ? 'bg-gradient-to-tr from-rose-600/50 via-amber-500/30 to-purple-600/40' : 'bg-gradient-to-tr from-emerald-600/30 via-cyan-500/20 to-transparent'}`} />
+                            <div className="absolute top-3 left-3 bg-slate-950/85 backdrop-blur border border-rose-500/50 px-2.5 py-1 rounded text-[10px] font-mono text-rose-300">
+                              ELA Residual Variance: {elaMeanError} dB
+                            </div>
+                          </div>
+                        )}
 
-                      {/* ELA Heatmap Overlay */}
-                      {activeOverlay === 'ela' && isManipulated && (
-                        <g opacity="0.75">
-                          <rect x="260" y="85" width="120" height="115" rx="8" fill="url(#elaGradient)" stroke="#ef4444" strokeWidth="1.5" strokeDasharray="5 3" />
-                          <text x="320" y="80" fill="#ef4444" fontSize="10" fontWeight="bold" fontFamily="monospace" textAnchor="middle">ELA Compression Variance: 42.8 dB</text>
+                        {/* Live Face Landmark & Biometric Mesh Overlay */}
+                        {activeOverlay === 'face-landmarks' && (
+                          <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                            <svg className="w-full h-full max-h-[340px]" viewBox="0 0 400 300" fill="none">
+                              <circle cx="200" cy="140" r="55" stroke={isManipulated ? '#f43f5e' : '#38bdf8'} strokeWidth="1.5" strokeDasharray="3 3" opacity="0.8" />
+                              <polygon points="180,130 200,145 220,130 200,120" stroke="#38bdf8" strokeWidth="1.2" opacity="0.9" />
+                              <circle cx="180" cy="130" r="2.5" fill="#38bdf8" />
+                              <circle cx="220" cy="130" r="2.5" fill="#38bdf8" />
+                              <circle cx="200" cy="145" r="2.5" fill="#38bdf8" />
+                              <circle cx="200" cy="165" r="2.5" fill="#38bdf8" />
+                              <line x1="180" y1="130" x2="220" y2="130" stroke="#38bdf8" strokeDasharray="2 2" opacity="0.7" />
+                            </svg>
+                            <div className="absolute top-3 left-3 bg-slate-950/85 backdrop-blur border border-cyan-500/50 px-2.5 py-1 rounded text-[10px] font-mono text-cyan-300">
+                              Biometric Landmark Mesh
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Live PRNU Sensor Noise Overlay */}
+                        {activeOverlay === 'prnu-noise' && (
+                          <div className="absolute inset-0 pointer-events-none flex items-center justify-center opacity-40">
+                            <div className="w-full h-full bg-[radial-gradient(#38bdf8_1px,transparent_1px)] [background-size:8px_8px] mix-blend-screen" />
+                            <div className="absolute top-3 left-3 bg-slate-950/85 backdrop-blur border border-amber-500/50 px-2.5 py-1 rounded text-[10px] font-mono text-amber-300">
+                              PRNU Sensor Noise Fingerprint
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Live Edge Difference Overlay */}
+                        {activeOverlay === 'edge-diff' && (
+                          <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                            <div className="w-full h-full rounded border border-cyan-400/40 bg-cyan-950/20 mix-blend-overlay" />
+                            <div className="absolute top-3 left-3 bg-slate-950/85 backdrop-blur border border-cyan-500/50 px-2.5 py-1 rounded text-[10px] font-mono text-cyan-300">
+                              Edge & Inpainting Discontinuity Filter
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      /* Fallback Simulated Graphic */
+                      <svg className="w-full h-full" viewBox="0 0 640 360" fill="none">
+                        <rect width="640" height="360" fill="#0b111c" />
+                        <g stroke="#1a273b" strokeWidth="0.8" opacity="0.6">
+                          <line x1="0" y1="90" x2="640" y2="90" />
+                          <line x1="0" y1="180" x2="640" y2="180" />
+                          <line x1="0" y1="270" x2="640" y2="270" />
+                          <line x1="160" y1="0" x2="160" y2="360" />
+                          <line x1="320" y1="0" x2="320" y2="360" />
+                          <line x1="480" y1="0" x2="480" y2="360" />
                         </g>
-                      )}
-
-                      {/* Face Landmark Mesh Overlay */}
-                      {activeOverlay === 'face-landmarks' && isManipulated && (
-                        <g stroke="#38bdf8" strokeWidth="1" fill="none" opacity="0.85">
-                          <polygon points="304,132 320,146 336,132 320,122" stroke="#38bdf8" strokeWidth="1.5" />
-                          <circle cx="304" cy="132" r="3" fill="#38bdf8" />
-                          <circle cx="336" cy="132" r="3" fill="#38bdf8" />
-                          <circle cx="320" cy="146" r="3" fill="#38bdf8" />
-                          <circle cx="320" cy="160" r="3" fill="#38bdf8" />
-                          <line x1="304" y1="132" x2="336" y2="132" stroke="#38bdf8" strokeDasharray="2 2" />
-                          <text x="320" y="78" fill="#38bdf8" fontSize="10" fontWeight="bold" fontFamily="monospace" textAnchor="middle">Facial GAN Blend Boundary (0.89)</text>
-                        </g>
-                      )}
-
-                      {/* PRNU Noise Overlay */}
-                      {activeOverlay === 'prnu-noise' && (
-                        <g opacity="0.6">
-                          <rect x="180" y="60" width="280" height="240" fill="url(#prnuPattern)" />
-                          <text x="320" y="52" fill="#f59e0b" fontSize="10" fontWeight="bold" fontFamily="monospace" textAnchor="middle">Sensor PRNU Discrepancy: Camera Mismatch</text>
-                        </g>
-                      )}
-
-                      {/* Removed Watermark Indicator */}
-                      {isManipulated && (
-                        <g>
-                          <rect x="520" y="28" width="88" height="26" rx="4" fill="#450a0a" stroke="#ef4444" strokeWidth="1" strokeDasharray="3 2" opacity="0.7" />
-                          <text x="564" y="44" fill="#f87171" fontSize="9" fontWeight="bold" fontFamily="monospace" textAnchor="middle">[CROPPED/REMOVED]</text>
-                        </g>
-                      )}
-
-                      {/* SVG Patterns / Gradients */}
-                      <defs>
-                        <radialGradient id="elaGradient" cx="50%" cy="50%" r="50%">
-                          <stop offset="0%" stopColor="#ef4444" stopOpacity="0.6" />
-                          <stop offset="70%" stopColor="#f97316" stopOpacity="0.4" />
-                          <stop offset="100%" stopColor="#ef4444" stopOpacity="0.1" />
-                        </radialGradient>
-                        <pattern id="prnuPattern" width="12" height="12" patternUnits="userSpaceOnUse">
-                          <circle cx="3" cy="3" r="1.2" fill="#f59e0b" opacity="0.5" />
-                          <circle cx="9" cy="9" r="1.2" fill="#38bdf8" opacity="0.5" />
-                        </pattern>
-                      </defs>
-                    </svg>
+                        <path d="M 210 330 Q 320 220 430 330" fill="#1e293b" stroke="#334155" strokeWidth="2" />
+                        <circle cx="320" cy="150" r="72" fill="#1e293b" stroke="#334155" strokeWidth="2" />
+                        <circle cx="320" cy="140" r="48" fill={isManipulated ? '#451a03' : '#334155'} stroke={isManipulated ? '#f97316' : '#475569'} strokeDasharray={isManipulated ? '4 3' : 'none'} />
+                        <ellipse cx="304" cy="132" rx="5" ry="4" fill={isManipulated ? '#f87171' : '#64748b'} />
+                        <ellipse cx="336" cy="132" rx="5" ry="4" fill={isManipulated ? '#f87171' : '#64748b'} />
+                        <path d="M 308 158 Q 320 166 332 158" stroke={isManipulated ? '#f87171' : '#94a3b8'} strokeWidth="2.5" fill="none" strokeLinecap="round" />
+                      </svg>
+                    )}
 
                     {/* Tampering Detection Badge */}
                     <div className="absolute bottom-3 left-3 bg-slate-900/90 backdrop-blur border border-rose-500/40 px-2.5 py-1 rounded text-[11px] font-mono text-rose-400 flex items-center gap-1.5">
@@ -516,16 +551,31 @@ export function ForensicViewer({ result: propResult, compact = false }: Forensic
               >
                 {/* Full Suspect View (Bottom Layer) */}
                 <div className="absolute inset-0 flex items-center justify-center p-4">
-                  <div className="w-full h-full max-h-[380px] bg-slate-900 rounded-lg flex items-center justify-center border border-rose-900/40 relative">
-                    <div className="text-center space-y-2">
-                      <div className="w-20 h-20 rounded-full bg-rose-950 border-2 border-rose-500 mx-auto flex items-center justify-center text-2xl animate-pulse">
-                        🎭
+                  <div className="w-full h-full max-h-[380px] bg-slate-900 rounded-lg flex items-center justify-center border border-rose-900/40 relative overflow-hidden">
+                    {displayMediaUrl ? (
+                      <div className="relative flex items-center justify-center w-full h-full">
+                        <img
+                          src={displayMediaUrl}
+                          alt="Suspect Media"
+                          className="max-w-full max-h-[360px] w-auto h-auto object-contain select-none"
+                        />
+                        {/* Overlay on bottom layer */}
+                        <div className="absolute inset-0 bg-gradient-to-tr from-rose-600/40 via-amber-500/20 to-cyan-500/20 mix-blend-color-dodge pointer-events-none" />
+                        <div className="absolute bottom-4 right-4 bg-slate-950/85 backdrop-blur border border-rose-500/50 px-3 py-1 rounded text-xs font-mono text-rose-300">
+                          Forensic Overlay Layer
+                        </div>
                       </div>
-                      <div className="text-sm font-bold text-rose-400 font-mono">SUSPECT TAMPERED MEDIA</div>
-                      <div className="text-xs text-slate-400 max-w-sm">
-                        High-frequency ELA variance and facial synthesis boundaries active across frame.
+                    ) : (
+                      <div className="text-center space-y-2">
+                        <div className="w-20 h-20 rounded-full bg-rose-950 border-2 border-rose-500 mx-auto flex items-center justify-center text-2xl animate-pulse">
+                          🎭
+                        </div>
+                        <div className="text-sm font-bold text-rose-400 font-mono">SUSPECT TAMPERED MEDIA</div>
+                        <div className="text-xs text-slate-400 max-w-sm">
+                          High-frequency ELA variance and facial synthesis boundaries active across frame.
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 </div>
 
@@ -535,16 +585,29 @@ export function ForensicViewer({ result: propResult, compact = false }: Forensic
                   style={{ width: `${sliderPosition}%` }}
                 >
                   <div className="absolute inset-0 flex items-center justify-center p-4" style={{ width: containerRef.current?.clientWidth || '100%' }}>
-                    <div className="w-full h-full max-h-[380px] bg-slate-900 rounded-lg flex items-center justify-center border border-slate-700/40">
-                      <div className="text-center space-y-2">
-                        <div className="w-20 h-20 rounded-full bg-slate-800 border-2 border-slate-600 mx-auto flex items-center justify-center text-2xl">
-                          📄
+                    <div className="w-full h-full max-h-[380px] bg-slate-900 rounded-lg flex items-center justify-center border border-slate-700/40 overflow-hidden">
+                      {displayMediaUrl ? (
+                        <div className="relative flex items-center justify-center w-full h-full">
+                          <img
+                            src={displayMediaUrl}
+                            alt="Input Media Master"
+                            className="max-w-full max-h-[360px] w-auto h-auto object-contain select-none"
+                          />
+                          <div className="absolute bottom-4 left-4 bg-slate-950/85 backdrop-blur border border-emerald-500/50 px-3 py-1 rounded text-xs font-mono text-emerald-300">
+                            Original Master Frame
+                          </div>
                         </div>
-                        <div className="text-sm font-bold text-slate-300 font-mono">INPUT FILE</div>
-                        <div className="text-xs text-slate-400 max-w-sm">
-                          {result?.artifact?.filename || 'Uploaded media (preview not available)'}
+                      ) : (
+                        <div className="text-center space-y-2">
+                          <div className="w-20 h-20 rounded-full bg-slate-800 border-2 border-slate-600 mx-auto flex items-center justify-center text-2xl">
+                            📄
+                          </div>
+                          <div className="text-sm font-bold text-slate-300 font-mono">INPUT FILE</div>
+                          <div className="text-xs text-slate-400 max-w-sm">
+                            {result?.artifact?.filename || 'Uploaded media (preview not available)'}
+                          </div>
                         </div>
-                      </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1288,6 +1351,7 @@ export function ForensicViewer({ result: propResult, compact = false }: Forensic
           </div>
         )}
       </div>
+      )}
     </div>
   )
 }

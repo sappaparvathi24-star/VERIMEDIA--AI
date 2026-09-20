@@ -1,6 +1,7 @@
 // VeriMedia AI — Typed API Client for Provenance & Media Investigations
 import axios from 'axios'
 import { getToken } from '../lib/supabaseClient'
+import { networkLogger } from './networkLogger'
 import type {
   DetectionRequest, DetectionResult,
   DMCARequest, DMCANotice,
@@ -8,28 +9,24 @@ import type {
   HealthStatus,
 } from '../types'
 
+export { networkLogger }
+
 // Canonical Render backend URL — update this single constant when the backend URL changes
 const RENDER_BACKEND = 'https://verimedia-ai-2.onrender.com'
 
 export const getApiBaseUrl = (): string => {
   const envUrl = import.meta.env.VITE_API_BASE_URL?.trim()
-  if (envUrl) {
-    // If the env var still points to the old backend, silently upgrade it
-    if (envUrl.includes('verimedia-ai-1.onrender.com')) {
-      return RENDER_BACKEND
-    }
+  if (envUrl && envUrl !== 'https://verimedia-ai-2.onrender.com' && envUrl !== 'https://verimedia-ai-1.onrender.com') {
     return envUrl.replace(/\/$/, '')
   }
   if (typeof window !== 'undefined') {
     const host = window.location.hostname
-    // Route any Vercel deployment or custom domain to the Render backend
-    if (
-      host.includes('vercel.app') ||
-      host.includes('verimedia') ||
-      host !== 'localhost'
-    ) {
+    // Only route to external Render backend if hosted purely on static Vercel domain
+    if (host.includes('vercel.app')) {
       return RENDER_BACKEND
     }
+    // In local dev, Cloud Run preview container (*.run.app), and same-origin deployments, use relative base
+    return ''
   }
   return ''
 }
@@ -43,6 +40,10 @@ const api = axios.create({
   timeout: 60_000,
   headers: { 'Content-Type': 'application/json' },
 })
+
+// Attach network logger interceptors for real-time traffic audit & backend verification
+networkLogger.attachAxios(api)
+networkLogger.attachAxios(axios)
 
 // Attach Bearer token automatically to every API request
 api.interceptors.request.use(async (config) => {

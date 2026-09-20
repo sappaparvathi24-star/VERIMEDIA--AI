@@ -88,6 +88,13 @@ const WORKSPACE_TOOLS: NavItem[] = [
     icon: '⚙️',
     description: 'Unified engine health, DB sync, monitoring jobs and provider status',
   },
+  {
+    id: 'debug',
+    label: 'API Network Logs',
+    icon: '🪲',
+    description: 'Real-time HTTP traffic debugger, forensic data fidelity auditor & cURL inspector',
+    badge: 'LIVE',
+  },
 ]
 
 export function Sidebar() {

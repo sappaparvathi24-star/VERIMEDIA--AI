@@ -57,6 +57,11 @@ const PAGE_TITLES: Record<TabId, { title: string; subtitle: string; icon: string
     title: 'Gemini AI Intelligence & Multimodal Copilot',
     subtitle: 'Multimodal reasoning, automated forensic dossiers & technical explainer',
     icon: '✨'
+  },
+  debug: {
+    title: 'API Network Traffic & Backend Fidelity Inspector',
+    subtitle: 'Real-time HTTP traffic debugger, binary forensic verification & cURL inspector',
+    icon: '🪲'
   }
 }
 

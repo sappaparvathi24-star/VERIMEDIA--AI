@@ -52,8 +52,8 @@ interface AppState {
 }
 
 export const useStore = create<AppState>((set, get) => ({
-  results: [DEFAULT_SHOWCASE_RESULT],
-  currentResult: DEFAULT_SHOWCASE_RESULT,
+  results: [],
+  currentResult: null,
   isScanning: false,
   scanError: null,
   cases: SAMPLE_CASES,
@@ -66,7 +66,7 @@ export const useStore = create<AppState>((set, get) => ({
   showHeroOverlay: false,
   showCommandPalette: false,
   selectedCaseId: null,
-  stats: { total: 1, threats: 1, dmca: 1, clean: 0 },
+  stats: { total: 0, threats: 0, dmca: 0, clean: 0 },
 
   setCurrentResult: (r) => set({ currentResult: r }),
   addResult: (r) => set(s => ({ results: [r, ...s.results].slice(0, 200) })),
