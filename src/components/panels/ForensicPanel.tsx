@@ -2,7 +2,7 @@ import { useState, useRef } from 'react'
 import { useStore } from '../../store'
 import { useDetection } from '../../hooks/useDetection'
 import { Tooltip } from '../ui/Tooltip'
-import { registerMediaArtifact } from '../../services/api'
+import { uploadArtifactAsync, pollForensicJob } from '../../services/api'
 import { ForensicViewer } from './ForensicViewer'
 import type { Scenario } from '../../types'
 import { Columns2, Activity, ShieldCheck, Sparkles } from 'lucide-react'
@@ -55,18 +55,29 @@ export function ForensicPanel() {
     setIsUploading(true)
     setScanError(null)
     try {
-      const data = await registerMediaArtifact(file)
-      if (data && (data.artifact || data.success)) {
-        const art = data.artifact || data
-        await runDetection({
-          platform: 'YouTube',
-          username: 'uploaded_evidence',
-          caption: file.name,
-          content_type: 'news',
-          scenario: 'normal',
-          artifactId: art.id
-        })
+      // Step 1: Upload and enqueue async forensic job
+      const uploadData = await uploadArtifactAsync(file)
+      const artifactId: string = uploadData?.artifact?.id || uploadData?.artifactId
+      const jobId: string = uploadData?.jobId || uploadData?.job?.id
+
+      if (!artifactId) {
+        throw new Error('Upload response did not include an artifact ID.')
       }
+
+      // Step 2: Poll until the forensic job completes so artifact.metadata.forensicAnalysis is populated
+      if (jobId) {
+        await pollForensicJob(jobId, 45_000, 1_200)
+      }
+
+      // Step 3: Run detection — handleV1Detect reads forensicAnalysis from the artifact store
+      await runDetection({
+        platform: 'YouTube',
+        username: 'uploaded_evidence',
+        caption: file.name,
+        content_type: 'news',
+        scenario: 'normal',
+        artifactId,
+      })
     } catch (err: unknown) {
       console.error('File upload error in forensic panel:', err)
       setScanError(err instanceof Error ? err.message : 'Upload failed')

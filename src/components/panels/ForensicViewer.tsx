@@ -78,40 +78,15 @@ export function ForensicViewer({ result: propResult, compact = false }: Forensic
     (result?.ml?.label === 'TAMPERED') ||
     (typeof result?.integrity?.score === 'number' && result.integrity.score < 0.5)
 
-  const signals = result?.integrity?.signals || {
-    jpeg_artifact: 0.84,
-    noise_pattern: 0.79,
-    edge_consistency: 0.14,
-    metadata_coherence: 0.22,
-    color_histogram: 0.68,
-    face_landmark: 0.89,
-    lipsync: 0.82,
-    temporal_mismatch: 0.76,
-    watermark_presence: 0.08
-  }
+  const signals = result?.integrity?.signals ?? {}
 
-  const exifData = result?.forensics?.exif || {
-    make: 'Sony',
-    model: 'ILCE-7SM3',
-    lensModel: 'FE 24-70mm F2.8 GM',
-    software: isManipulated ? 'Adobe Premiere Pro 24.2 / Synthesized' : 'Sony Camera Firmware 3.01',
-    createDate: '2026-01-10T08:14:00Z',
-    iso: 800,
-    fNumber: 2.8,
-    exposureTime: 0.02
-  }
+  const exifData = result?.forensics?.exif ?? null
 
-  const stats = result?.forensics?.stats || {
-    width: 1920,
-    height: 1080,
-    channels: 3,
-    entropy: 7.82,
-    luminance: 124.5
-  }
+  const stats = result?.forensics?.stats ?? null
 
-  const sha256 = result?.fingerprint_hash
-    ? `${result.fingerprint_hash}e83a9f1b4c7d2e0a`
-    : 'e83a9f1b4c7d2e0a8f9c1e3b5d7a9f2ce83a9f1b4c7d2e0a8f9c1e3b5d7a9f2c'
+  // Use the real full SHA-256 from the artifact if present, otherwise the perceptual hash, otherwise undefined
+  const sha256: string | undefined = result?.artifact?.sha256
+    ?? (result?.fingerprint_hash && result.fingerprint_hash.length === 64 ? result.fingerprint_hash : undefined)
 
   // Drag handler for Split Slider comparison mode
   const handleMouseDown = () => {
@@ -317,17 +292,17 @@ export function ForensicViewer({ result: propResult, compact = false }: Forensic
           {/* Dual-Pane View Container */}
           {viewMode === 'side-by-side' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1">
-              {/* Left Pane: Original Reference Master */}
+              {/* Left Pane: Reference / Input File */}
               <div className="flex flex-col bg-[#0e1522] border border-[#1e2d3d] rounded-xl overflow-hidden shadow-lg">
                 <div className="flex items-center justify-between px-3 py-2 bg-[#131c2b] border-b border-[#1e2d3d]">
                   <div className="flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-emerald-400" />
                     <span className="text-xs font-bold font-mono text-emerald-400">
-                      ORIGINAL MASTER (GROUND TRUTH)
+                      INPUT FILE (REFERENCE)
                     </span>
                   </div>
                   <span className="text-[10px] text-slate-400 font-mono">
-                    {stats.width}×{stats.height} • RAW 4K
+                    {stats ? `${stats.width}×${stats.height}` : '—'}
                   </span>
                 </div>
 
@@ -358,23 +333,22 @@ export function ForensicViewer({ result: propResult, compact = false }: Forensic
                       <path d="M 310 156 Q 320 162 330 156" stroke="#94a3b8" strokeWidth="2.5" fill="none" strokeLinecap="round" />
                       {/* Body Torso */}
                       <path d="M 210 330 Q 320 220 430 330" fill="#1e293b" stroke="#334155" strokeWidth="2" />
-                      {/* Authentic Broadcast Watermark */}
-                      <rect x="520" y="28" width="88" height="26" rx="4" fill="#0f172a" stroke="#22c55e" strokeWidth="1.2" opacity="0.8" />
-                      <text x="564" y="45" fill="#4ade80" fontSize="11" fontWeight="bold" fontFamily="monospace" textAnchor="middle">REUTERS</text>
-                      <text x="32" y="42" fill="#64748b" fontSize="12" fontFamily="monospace">MASTER CH-01 • 100% UNMODIFIED</text>
+                      {/* Input file placeholder label — not a verified original */}
+                      <text x="320" y="180" fill="#475569" fontSize="13" fontWeight="600" fontFamily="monospace" textAnchor="middle">Input File</text>
+                      <text x="320" y="200" fill="#334155" fontSize="11" fontFamily="monospace" textAnchor="middle">(preview not available)</text>
                     </svg>
 
-                    {/* Pristine Status Pill */}
-                    <div className="absolute bottom-3 left-3 bg-slate-900/80 backdrop-blur border border-emerald-500/30 px-2.5 py-1 rounded text-[11px] font-mono text-emerald-400 flex items-center gap-1.5">
-                      <Check className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>PRNU Noise Coherent • EXIF Valid</span>
+                    {/* File identity badge */}
+                    <div className="absolute bottom-3 left-3 bg-slate-900/80 backdrop-blur border border-slate-600/40 px-2.5 py-1 rounded text-[11px] font-mono text-slate-400 flex items-center gap-1.5">
+                      <Fingerprint className="w-3.5 h-3.5 text-slate-400" />
+                      <span>{result?.artifact?.filename || result?.caption || 'No file loaded'}</span>
                     </div>
                   </div>
                 </div>
 
                 <div className="p-3 bg-[#0a0f18] border-t border-[#1e2d3d] flex items-center justify-between text-xs text-slate-400">
-                  <span>Camera: <strong className="text-slate-200">{exifData.make} {exifData.model}</strong></span>
-                  <span className="font-mono text-emerald-400">Match Ref: Hop 0 (Master)</span>
+                  <span>Camera: <strong className="text-slate-200">{exifData ? `${exifData.make ?? ''} ${exifData.model ?? ''}`.trim() || '—' : '—'}</strong></span>
+                  <span className="font-mono text-slate-500">SHA-256: {sha256 ? sha256.slice(0, 10) + '…' : '—'}</span>
                 </div>
               </div>
 
@@ -488,7 +462,7 @@ export function ForensicViewer({ result: propResult, compact = false }: Forensic
 
                 <div className="p-3 bg-[#0a0f18] border-t border-[#1e2d3d] flex items-center justify-between text-xs text-slate-400">
                   <span>Trust Score: <strong className={trustScore < 40 ? 'text-rose-400' : 'text-emerald-400'}>{trustScore}/100</strong></span>
-                  <span className="font-mono text-cyan-400">Fingerprint: {sha256.substring(0, 12)}...</span>
+                  <span className="font-mono text-cyan-400">Fingerprint: {sha256 ? sha256.substring(0, 12) + '...' : '—'}</span>
                 </div>
               </div>
             </div>
@@ -528,20 +502,20 @@ export function ForensicViewer({ result: propResult, compact = false }: Forensic
                   </div>
                 </div>
 
-                {/* Left Master View (Clipped by Slider Position) */}
+                {/* Left Input View (Clipped by Slider Position) */}
                 <div
                   className="absolute inset-y-0 left-0 overflow-hidden border-r-2 border-cyan-400 bg-[#080c14] z-10 shadow-[4px_0_20px_rgba(0,212,255,0.4)]"
                   style={{ width: `${sliderPosition}%` }}
                 >
                   <div className="absolute inset-0 flex items-center justify-center p-4" style={{ width: containerRef.current?.clientWidth || '100%' }}>
-                    <div className="w-full h-full max-h-[380px] bg-slate-900 rounded-lg flex items-center justify-center border border-emerald-900/40">
+                    <div className="w-full h-full max-h-[380px] bg-slate-900 rounded-lg flex items-center justify-center border border-slate-700/40">
                       <div className="text-center space-y-2">
-                        <div className="w-20 h-20 rounded-full bg-emerald-950 border-2 border-emerald-500 mx-auto flex items-center justify-center text-2xl">
-                          🛡️
+                        <div className="w-20 h-20 rounded-full bg-slate-800 border-2 border-slate-600 mx-auto flex items-center justify-center text-2xl">
+                          📄
                         </div>
-                        <div className="text-sm font-bold text-emerald-400 font-mono">AUTHENTIC MASTER CAPTURE</div>
+                        <div className="text-sm font-bold text-slate-300 font-mono">INPUT FILE</div>
                         <div className="text-xs text-slate-400 max-w-sm">
-                          Ground-truth 4K stream with unbroken PRNU noise coherence.
+                          {result?.artifact?.filename || 'Uploaded media (preview not available)'}
                         </div>
                       </div>
                     </div>
@@ -581,46 +555,61 @@ export function ForensicViewer({ result: propResult, compact = false }: Forensic
                 </div>
               </div>
 
-              {/* Heatmap Grid Analysis */}
+              {/* Heatmap Grid Analysis — driven by real forensic data when available */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 flex-1">
-                <div className="bg-[#080d16] border border-slate-800 rounded-lg p-3 space-y-2">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-semibold text-slate-300">Spatial Artifact Diff</span>
-                    <span className="text-rose-400 font-mono font-bold">88.4%</span>
-                  </div>
-                  <div className="h-2 w-full bg-slate-800 rounded-full overflow-hidden">
-                    <div className="h-full bg-rose-500 rounded-full" style={{ width: '88.4%' }} />
-                  </div>
-                  <p className="text-[11px] text-slate-400">
-                    Isolated localized high-pass gradient anomalies in the facial landmark region.
-                  </p>
-                </div>
+                {(() => {
+                  const spatialDiff = result?.ml?.signals?.spatial_diff
+                  const elaVariance = result?.forensics?.ela?.variance
+                  const jpegArtifact = result?.integrity?.signals?.jpeg_artifact
+                  return (
+                    <>
+                      <div className="bg-[#080d16] border border-slate-800 rounded-lg p-3 space-y-2">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-semibold text-slate-300">Spatial Artifact Diff</span>
+                          <span className={`font-mono font-bold ${spatialDiff != null ? (spatialDiff > 0.6 ? 'text-rose-400' : 'text-amber-400') : 'text-slate-500'}`}>
+                            {spatialDiff != null ? `${(spatialDiff * 100).toFixed(1)}%` : '—'}
+                          </span>
+                        </div>
+                        <div className="h-2 w-full bg-slate-800 rounded-full overflow-hidden">
+                          <div className={`h-full rounded-full ${spatialDiff != null ? (spatialDiff > 0.6 ? 'bg-rose-500' : 'bg-amber-500') : 'bg-slate-700'}`} style={{ width: spatialDiff != null ? `${spatialDiff * 100}%` : '0%' }} />
+                        </div>
+                        <p className="text-[11px] text-slate-400">
+                          {spatialDiff != null ? 'Localized high-pass gradient anomalies detected.' : 'Spatial diff not computed for this file.'}
+                        </p>
+                      </div>
 
-                <div className="bg-[#080d16] border border-slate-800 rounded-lg p-3 space-y-2">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-semibold text-slate-300">ELA Residual Variance</span>
-                    <span className="text-amber-400 font-mono font-bold">42.8 dB</span>
-                  </div>
-                  <div className="h-2 w-full bg-slate-800 rounded-full overflow-hidden">
-                    <div className="h-full bg-amber-500 rounded-full" style={{ width: '68%' }} />
-                  </div>
-                  <p className="text-[11px] text-slate-400">
-                    Secondary compression blocks inconsistent with primary camera quantization table.
-                  </p>
-                </div>
+                      <div className="bg-[#080d16] border border-slate-800 rounded-lg p-3 space-y-2">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-semibold text-slate-300">ELA Residual Variance</span>
+                          <span className={`font-mono font-bold ${elaVariance != null ? 'text-amber-400' : 'text-slate-500'}`}>
+                            {elaVariance != null ? `${elaVariance.toFixed(1)}` : '—'}
+                          </span>
+                        </div>
+                        <div className="h-2 w-full bg-slate-800 rounded-full overflow-hidden">
+                          <div className="h-full bg-amber-500 rounded-full" style={{ width: elaVariance != null ? `${Math.min(100, elaVariance)}%` : '0%' }} />
+                        </div>
+                        <p className="text-[11px] text-slate-400">
+                          {elaVariance != null ? 'ELA compression block variance measured.' : 'ELA not computed for this file.'}
+                        </p>
+                      </div>
 
-                <div className="bg-[#080d16] border border-slate-800 rounded-lg p-3 space-y-2">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-semibold text-slate-300">PRNU Noise Deviation</span>
-                    <span className="text-rose-400 font-mono font-bold">78.0%</span>
-                  </div>
-                  <div className="h-2 w-full bg-slate-800 rounded-full overflow-hidden">
-                    <div className="h-full bg-rose-500 rounded-full" style={{ width: '78%' }} />
-                  </div>
-                  <p className="text-[11px] text-slate-400">
-                    Photo-response sensor noise does not correlate with claimed Sony Alpha hardware.
-                  </p>
-                </div>
+                      <div className="bg-[#080d16] border border-slate-800 rounded-lg p-3 space-y-2">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-semibold text-slate-300">JPEG Artifact Level</span>
+                          <span className={`font-mono font-bold ${jpegArtifact != null ? (jpegArtifact > 0.6 ? 'text-rose-400' : 'text-emerald-400') : 'text-slate-500'}`}>
+                            {jpegArtifact != null ? `${(jpegArtifact * 100).toFixed(1)}%` : '—'}
+                          </span>
+                        </div>
+                        <div className="h-2 w-full bg-slate-800 rounded-full overflow-hidden">
+                          <div className={`h-full rounded-full ${jpegArtifact != null ? (jpegArtifact > 0.6 ? 'bg-rose-500' : 'bg-emerald-500') : 'bg-slate-700'}`} style={{ width: jpegArtifact != null ? `${jpegArtifact * 100}%` : '0%' }} />
+                        </div>
+                        <p className="text-[11px] text-slate-400">
+                          {jpegArtifact != null ? 'Error-level analysis compression residual.' : 'JPEG artifact score not available.'}
+                        </p>
+                      </div>
+                    </>
+                  )
+                })()}
               </div>
             </div>
           )}
@@ -1038,7 +1027,7 @@ export function ForensicViewer({ result: propResult, compact = false }: Forensic
                     <div className="space-y-1">
                       {(earliestData?.searchQueriesUsed || [
                         `"${result?.caption || 'press briefing master'}" earliest appearance`,
-                        `"${sha256.slice(0, 16)}" original source upload date`
+                        `"${sha256 ? sha256.slice(0, 16) : result?.fingerprint_hash?.slice(0, 16) ?? 'unknown'}" original source upload date`
                       ]).map((sq, i) => (
                         <div key={i} className="px-2 py-1 bg-[#0b1018] rounded border border-slate-800/80 font-mono text-[10px] text-slate-300 flex items-center gap-1.5">
                           <Search className="w-3 h-3 text-cyan-400 shrink-0" />
@@ -1083,38 +1072,44 @@ export function ForensicViewer({ result: propResult, compact = false }: Forensic
               {/* EXIF Tab */}
               {activeMetaTab === 'exif' && (
                 <div className="space-y-3">
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="p-2.5 bg-[#131b29] rounded border border-slate-800">
-                      <div className="text-[10px] text-slate-500 font-mono">MAKE / MODEL</div>
-                      <div className="font-semibold text-slate-200 truncate">{exifData.make} {exifData.model}</div>
+                  {exifData ? (
+                    <>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="p-2.5 bg-[#131b29] rounded border border-slate-800">
+                          <div className="text-[10px] text-slate-500 font-mono">MAKE / MODEL</div>
+                          <div className="font-semibold text-slate-200 truncate">{[exifData.make, exifData.model].filter(Boolean).join(' ') || '—'}</div>
+                        </div>
+                        <div className="p-2.5 bg-[#131b29] rounded border border-slate-800">
+                          <div className="text-[10px] text-slate-500 font-mono">LENS ATTACHED</div>
+                          <div className="font-semibold text-slate-200 truncate">{exifData.lensModel || '—'}</div>
+                        </div>
+                        <div className="p-2.5 bg-[#131b29] rounded border border-slate-800">
+                          <div className="text-[10px] text-slate-500 font-mono">APERTURE / ISO</div>
+                          <div className="font-semibold text-slate-200">
+                            {exifData.fNumber != null ? `f/${exifData.fNumber}` : '—'} • {exifData.iso != null ? `ISO ${exifData.iso}` : '—'}
+                          </div>
+                        </div>
+                        <div className="p-2.5 bg-[#131b29] rounded border border-slate-800">
+                          <div className="text-[10px] text-slate-500 font-mono">EXPOSURE TIME</div>
+                          <div className="font-semibold text-slate-200">{exifData.exposureTime != null ? `${exifData.exposureTime}s` : '—'}</div>
+                        </div>
+                      </div>
+                      <div className="p-2.5 bg-[#131b29] rounded border border-slate-800 space-y-1">
+                        <div className="text-[10px] text-slate-500 font-mono">SOFTWARE STAMP</div>
+                        <div className={`font-mono text-xs ${isManipulated ? 'text-rose-400 font-bold' : 'text-slate-300'}`}>
+                          {exifData.software || '—'}
+                        </div>
+                      </div>
+                      <div className="p-2.5 bg-[#131b29] rounded border border-slate-800 space-y-1">
+                        <div className="text-[10px] text-slate-500 font-mono">CAPTURE TIMESTAMP</div>
+                        <div className="font-mono text-xs text-slate-300">{exifData.createDate || '—'}</div>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="p-3 bg-[#131b29] rounded border border-slate-800 text-slate-400 text-xs text-center">
+                      No EXIF metadata available for this file.
                     </div>
-                    <div className="p-2.5 bg-[#131b29] rounded border border-slate-800">
-                      <div className="text-[10px] text-slate-500 font-mono">LENS ATTACHED</div>
-                      <div className="font-semibold text-slate-200 truncate">{exifData.lensModel || 'FE 24-70mm GM'}</div>
-                    </div>
-                    <div className="p-2.5 bg-[#131b29] rounded border border-slate-800">
-                      <div className="text-[10px] text-slate-500 font-mono">APERTURE / ISO</div>
-                      <div className="font-semibold text-slate-200">f/{exifData.fNumber || '2.8'} • ISO {exifData.iso || '800'}</div>
-                    </div>
-                    <div className="p-2.5 bg-[#131b29] rounded border border-slate-800">
-                      <div className="text-[10px] text-slate-500 font-mono">EXPOSURE TIME</div>
-                      <div className="font-semibold text-slate-200">{exifData.exposureTime || '0.02'}s (1/50)</div>
-                    </div>
-                  </div>
-
-                  <div className="p-2.5 bg-[#131b29] rounded border border-slate-800 space-y-1">
-                    <div className="text-[10px] text-slate-500 font-mono">SOFTWARE STAMP</div>
-                    <div className={`font-mono text-xs ${isManipulated ? 'text-rose-400 font-bold' : 'text-slate-300'}`}>
-                      {exifData.software}
-                    </div>
-                  </div>
-
-                  <div className="p-2.5 bg-[#131b29] rounded border border-slate-800 space-y-1">
-                    <div className="text-[10px] text-slate-500 font-mono">CAPTURE TIMESTAMP</div>
-                    <div className="font-mono text-xs text-slate-300">
-                      {exifData.createDate || '2026-01-10T08:14:00Z'}
-                    </div>
-                  </div>
+                  )}
                 </div>
               )}
 
@@ -1125,22 +1120,23 @@ export function ForensicViewer({ result: propResult, compact = false }: Forensic
                     <div className="flex items-center justify-between text-[10px] text-slate-500">
                       <span>SHA-256 BITSTREAM HASH</span>
                       <button
-                        onClick={() => handleCopyHash(sha256)}
-                        className="text-cyan-400 hover:text-white flex items-center gap-1"
+                        onClick={() => sha256 && handleCopyHash(sha256)}
+                        disabled={!sha256}
+                        className="text-cyan-400 hover:text-white flex items-center gap-1 disabled:opacity-40"
                       >
                         {copiedHash ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
                         <span>{copiedHash ? 'Copied' : 'Copy'}</span>
                       </button>
                     </div>
                     <div className="text-[11px] text-slate-300 break-all">
-                      {sha256}
+                      {sha256 ?? <span className="text-slate-500 italic">Not available</span>}
                     </div>
                   </div>
 
                   <div className="p-2.5 bg-[#131b29] rounded border border-slate-800 space-y-1">
                     <div className="text-[10px] text-slate-500">PERCEPTUAL aHASH / pHASH</div>
                     <div className="text-[11px] text-cyan-400 break-all">
-                      {result?.fingerprint_hash || 'e83a9f1b4c7d2e0a8f9c1e3b5d7a9f2c'}
+                      {result?.fingerprint_hash || <span className="text-slate-500 italic">Not available</span>}
                     </div>
                   </div>
 
@@ -1159,12 +1155,19 @@ export function ForensicViewer({ result: propResult, compact = false }: Forensic
               {/* Tampering Flags Tab */}
               {activeMetaTab === 'signals' && (
                 <div className="space-y-2">
-                  {(result?.detected_anomalies || [
-                    'Facial Landmark Neural Boundary Artifacts',
-                    'Error Level Analysis (ELA) Compression Inconsistency',
-                    'Sensor PRNU Noise Deviation from Camera Spec',
-                    'Watermark Stripping Residual in Bottom-Right Quadrant'
-                  ]).map((anomaly, idx) => (
+                  {(result?.detected_anomalies?.length
+                    ? result.detected_anomalies
+                    : result?.integrity?.flags?.length
+                    ? result.integrity.flags
+                    : []
+                  ).length === 0 ? (
+                    <div className="p-3 bg-[#131b29] rounded border border-slate-800 text-slate-400 text-xs text-center">
+                      No tampering flags detected.
+                    </div>
+                  ) : (result?.detected_anomalies?.length
+                    ? result.detected_anomalies
+                    : result?.integrity?.flags || []
+                  ).map((anomaly, idx) => (
                     <div
                       key={idx}
                       className="p-2 bg-[#131b29] rounded border border-rose-900/40 text-rose-300 text-xs flex items-start gap-2"
