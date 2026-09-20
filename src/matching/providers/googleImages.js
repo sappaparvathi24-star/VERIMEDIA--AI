@@ -6,8 +6,9 @@ export class GoogleImagesDiscoveryProvider {
     this.id = 'googleImages';
     this.name = 'Google Programmable Search (Images)';
     this.kind = 'EXTERNAL_API';
-    this.apiKey = config.apiKey || process.env.GOOGLE_CSE_API_KEY || null;
-    this.cx = config.cx || process.env.GOOGLE_CSE_CX || null;
+    // Canonical: GOOGLE_CSE_API_KEY / GOOGLE_CSE_CX; legacy fallbacks supported
+    this.apiKey = config.apiKey || process.env.GOOGLE_CSE_API_KEY || process.env.GOOGLE_SEARCH_API_KEY || null;
+    this.cx = config.cx || process.env.GOOGLE_CSE_CX || process.env.GOOGLE_SEARCH_ENGINE_ID || null;
     this.authRequired = true;
   }
 

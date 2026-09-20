@@ -324,25 +324,47 @@ const forensicJobQueue = new ForensicJobQueue({
 // ---------------------------------------------------------------------------
 // Health check endpoints
 // ---------------------------------------------------------------------------
+// Build a structured integration-status object.
+// "configured"     → env var(s) present; implementation exists; not yet live-tested
+// "not_configured" → env var missing; implementation exists but cannot run
+// "not_implemented"→ no supported API operation exists regardless of credentials
+// ---------------------------------------------------------------------------
+function buildIntegrationStatus() {
+  const googleCseKey = process.env.GOOGLE_CSE_API_KEY || process.env.GOOGLE_SEARCH_API_KEY;
+  const googleCseCx  = process.env.GOOGLE_CSE_CX      || process.env.GOOGLE_SEARCH_ENGINE_ID;
+  return {
+    gemini:       process.env.GEMINI_API_KEY                  ? 'configured' : 'not_configured',
+    supabase:     (process.env.SUPABASE_URL && (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY))
+                    ? 'configured' : 'not_configured',
+    youtube:      process.env.YOUTUBE_API_KEY                 ? 'configured' : 'not_configured',
+    googleSearch: (googleCseKey && googleCseCx)               ? 'configured' : 'not_configured',
+    reddit:       'configured',  // uses public unauthenticated JSON endpoint — no key required
+    instagram:    'not_implemented',   // no public media-search API exists
+    x:            'not_implemented',   // no public media-search API exists
+    tiktok:       'not_implemented',   // intentionally skipped for this prototype
+    facebook:     'not_implemented'    // no public media-search API exists
+  };
+}
+
 function healthResponse(req, res) {
-  const hasKey = Boolean(process.env.GEMINI_API_KEY);
   const allArtifacts = provenanceService.getArtifacts ? provenanceService.getArtifacts() : [];
   const allInvestigations = provenanceService.getInvestigations();
+  const integrations = buildIntegrationStatus();
   res.json({
     status: 'ok',
     service: 'VeriMedia AI Unified Backend',
     services: {
       'Express Server': 'operational',
       'SQLite Database': 'operational',
-      'Gemini AI': hasKey ? 'operational' : 'fallback-mode',
+      'Gemini AI': integrations.gemini === 'configured' ? 'configured' : 'not_configured',
       'Provenance Engine': 'operational',
       'Discovery Providers': 'operational'
     },
+    integrations,
     version: '1.0.0',
     uptime_seconds: Math.floor(process.uptime()),
     total_scans: allArtifacts.filter(a => !a.isDemo).length,
     total_investigations: allInvestigations.filter(i => !i.isDemo).length,
-    gemini: hasKey ? 'connected' : 'fallback-mode (no GEMINI_API_KEY)',
     models: ['gemini-3.1-flash-lite', 'gemini-flash-latest', 'gemini-3.8-flash'],
     timestamp: new Date().toISOString()
   });
@@ -351,6 +373,11 @@ function healthResponse(req, res) {
 app.get('/health', healthResponse);
 app.get('/api/health', healthResponse);
 app.get('/api/v1/health', healthResponse);
+
+// Dedicated integration-status endpoint — honest configured/not_configured/not_implemented per provider
+app.get('/api/integration-status', (req, res) => {
+  res.json(buildIntegrationStatus());
+});
 
 // ---------------------------------------------------------------------------
 // POST /chat, /api/chat, /api/v1/chat — VeriMedia Assistant conversational agent
@@ -2894,60 +2921,64 @@ Respond ONLY with valid JSON conforming to this structure:
     } catch (_) {}
   }
 
-  // Build the unified earliest appearance object
-  const isManipulated = scenario === 'deepfake' || scenario === 'adversarial' || scenario === 'manipulated';
-  const defaultEarliest = {
-    title: investigationEarliest?.title || (isManipulated ? 'Original Unaltered White House Press Pool Transmission' : 'Official 4K Master Press Conference Broadcast'),
-    publisher: investigationEarliest?.sourceName || 'Associated Press Newsroom / Reuters Pool',
-    domain: investigationEarliest?.domain || 'apnews.com',
-    url: investigationEarliest?.sourceUrl || 'https://apnews.com/article/press-briefing-master-source',
-    publishedAt: investigationEarliest?.publishedAt || '2026-01-10T08:14:00Z',
-    formattedDate: 'Jan 10, 2026 • 08:14 UTC',
-    snippet: investigationEarliest?.description || 'Earliest verified publication indexed by Google Search. Uncompressed 4K master feed matched prior to any neural face-swap or downstream re-encoding.',
-    platform: investigationEarliest?.platform || 'Global News Wire',
-    confidenceScore: 0.96,
-    sourceType: 'ORIGINAL_MASTER_BROADCAST',
-    author: 'Chief White House Videographer / Pool Bureau'
-  };
-
-  if (!geminiData && googleCseItems && googleCseItems.length > 0) {
-    const topHit = googleCseItems[0];
-    if (topHit.title) defaultEarliest.title = topHit.title;
-    if (topHit.snippet) defaultEarliest.snippet = topHit.snippet;
-    if (topHit.displayLink) {
-      defaultEarliest.domain = topHit.displayLink;
-      defaultEarliest.publisher = topHit.displayLink.replace(/^www\./, '');
-    }
-    if (topHit.link) defaultEarliest.url = topHit.link;
-  }
-
-  // Determine if we have real Gemini-grounded data or are falling back to a static estimate
+  // Determine if we have real Gemini-grounded data, a real CSE result, or nothing
   const isGrounded = Boolean(geminiData);
   const isGoogleCseFallback = !isGrounded && googleCseItems.length > 0;
   const isStaticFallback = !isGrounded && !isGoogleCseFallback;
 
-  // For a static fallback: mark the earliest appearance as estimated, not confirmed
+  // CSE fallback: real result data only — no fabricated fields
+  const cseFallbackEarliest = isGoogleCseFallback ? {
+    title: googleCseItems[0].title || null,
+    publisher: (googleCseItems[0].displayLink || '').replace(/^www\./, '') || null,
+    domain: googleCseItems[0].displayLink || null,
+    url: googleCseItems[0].link || null,
+    publishedAt: null,
+    formattedDate: null,
+    snippet: googleCseItems[0].snippet || null,
+    platform: googleCseItems[0].displayLink || 'Web',
+    confidenceScore: 0.45,
+    sourceType: 'REAL_CSE_DATA',
+    estimatedOnly: true,
+    author: null
+  } : null;
+
+  // Investigation earliest from DB provenance timeline (real data)
+  const invEarliest = investigationEarliest ? {
+    title: investigationEarliest.title || null,
+    publisher: investigationEarliest.sourceName || null,
+    domain: investigationEarliest.domain || null,
+    url: investigationEarliest.sourceUrl || null,
+    publishedAt: investigationEarliest.publishedAt || null,
+    formattedDate: null,
+    snippet: investigationEarliest.description || null,
+    platform: investigationEarliest.platform || null,
+    confidenceScore: 0.70,
+    sourceType: 'REAL_INVESTIGATION_DATA',
+    estimatedOnly: false,
+    author: null
+  } : null;
+
+  // Static fallback: return null fields — never fabricate real-looking source data
+  const staticDemoEarliest = {
+    title: null,
+    publisher: null,
+    domain: null,
+    url: null,
+    publishedAt: null,
+    formattedDate: null,
+    snippet: 'No real search data available. Configure GEMINI_API_KEY and GOOGLE_CSE_API_KEY for live source discovery.',
+    platform: null,
+    confidenceScore: 0.0,
+    sourceType: 'STATIC_DEMO_DATA',
+    estimatedOnly: true,
+    author: null
+  };
+
   const finalEarliest = isGrounded
     ? geminiData.earliestAppearance
-    : {
-        ...defaultEarliest,
-        // If Google CSE returned results, surface the top hit
-        ...(isGoogleCseFallback ? {
-          title: googleCseItems[0].title || defaultEarliest.title,
-          snippet: googleCseItems[0].snippet || defaultEarliest.snippet,
-          domain: googleCseItems[0].displayLink || defaultEarliest.domain,
-          publisher: (googleCseItems[0].displayLink || defaultEarliest.domain).replace(/^www\./, ''),
-          url: googleCseItems[0].link || defaultEarliest.url
-        } : {}),
-        // Downgrade confidence for any non-grounded result
-        confidenceScore: isGoogleCseFallback ? 0.45 : 0.20,
-        estimatedOnly: isStaticFallback,
-        warningNote: isStaticFallback
-          ? 'ESTIMATED — Gemini Google Search grounding unavailable (no GEMINI_API_KEY or quota exhausted). This date is a static placeholder from the demo investigation, not derived from a real web search.'
-          : isGoogleCseFallback
-            ? 'PARTIALLY_GROUNDED — Based on Google Custom Search result without AI grounding. Date may be approximate.'
-            : null
-      };
+    : isGoogleCseFallback
+      ? cseFallbackEarliest
+      : (invEarliest || staticDemoEarliest);
 
   // Build timeline from Gemini if available; otherwise only show real CSE entries (no fake hardcoded URLs)
   let finalTimeline = isGrounded
@@ -2981,8 +3012,8 @@ Respond ONLY with valid JSON conforming to this structure:
     searchSummary: isGrounded
       ? geminiData.searchSummary
       : isGoogleCseFallback
-        ? `Google Custom Search returned ${googleCseItems.length} result(s). Top result from ${finalEarliest.domain}. No AI grounding available — dates are approximate.`
-        : `STATIC FALLBACK — No real search was performed (GEMINI_API_KEY not configured and GOOGLE_CSE_API_KEY not set). Configure API keys for live source discovery.`,
+        ? `Google Custom Search returned ${googleCseItems.length} result(s). Top result from ${finalEarliest?.domain || 'unknown'}. No AI grounding available — dates are approximate.`
+        : 'STATIC_DEMO_DATA — No real search was performed. Configure GEMINI_API_KEY and GOOGLE_CSE_API_KEY for live source discovery.',
     timelineAppearances: finalTimeline,
     corroborationSources: isGrounded
       ? (geminiData.corroborationSources || ['Google Search (Grounded)'])
@@ -2993,7 +3024,7 @@ Respond ONLY with valid JSON conforming to this structure:
       `"${targetQuery}" earliest appearance original source`
     ],
     groundingSources: groundingSources.length > 0 ? groundingSources : [],
-    provider: isGrounded ? 'Gemini Google Search Grounding' : isGoogleCseFallback ? 'Google Custom Search (CSE)' : 'STATIC_FALLBACK',
+    provider: isGrounded ? 'Gemini Google Search Grounding' : isGoogleCseFallback ? 'Google Custom Search (CSE)' : 'STATIC_DEMO_DATA',
     isGrounded,
     isEstimated: !isGrounded,
     queriedAt: new Date().toISOString()

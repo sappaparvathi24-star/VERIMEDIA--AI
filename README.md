@@ -47,6 +47,35 @@ VeriMedia AI is a full-stack media investigation platform designed for rigorous 
 npm install
 ```
 
+### Environment Configuration
+
+Copy `.env.example` to `.env` and fill in your keys:
+
+```bash
+cp .env.example .env
+```
+
+| Variable | Required | Where used | Notes |
+|---|---|---|---|
+| `GEMINI_API_KEY` | Optional | Server-side AI analysis | Without it, Gemini paths use rule-based fallback |
+| `SUPABASE_URL` | Optional | Backend DB sync | Without it, uses SQLite only |
+| `SUPABASE_SERVICE_ROLE_KEY` | Optional | Backend admin ops | Preferred over anon key on server |
+| `SUPABASE_ANON_KEY` | Optional | Backend fallback | Used if SERVICE_ROLE_KEY not set |
+| `YOUTUBE_API_KEY` | Optional | YouTube discovery | 10,000 free units/day |
+| `GOOGLE_CSE_API_KEY` | Optional | Google image search | Canonical name (legacy: `GOOGLE_SEARCH_API_KEY`) |
+| `GOOGLE_CSE_CX` | Optional | Google image search | Canonical name (legacy: `GOOGLE_SEARCH_ENGINE_ID`) |
+| `SECRET_KEY` | **Required prod** | JWT signing | Must be set in production |
+| `API_KEY_SALT` | **Required prod** | API key hashing | Must be set in production |
+| `ADMIN_BOOTSTRAP_PASSWORD` | Optional | First-run admin | Random generated if unset |
+| `CORS_ORIGINS` | Optional | CORS allowlist | `*` for dev; set Vercel URL for prod |
+| `MAX_UPLOAD_MB` | Optional | Upload limit | Default: 100 |
+| `DISCOVERY_TIMEOUT_MS` | Optional | Search timeout | Default: 15000 |
+| `VITE_API_BASE_URL` | Optional | Frontend→backend | Set to Render URL for Vercel deploys |
+| `VITE_SUPABASE_URL` | Optional | Frontend auth | Public value — safe for browser |
+| `VITE_SUPABASE_ANON_KEY` | Optional | Frontend auth | Public anon key — safe for browser |
+
+> **Security:** `SUPABASE_SERVICE_ROLE_KEY`, `GEMINI_API_KEY`, `SECRET_KEY`, `API_KEY_SALT`, `META_APP_SECRET`, `X_API_SECRET`, `X_ACCESS_SECRET`, `REDDIT_CLIENT_SECRET` are **server-side only** and must never be prefixed with `VITE_` or committed to git.
+
 ### Running in Development
 ```bash
 npm run dev
@@ -67,6 +96,34 @@ npm run lint
 npm run build
 npm start
 ```
+
+### Integration Status
+
+Check which integrations are configured by calling the health endpoint:
+
+```bash
+curl https://your-backend.onrender.com/api/integration-status
+```
+
+Response example:
+```json
+{
+  "gemini": "configured",
+  "supabase": "configured",
+  "youtube": "configured",
+  "googleSearch": "configured",
+  "reddit": "configured",
+  "instagram": "not_implemented",
+  "x": "not_implemented",
+  "tiktok": "not_implemented",
+  "facebook": "not_implemented"
+}
+```
+
+Status meanings:
+- `configured` — env vars present; implementation exists and will run
+- `not_configured` — env vars missing; implementation exists but cannot run
+- `not_implemented` — no public API available regardless of credentials
 
 ---
 

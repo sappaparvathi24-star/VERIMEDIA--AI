@@ -46,6 +46,11 @@ export function setCached(key, data) {
 
 const DISCOVERY_TIMEOUT_MS = parseInt(process.env.DISCOVERY_TIMEOUT_MS, 10) || 15000;
 
+// Canonical env var names are GOOGLE_CSE_API_KEY / GOOGLE_CSE_CX.
+// Support legacy names GOOGLE_SEARCH_API_KEY / GOOGLE_SEARCH_ENGINE_ID as fallbacks.
+const GOOGLE_CSE_API_KEY = process.env.GOOGLE_CSE_API_KEY || process.env.GOOGLE_SEARCH_API_KEY || null;
+const GOOGLE_CSE_CX      = process.env.GOOGLE_CSE_CX      || process.env.GOOGLE_SEARCH_ENGINE_ID || null;
+
 function fetchJson(url, options = {}) {
   return new Promise((resolve, reject) => {
     const urlObj = new URL(url);
@@ -268,7 +273,7 @@ export async function searchArchiveOrg(targetUrl) {
  * 5. Google Programmable Search (Custom Search JSON API)
  * GET /search/google-images?q=<query>
  */
-export async function searchGoogleImages(query, apiKey = process.env.GOOGLE_CSE_API_KEY, cx = process.env.GOOGLE_CSE_CX) {
+export async function searchGoogleImages(query, apiKey = GOOGLE_CSE_API_KEY, cx = GOOGLE_CSE_CX) {
   if (!query || !query.trim()) return [];
   if (!apiKey || !cx) {
     return {
@@ -338,13 +343,15 @@ export function getDiscoveryHealth() {
         name: 'YouTube Data API v3',
         available: Boolean(process.env.YOUTUBE_API_KEY),
         authRequired: true,
-        reason: process.env.YOUTUBE_API_KEY ? null : 'API key not configured on this deployment'
+        status: process.env.YOUTUBE_API_KEY ? 'configured' : 'not_configured',
+        reason: process.env.YOUTUBE_API_KEY ? null : 'YOUTUBE_API_KEY not set'
       },
       mastodon: {
         id: 'mastodon',
         name: 'Mastodon Federated Public Timeline',
         available: true,
         authRequired: false,
+        status: 'configured',
         instances: MASTODON_INSTANCE_ALLOWLIST,
         reason: null
       },
@@ -353,28 +360,32 @@ export function getDiscoveryHealth() {
         name: 'Wayback Machine (archive.org)',
         available: true,
         authRequired: false,
+        status: 'configured',
         reason: null
       },
       googleImages: {
         id: 'googleImages',
         name: 'Google Programmable Search (Images)',
-        available: Boolean(process.env.GOOGLE_CSE_API_KEY && process.env.GOOGLE_CSE_CX),
+        available: Boolean(GOOGLE_CSE_API_KEY && GOOGLE_CSE_CX),
         authRequired: true,
-        reason: (process.env.GOOGLE_CSE_API_KEY && process.env.GOOGLE_CSE_CX) ? null : 'API key/CX not configured on this deployment'
+        status: (GOOGLE_CSE_API_KEY && GOOGLE_CSE_CX) ? 'configured' : 'not_configured',
+        reason: (GOOGLE_CSE_API_KEY && GOOGLE_CSE_CX) ? null : 'GOOGLE_CSE_API_KEY or GOOGLE_CSE_CX not set'
       },
-      // Permanent explicit zero-fabrication markers
+      // Permanent explicit zero-fabrication markers — no public media-search API exists for these platforms
       instagram: {
         id: 'instagram',
         name: 'Instagram',
         available: false,
         permanentUnavailable: true,
-        reason: 'No public media-search API exists'
+        status: 'not_implemented',
+        reason: 'No public media-search API exists. Credentials may be set but no supported search operation is available.'
       },
       tiktok: {
         id: 'tiktok',
         name: 'TikTok',
         available: false,
         permanentUnavailable: true,
+        status: 'not_implemented',
         reason: 'No public media-search API exists'
       },
       facebook: {
@@ -382,6 +393,7 @@ export function getDiscoveryHealth() {
         name: 'Facebook',
         available: false,
         permanentUnavailable: true,
+        status: 'not_implemented',
         reason: 'No public media-search API exists'
       },
       x: {
@@ -389,7 +401,8 @@ export function getDiscoveryHealth() {
         name: 'X (formerly Twitter)',
         available: false,
         permanentUnavailable: true,
-        reason: 'No public media-search API exists'
+        status: 'not_implemented',
+        reason: 'No public media-search API exists. Credentials may be set but no supported search operation is available.'
       }
     }
   };
