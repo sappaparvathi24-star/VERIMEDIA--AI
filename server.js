@@ -3525,11 +3525,20 @@ if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL && !isTestRunne
   });
   app.use(vite.middlewares);
 } else if (!isTestRunner) {
+  // Only serve the built frontend if dist/ was actually built alongside this server.
+  // On Render (API-only deployment), dist/ does not exist — the frontend lives on Vercel.
+  // Skipping static file serving is safe: all real routes are /api/* and are already registered.
   const distPath = path.join(__dirname, 'dist');
-  app.use(express.static(distPath));
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(distPath, 'index.html'));
-  });
+  const distIndexPath = path.join(distPath, 'index.html');
+  if (fs.existsSync(distIndexPath)) {
+    app.use(express.static(distPath));
+    app.get('*', (req, res) => {
+      res.sendFile(distIndexPath);
+    });
+  } else {
+    // dist/ not present — pure API mode (frontend deployed separately on Vercel)
+    app.get('/', (req, res) => res.json({ status: 'ok', service: 'VeriMedia AI API', mode: 'api-only', frontend: 'https://verimedia-ai-jade.vercel.app' }));
+  }
 }
 
 // ---------------------------------------------------------------------------
