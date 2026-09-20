@@ -207,6 +207,8 @@ export interface DetectionResult {
     previewUrl?: string
     dataUrl?: string
     matchedReferenceId?: string | null
+    /** Raw EXIF fields from exifr.parse() — camera make/model/settings */
+    rawExif?: Record<string, unknown> | null
   }
 }
 

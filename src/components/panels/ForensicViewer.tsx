@@ -80,9 +80,36 @@ export function ForensicViewer({ result: propResult, compact = false }: Forensic
 
   const signals = result?.integrity?.signals ?? {}
 
-  const exifData = result?.forensics?.exif ?? null
+  // Real uploads: raw EXIF comes from exifr.parse() stored on artifact.rawExif
+  // Demo results: raw EXIF fields are stored directly on forensics.exif (legacy shape)
+  const rawExif = (result?.artifact?.rawExif as Record<string, unknown> | null | undefined) ?? null
+  const legacyExif = result?.forensics?.exif as Record<string, unknown> | null | undefined ?? null
 
-  const stats = result?.forensics?.stats ?? null
+  // Normalised EXIF view — always reads from the same shape regardless of source
+  const exifData = rawExif ?? legacyExif
+    ? {
+        make:         String((rawExif?.Make ?? rawExif?.make ?? legacyExif?.make ?? '') || '').trim() || null,
+        model:        String((rawExif?.Model ?? rawExif?.model ?? legacyExif?.model ?? '') || '').trim() || null,
+        lensModel:    String((rawExif?.LensModel ?? rawExif?.lensModel ?? legacyExif?.lensModel ?? '') || '').trim() || null,
+        software:     String((rawExif?.Software ?? rawExif?.software ?? legacyExif?.software ?? '') || '').trim() || null,
+        createDate:   String((rawExif?.DateTimeOriginal ?? rawExif?.createDate ?? legacyExif?.createDate ?? '') || '').trim() || null,
+        iso:          Number(rawExif?.ISO ?? rawExif?.ISOSpeedRatings ?? rawExif?.iso ?? legacyExif?.iso ?? 0) || null,
+        fNumber:      Number(rawExif?.FNumber ?? rawExif?.fNumber ?? legacyExif?.fNumber ?? 0) || null,
+        exposureTime: Number(rawExif?.ExposureTime ?? rawExif?.exposureTime ?? legacyExif?.exposureTime ?? 0) || null,
+      }
+    : null
+
+  // Stats: real pipeline uses meanLuminance; demo shape uses luminance
+  const rawStats = result?.forensics?.stats ?? null
+  const stats = rawStats ? {
+    width:     rawStats.width,
+    height:    rawStats.height,
+    channels:  rawStats.channels,
+    entropy:   rawStats.entropy,
+    luminance: (rawStats as Record<string, unknown>).meanLuminance != null
+      ? Number((rawStats as Record<string, unknown>).meanLuminance)
+      : rawStats.luminance ?? null,
+  } : null
 
   // Use the real full SHA-256 from the artifact if present, otherwise the perceptual hash, otherwise undefined
   const sha256: string | undefined = result?.artifact?.sha256
@@ -1110,6 +1137,22 @@ export function ForensicViewer({ result: propResult, compact = false }: Forensic
                       No EXIF metadata available for this file.
                     </div>
                   )}
+                  {/* EXIF Analysis flags from forensic pipeline */}
+                  {(() => {
+                    const exifAnalysis = result?.forensics?.exif as Record<string,unknown> | null | undefined
+                    const flags = Array.isArray((exifAnalysis as Record<string,unknown> | undefined)?.flags)
+                      ? (exifAnalysis as Record<string,unknown[]>).flags as string[]
+                      : []
+                    if (!flags.length) return null
+                    return (
+                      <div className="mt-2 space-y-1">
+                        <div className="text-[10px] text-slate-500 font-mono uppercase tracking-wider">EXIF Analysis Flags</div>
+                        {flags.map((f, i) => (
+                          <div key={i} className="px-2 py-1 bg-amber-950/40 border border-amber-700/40 rounded text-[11px] font-mono text-amber-300">{String(f)}</div>
+                        ))}
+                      </div>
+                    )
+                  })()}
                 </div>
               )}
 
@@ -1142,21 +1185,63 @@ export function ForensicViewer({ result: propResult, compact = false }: Forensic
 
                   <div className="p-2.5 bg-[#131b29] rounded border border-slate-800 space-y-1">
                     <div className="text-[10px] text-slate-500">C2PA CONTENT CREDENTIALS</div>
-                    <div className="flex items-center gap-2 text-xs">
-                      <span className={`w-2 h-2 rounded-full ${isManipulated ? 'bg-rose-400' : 'bg-emerald-400'}`} />
-                      <span className={isManipulated ? 'text-rose-400 font-semibold' : 'text-emerald-400 font-semibold'}>
-                        {isManipulated ? 'Manifest Missing / Cryptographic Claim Broken' : 'C2PA Manifest Validated'}
-                      </span>
-                    </div>
+                    {(() => {
+                      const c2pa = result?.forensics?.c2pa
+                      const status = c2pa?.status
+                      const hasManifest = status === 'MANIFEST_FOUND'
+                      const isReal = c2pa?.isRealAnalysis
+                      return (
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className={`w-2 h-2 rounded-full ${hasManifest ? 'bg-emerald-400' : 'bg-slate-600'}`} />
+                          <span className={hasManifest ? 'text-emerald-400 font-semibold' : 'text-slate-400'}>
+                            {isReal
+                              ? (hasManifest ? `Manifest Found — ${c2pa?.manifest?.title || 'Untitled'}` : (status || 'No C2PA manifest present'))
+                              : (isManipulated ? 'Manifest not present / claim broken' : 'C2PA not verified')}
+                          </span>
+                        </div>
+                      )
+                    })()}
                   </div>
+
+                  {/* File dimensions & stats */}
+                  {stats && (
+                    <div className="p-2.5 bg-[#131b29] rounded border border-slate-800 space-y-1">
+                      <div className="text-[10px] text-slate-500">IMAGE STATISTICS</div>
+                      <div className="grid grid-cols-2 gap-x-3 text-[11px] text-slate-300">
+                        <span>Size: <strong>{stats.width}×{stats.height}</strong></span>
+                        <span>Channels: <strong>{stats.channels ?? '—'}</strong></span>
+                        <span>Entropy: <strong>{stats.entropy != null ? stats.entropy.toFixed(2) : '—'}</strong></span>
+                        <span>Luminance: <strong>{stats.luminance != null ? Math.round(stats.luminance) : '—'}</strong></span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
               {/* Tampering Flags Tab */}
               {activeMetaTab === 'signals' && (
                 <div className="space-y-2">
+                  {/* ELA result card */}
+                  {result?.forensics?.ela && (
+                    <div className={`p-2.5 bg-[#131b29] rounded border text-xs space-y-1 ${
+                      result.forensics.ela.hasCompressionAnomaly ? 'border-rose-700/50' : 'border-slate-800'
+                    }`}>
+                      <div className="flex items-center justify-between">
+                        <span className="font-mono text-slate-400 text-[10px] uppercase">Error Level Analysis (ELA)</span>
+                        <span className={`font-mono font-bold text-[10px] ${result.forensics.ela.hasCompressionAnomaly ? 'text-rose-400' : 'text-emerald-400'}`}>
+                          {result.forensics.ela.hasCompressionAnomaly ? 'ANOMALY' : 'CLEAN'}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-300">
+                        Mean error: <strong>{result.forensics.ela.meanError?.toFixed ? result.forensics.ela.meanError.toFixed(2) : '—'}</strong>
+                        {' · '}Max: <strong>{result.forensics.ela.maxError?.toFixed ? result.forensics.ela.maxError.toFixed(2) : '—'}</strong>
+                      </div>
+                    </div>
+                  )}
                   {(result?.detected_anomalies?.length
                     ? result.detected_anomalies
+                    : result?.forensics?.detectedAnomalies?.length
+                    ? result.forensics.detectedAnomalies
                     : result?.integrity?.flags?.length
                     ? result.integrity.flags
                     : []
@@ -1166,6 +1251,8 @@ export function ForensicViewer({ result: propResult, compact = false }: Forensic
                     </div>
                   ) : (result?.detected_anomalies?.length
                     ? result.detected_anomalies
+                    : result?.forensics?.detectedAnomalies?.length
+                    ? result.forensics.detectedAnomalies
                     : result?.integrity?.flags || []
                   ).map((anomaly, idx) => (
                     <div

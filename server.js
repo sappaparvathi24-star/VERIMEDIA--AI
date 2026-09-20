@@ -1230,7 +1230,8 @@ const handleV1Detect = async (req, res) => {
         fileUrl: `/api/artifacts/${artifact.id}/file`,
         previewUrl: `/api/artifacts/${artifact.id}/file`,
         dataUrl: artifact.metadata?.dataUrl || null,
-        matchedReferenceId: matchedRef ? matchedRef.id : null
+        matchedReferenceId: matchedRef ? matchedRef.id : null,
+        rawExif: artifact.metadata?.exif ?? null
       },
       visual_findings: visualFindings,
       subject_description: forensic?.subjectDescription || null,
