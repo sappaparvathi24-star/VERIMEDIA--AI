@@ -25,7 +25,9 @@ const BASE = getApiBaseUrl()
 
 const api = axios.create({
   baseURL: `${BASE}/api`,
-  timeout: 30_000,
+  // Render free tier can take up to 50s to wake from suspension on the first request.
+  // Set timeout high enough to survive cold start, but not so high it hangs forever.
+  timeout: 60_000,
   headers: { 'Content-Type': 'application/json' },
 })
 

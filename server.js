@@ -235,6 +235,30 @@ const corsOptions = {
   maxAge: 86400 // Cache preflight response for 24 hours
 };
 
+// ---------------------------------------------------------------------------
+// CORS safety-net: respond to ALL OPTIONS preflight requests immediately
+// before any other middleware, even if the service is waking from cold start.
+// This prevents the browser from seeing a connection-refused / timeout as a
+// CORS failure during Render cold-start (free tier spin-up can take 15–30s).
+// ---------------------------------------------------------------------------
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (isOriginAllowed(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin || '*');
+    res.setHeader('Vary', 'Origin');
+  } else if (!origin) {
+    // Non-browser (cURL, server-to-server) — allow
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS,HEAD');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-API-Key,X-Requested-With,Accept,Origin,Range,X-Case-ID,X-Investigation-ID,Cache-Control,Pragma');
+  res.setHeader('Access-Control-Max-Age', '86400');
+  if (req.method === 'OPTIONS') {
+    return res.status(204).end();
+  }
+  next();
+});
+
 // Mount CORS middleware as the very first handler
 app.use(cors(corsOptions));
 // Handle OPTIONS preflight requests globally across all routes
