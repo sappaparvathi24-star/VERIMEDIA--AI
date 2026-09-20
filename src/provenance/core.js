@@ -17,6 +17,77 @@ export const PROHIBITED_CERTAINTY_TERMS = [
   'AI TRUTH'
 ];
 
+/**
+ * Scans a string or structured object for prohibited epistemically unfounded certainty terms.
+ * Returns { violations: string[], hasViolations: boolean, details: Array<{ term: string, count: number }> }
+ */
+export function scanForProhibitedCertaintyTerms(input) {
+  if (!input) {
+    return { violations: [], hasViolations: false, details: [] };
+  }
+
+  let textToScan = '';
+  if (typeof input === 'string') {
+    textToScan = input;
+  } else if (typeof input === 'object') {
+    try {
+      textToScan = JSON.stringify(input);
+    } catch (_) {
+      textToScan = String(input);
+    }
+  } else {
+    textToScan = String(input);
+  }
+
+  const upper = textToScan.toUpperCase();
+  const violations = [];
+  const details = [];
+
+  for (const term of PROHIBITED_CERTAINTY_TERMS) {
+    const regex = new RegExp(`\\b${term.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}\\b`, 'gi');
+    const matches = upper.match(regex);
+    if (matches && matches.length > 0) {
+      violations.push(term);
+      details.push({ term, count: matches.length });
+    }
+  }
+
+  return {
+    violations,
+    hasViolations: violations.length > 0,
+    details
+  };
+}
+
+/**
+ * Validates text or object against prohibited certainty terms.
+ * If replace = true, replaces violations with epistemically calibrated language.
+ * Otherwise returns validation flag and violation list.
+ */
+export function sanitizeProhibitedCertaintyTerms(text) {
+  if (typeof text !== 'string') return text;
+  let result = text;
+  const termReplacements = {
+    'ORIGINAL SOURCE': 'EARLIEST INDEXED APPEARANCE',
+    'ORIGINAL FILE': 'REFERENCE FILE',
+    'DEFINITIVE ORIGIN': 'OBSERVED APPARENT ORIGIN',
+    'ABSOLUTE ORIGIN': 'INDEXED PRECEDENCE',
+    'TRUE SOURCE': 'CORROBORATED SOURCE',
+    'FIRST EVER': 'EARLIEST RECORDED',
+    '100% TRUE': 'STRONGLY SUPPORTED',
+    '100% FALSE': 'STRONGLY REFUTED',
+    'TRUTH SCORE': 'CONFIDENCE SCORE',
+    'FAKE SCORE': 'MANIPULATION SCORE',
+    'AI TRUTH': 'AI ANALYSIS'
+  };
+
+  for (const [term, replacement] of Object.entries(termReplacements)) {
+    const regex = new RegExp(`\\b${term.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}\\b`, 'gi');
+    result = result.replace(regex, replacement);
+  }
+  return result;
+}
+
 export const RelationshipTypes = {
   EXACT_MATCH: 'EXACT_MATCH',
   OBSERVED_SAME_CONTENT: 'OBSERVED_SAME_CONTENT',

@@ -161,6 +161,7 @@ export const uploadLimiter = createRateLimiter({ name: 'uploads', ...rateLimitCo
 export const analysisLimiter = createRateLimiter({ name: 'analysis', ...rateLimitConfig.analysis });
 export const chatLimiter = createRateLimiter({ name: 'chat', ...rateLimitConfig.chat });
 export const discoveryLimiter = createRateLimiter({ name: 'discovery', ...rateLimitConfig.discovery });
+export const searchLimiter = discoveryLimiter;
 export const monitoringLimiter = createRateLimiter({ name: 'monitoring', ...rateLimitConfig.monitoring });
 export const reportLimiter = createRateLimiter({ name: 'reports', ...rateLimitConfig.reports });
 export const readsLimiter = createRateLimiter({ name: 'reads', ...rateLimitConfig.reads });

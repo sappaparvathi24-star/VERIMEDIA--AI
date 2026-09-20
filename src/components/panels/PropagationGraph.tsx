@@ -21,14 +21,14 @@ export function PropagationGraph() {
 
   // Fetch real propagation data whenever investigation changes
   useEffect(() => {
-    const invId = currentResult?.investigationId
+    const invId = currentResult?.investigationId || currentResult?.case_id
     if (!invId) { setApiPropagation(null); return }
     setPropLoading(true)
     getInvestigationPropagation(invId)
       .then((data: any) => setApiPropagation(data || null))
       .catch(() => setApiPropagation(null))
       .finally(() => setPropLoading(false))
-  }, [currentResult?.investigationId])
+  }, [currentResult?.investigationId, currentResult?.case_id])
 
   // Merge API propagation data with store result for canvas render
   const activePropagation = apiPropagation ?? currentResult?.propagation ?? null
@@ -275,7 +275,7 @@ export function PropagationGraph() {
               {activePropagation.urgency.toUpperCase()} SPREAD
             </span>
           )}
-          {!propLoading && !activePropagation && currentResult?.investigationId && (
+          {!propLoading && !activePropagation && (currentResult?.investigationId || currentResult?.case_id) && (
             <span style={{ fontSize: 10, color: '#f59e0b', fontFamily: 'monospace' }}>NO PROPAGATION DATA — run discovery first</span>
           )}
         </div>

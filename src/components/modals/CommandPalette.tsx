@@ -107,6 +107,16 @@ export function CommandPalette() {
   // Base navigation items
   const navItems: CommandItem[] = [
     {
+      id: 'nav-intelligence',
+      category: 'NAVIGATION',
+      title: 'Gemini AI Intelligence & Multimodal Copilot',
+      subtitle: 'Multimodal visual analysis, executive dossiers & AI reasoning',
+      icon: '✨',
+      badge: 'AI',
+      badgeColor: '#c084fc',
+      action: () => { setActiveTab('intelligence'); setShowCommandPalette(false) }
+    },
+    {
       id: 'nav-scanner',
       category: 'NAVIGATION',
       title: 'Media Scanner & Detection Hub',

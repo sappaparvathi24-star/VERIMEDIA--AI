@@ -226,7 +226,7 @@ export function seedDefaultAuthEntities() {
     } else if (!admin.password_salt) {
       const salt = generateUserSalt();
       const hash = hashPassword(adminPassword, salt);
-      db.prepare('UPDATE users SET password_salt = ?, password_hash = ?, updated_at = datetime("now") WHERE id = ?').run(salt, `${salt}:${hash}`, admin.id);
+      db.prepare("UPDATE users SET password_salt = ?, password_hash = ?, updated_at = datetime('now') WHERE id = ?").run(salt, `${salt}:${hash}`, admin.id);
       seededCredentials.push({ email: 'admin@verimedia.ai', role: 'ADMIN', password: adminPassword, upgraded: true });
     }
 
@@ -243,7 +243,7 @@ export function seedDefaultAuthEntities() {
     } else if (!analyst.password_salt) {
       const salt = generateUserSalt();
       const hash = hashPassword(analystPassword, salt);
-      db.prepare('UPDATE users SET password_salt = ?, password_hash = ?, updated_at = datetime("now") WHERE id = ?').run(salt, `${salt}:${hash}`, analyst.id);
+      db.prepare("UPDATE users SET password_salt = ?, password_hash = ?, updated_at = datetime('now') WHERE id = ?").run(salt, `${salt}:${hash}`, analyst.id);
       seededCredentials.push({ email: 'analyst@verimedia.ai', role: 'ANALYST', password: analystPassword, upgraded: true });
     }
 
@@ -260,7 +260,7 @@ export function seedDefaultAuthEntities() {
     } else if (!auditor.password_salt) {
       const salt = generateUserSalt();
       const hash = hashPassword(auditorPassword, salt);
-      db.prepare('UPDATE users SET password_salt = ?, password_hash = ?, updated_at = datetime("now") WHERE id = ?').run(salt, `${salt}:${hash}`, auditor.id);
+      db.prepare("UPDATE users SET password_salt = ?, password_hash = ?, updated_at = datetime('now') WHERE id = ?").run(salt, `${salt}:${hash}`, auditor.id);
       seededCredentials.push({ email: 'auditor@verimedia.ai', role: 'AUDITOR', password: auditorPassword, upgraded: true });
     }
 
@@ -506,15 +506,27 @@ export function authorizeChain(provenanceService) {
       }
     }
 
-    const artifactId = req.params.artifactId || req.body?.artifactId;
-    if (artifactId && investigationId && provenanceService) {
+    const artifactId = req.params.artifactId || req.params.id || req.body?.artifactId;
+    if (artifactId && provenanceService) {
       const art = provenanceService.getArtifact(artifactId);
-      if (art && art.investigationId !== investigationId) {
-        return res.status(403).json({
-          error: 'Forbidden: Media artifact does not belong to specified investigation',
-          artifactId,
-          investigationId
-        });
+      if (art) {
+        if (investigationId && art.investigationId !== investigationId) {
+          return res.status(403).json({
+            error: 'Forbidden: Media artifact does not belong to specified investigation',
+            artifactId,
+            investigationId
+          });
+        }
+        if (art.investigationId) {
+          const artInv = provenanceService.getInvestigation(art.investigationId);
+          if (artInv && artInv.organizationId && artInv.organizationId !== req.organizationId && !artInv.isDemo) {
+            return res.status(403).json({
+              error: 'Forbidden: Access denied to media artifact outside user organization',
+              artifactId,
+              userOrg: req.organizationId
+            });
+          }
+        }
       }
     }
 

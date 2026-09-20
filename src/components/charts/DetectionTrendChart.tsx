@@ -1,5 +1,6 @@
 // VeriMedia AI — Recharts Detection Frequency Trend Visualization
-import { useState, useMemo } from 'react'
+// Implements Prompt 12: Real Database-Backed Historical Telemetry (Zero Undisclosed Fabrication)
+import { useState, useMemo, useEffect } from 'react'
 import {
   ResponsiveContainer,
   AreaChart,
@@ -13,7 +14,7 @@ import {
   Bar,
 } from 'recharts'
 import { useStore } from '../../store'
-import type { Platform } from '../../types'
+import { getDetectionTrends } from '../../services/api'
 
 type TimeRange = '24h' | '7d' | '30d'
 
@@ -26,51 +27,33 @@ interface ChartDataPoint {
   total: number
 }
 
-// Generate background historical trends merged with live scan state
-function generateTrendData(timeRange: TimeRange, platformFilter: string, liveResultsCount: number): ChartDataPoint[] {
-  const points: ChartDataPoint[] = []
+// Illustrative benchmark curve used ONLY when user explicitly toggles Demo/Sample mode
+function getIllustrativeBenchmarkData(timeRange: TimeRange): ChartDataPoint[] {
+  const count = timeRange === '7d' ? 7 : timeRange === '30d' ? 15 : 24
+  const stepMs = timeRange === '7d' ? 24 * 3600 * 1000 : timeRange === '30d' ? 2 * 24 * 3600 * 1000 : 3600 * 1000
   const now = Date.now()
+  const sampleValues = [4, 6, 5, 8, 12, 10, 7, 5, 9, 15, 18, 14, 9, 7, 11, 14, 20, 16, 12, 10, 8, 13, 16, 18]
 
-  let count = 24
-  let stepMs = 3600 * 1000 // 1 hour steps
-  let formatLabel = (d: Date) => d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-
-  if (timeRange === '7d') {
-    count = 7
-    stepMs = 24 * 3600 * 1000
-    formatLabel = (d: Date) => d.toLocaleDateString([], { weekday: 'short', month: 'numeric', day: 'numeric' })
-  } else if (timeRange === '30d') {
-    count = 15
-    stepMs = 2 * 24 * 3600 * 1000
-    formatLabel = (d: Date) => d.toLocaleDateString([], { month: 'short', day: 'numeric' })
-  }
-
-  // Base seed pattern with realistic variation
-  const baseSeeds = [12, 19, 15, 28, 42, 35, 22, 18, 30, 55, 68, 48, 32, 25, 38, 50, 72, 60, 41, 33, 29, 45, 58, 64]
-
+  const points: ChartDataPoint[] = []
   for (let i = count - 1; i >= 0; i--) {
     const t = now - i * stepMs
-    const dateObj = new Date(t)
-    const seedIndex = (count - 1 - i) % baseSeeds.length
-    const baseVal = baseSeeds[seedIndex]
-
-    // Platform scaling factor
-    const platFactor = platformFilter === 'ALL' ? 1 : 0.35
-
-    let unauthorized = Math.max(1, Math.round((baseVal * 0.45 + (i === 0 ? liveResultsCount * 2 : 0)) * platFactor))
-    let suspect = Math.max(1, Math.round((baseVal * 0.30) * platFactor))
-    let authorized = Math.max(2, Math.round((baseVal * 0.25) * platFactor))
-
+    const d = new Date(t)
+    const label = timeRange === '24h'
+      ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      : d.toLocaleDateString([], { month: 'short', day: 'numeric' })
+    const base = sampleValues[(count - 1 - i) % sampleValues.length]
+    const unauth = Math.round(base * 0.5)
+    const susp = Math.round(base * 0.3)
+    const auth = Math.round(base * 0.2)
     points.push({
-      time: formatLabel(dateObj),
+      time: label,
       timestamp: t,
-      unauthorized,
-      suspect,
-      authorized,
-      total: unauthorized + suspect + authorized,
+      unauthorized: unauth,
+      suspect: susp,
+      authorized: auth,
+      total: unauth + susp + auth
     })
   }
-
   return points
 }
 
@@ -121,32 +104,135 @@ export function DetectionTrendChart() {
   const { results } = useStore()
   const [timeRange, setTimeRange] = useState<TimeRange>('24h')
   const [selectedPlatform, setSelectedPlatform] = useState<string>('ALL')
+  const [rawDbPoints, setRawDbPoints] = useState<ChartDataPoint[]>([])
+  const [rawPlatformBreakdown, setRawPlatformBreakdown] = useState<{ name: string; count: number }[]>([])
+  const [hasHistoricalData, setHasHistoricalData] = useState<boolean>(false)
+  const [loading, setLoading] = useState<boolean>(false)
+  const [showDemoBenchmark, setShowDemoBenchmark] = useState<boolean>(false)
 
-  const trendData = useMemo(() => {
-    return generateTrendData(timeRange, selectedPlatform, results.length)
-  }, [timeRange, selectedPlatform, results.length])
+  // Fetch real telemetry from backend analytics endpoint
+  useEffect(() => {
+    let isMounted = true
+    setLoading(true)
+
+    getDetectionTrends(timeRange, selectedPlatform)
+      .then((res: any) => {
+        if (!isMounted) return
+        if (res && res.points) {
+          setRawDbPoints(res.points)
+          setRawPlatformBreakdown(res.platformBreakdown || [])
+          setHasHistoricalData(Boolean(res.hasHistoricalData))
+        }
+      })
+      .catch(() => {
+        // If network error, default to zero points
+        if (!isMounted) return
+        setRawDbPoints([])
+        setHasHistoricalData(false)
+      })
+      .finally(() => {
+        if (isMounted) setLoading(false)
+      })
+
+    return () => {
+      isMounted = false
+    }
+  }, [timeRange, selectedPlatform])
+
+  // Merge real database points with in-memory live scan results
+  const chartData = useMemo(() => {
+    if (showDemoBenchmark) {
+      return getIllustrativeBenchmarkData(timeRange)
+    }
+
+    // Default: Return genuine database points without artificial base seeds
+    if (!rawDbPoints || rawDbPoints.length === 0) {
+      // Return flat zero points for the interval
+      const count = timeRange === '7d' ? 7 : timeRange === '30d' ? 15 : 24
+      const stepMs = timeRange === '7d' ? 24 * 3600 * 1000 : timeRange === '30d' ? 2 * 24 * 3600 * 1000 : 3600 * 1000
+      const now = Date.now()
+      const fallback: ChartDataPoint[] = []
+      for (let i = count - 1; i >= 0; i--) {
+        const t = now - i * stepMs
+        const d = new Date(t)
+        const label = timeRange === '24h'
+          ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          : d.toLocaleDateString([], { month: 'short', day: 'numeric' })
+        fallback.push({
+          time: label,
+          timestamp: t,
+          unauthorized: 0,
+          suspect: 0,
+          authorized: 0,
+          total: 0
+        })
+      }
+      return fallback
+    }
+
+    // Clone raw points so we can overlay current session scans onto the latest bucket
+    const merged = rawDbPoints.map(p => ({ ...p }))
+    if (results.length > 0 && merged.length > 0) {
+      const latest = merged[merged.length - 1]
+      let liveUnauth = 0
+      let liveSuspect = 0
+      let liveAuth = 0
+
+      for (const r of results) {
+        if (selectedPlatform !== 'ALL' && r.platform?.toLowerCase() !== selectedPlatform.toLowerCase()) {
+          continue
+        }
+        const d = r.ai_analysis?.decision
+        if (d === 'TAKEDOWN' || d === 'EMERGENCY_TAKEDOWN') liveUnauth++
+        else if (d === 'REVIEW REQUIRED' || d === 'SUSPECT') liveSuspect++
+        else if (d === 'ALLOW' || d === 'ATTRIBUTION') liveAuth++
+      }
+
+      // Add live results to the most recent bucket
+      latest.unauthorized += liveUnauth
+      latest.suspect += liveSuspect
+      latest.authorized += liveAuth
+      latest.total = latest.unauthorized + latest.suspect + latest.authorized
+    }
+
+    return merged
+  }, [rawDbPoints, showDemoBenchmark, timeRange, results, selectedPlatform])
 
   // Aggregate summary metrics
-  const totalDetections = trendData.reduce((acc, d) => acc + d.total, 0)
-  const totalUnauthorized = trendData.reduce((acc, d) => acc + d.unauthorized, 0)
-  const totalSuspect = trendData.reduce((acc, d) => acc + d.suspect, 0)
+  const totalDetections = chartData.reduce((acc, d) => acc + d.total, 0)
+  const totalUnauthorized = chartData.reduce((acc, d) => acc + d.unauthorized, 0)
+  const totalSuspect = chartData.reduce((acc, d) => acc + d.suspect, 0)
   const unauthPercentage = totalDetections > 0 ? ((totalUnauthorized / totalDetections) * 100).toFixed(1) : '0'
 
-  // Platform breakdown mock distribution
-  const platformBreakdown = [
-    { name: 'TikTok', count: Math.round(totalUnauthorized * 0.38) },
-    { name: 'YouTube', count: Math.round(totalUnauthorized * 0.28) },
-    { name: 'X/Twitter', count: Math.round(totalUnauthorized * 0.18) },
-    { name: 'Instagram', count: Math.round(totalUnauthorized * 0.11) },
-    { name: 'Reddit', count: Math.round(totalUnauthorized * 0.05) },
-  ]
+  // Platform breakdown based on real data
+  const platformBreakdown = useMemo(() => {
+    if (showDemoBenchmark) {
+      return [
+        { name: 'YouTube', count: Math.round(totalUnauthorized * 0.45) || 12 },
+        { name: 'Reddit', count: Math.round(totalUnauthorized * 0.30) || 8 },
+        { name: 'Mastodon', count: Math.round(totalUnauthorized * 0.15) || 4 },
+        { name: 'Wayback Machine', count: Math.round(totalUnauthorized * 0.10) || 2 },
+      ]
+    }
+    if (rawPlatformBreakdown && rawPlatformBreakdown.length > 0) {
+      return rawPlatformBreakdown
+    }
+    // If no events recorded yet, return platforms with 0 counts
+    return [
+      { name: 'YouTube', count: 0 },
+      { name: 'Reddit', count: 0 },
+      { name: 'Mastodon', count: 0 },
+      { name: 'Wayback Machine', count: 0 },
+      { name: 'Google Images', count: 0 },
+    ]
+  }, [showDemoBenchmark, rawPlatformBreakdown, totalUnauthorized])
 
   const platforms: { key: string; label: string }[] = [
     { key: 'ALL', label: 'All Platforms' },
-    { key: 'TikTok', label: 'TikTok' },
     { key: 'YouTube', label: 'YouTube' },
-    { key: 'X / Twitter', label: 'X / Twitter' },
-    { key: 'Instagram', label: 'Instagram' },
+    { key: 'Reddit', label: 'Reddit' },
+    { key: 'Mastodon', label: 'Mastodon' },
+    { key: 'Wayback Machine', label: 'Wayback Machine' },
   ]
 
   return (
@@ -159,6 +245,80 @@ export function DetectionTrendChart() {
       color: '#c9d1d9',
       overflowY: 'auto',
     }}>
+      {/* Transparency & Demo Mode Disclaimers */}
+      {showDemoBenchmark ? (
+        <div style={{
+          marginBottom: 12,
+          padding: '10px 14px',
+          borderRadius: 6,
+          background: 'rgba(245, 158, 11, 0.12)',
+          border: '1px solid rgba(245, 158, 11, 0.4)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 12,
+          fontSize: 12
+        }}>
+          <div>
+            <span style={{ color: '#fbbf24', fontWeight: 800 }}>⚠️ ILLUSTRATIVE SAMPLE BENCHMARK:</span>{' '}
+            <span style={{ color: '#fde68a' }}>
+              Displaying simulated sample baseline for interface layout evaluation. Real database records: {rawDbPoints.reduce((s, p) => s + p.total, 0)} detections.
+            </span>
+          </div>
+          <button
+            onClick={() => setShowDemoBenchmark(false)}
+            style={{
+              background: '#21262d',
+              border: '1px solid #30363d',
+              color: '#f0f6fc',
+              padding: '4px 10px',
+              borderRadius: 4,
+              fontSize: 11,
+              cursor: 'pointer',
+              fontWeight: 600
+            }}
+          >
+            Switch to Real Data
+          </button>
+        </div>
+      ) : (
+        <div style={{
+          marginBottom: 12,
+          padding: '8px 14px',
+          borderRadius: 6,
+          background: 'rgba(34, 197, 94, 0.08)',
+          border: '1px solid rgba(34, 197, 94, 0.25)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: 10,
+          fontSize: 11
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e' }} />
+            <span style={{ color: '#4ade80', fontWeight: 700 }}>Operational Database Telemetry:</span>
+            <span style={{ color: '#94a3b8' }}>
+              Chart data is aggregated from SQLite/in-memory audit_events, forensic findings, and live analysis runs. Zero synthetic seeds.
+            </span>
+          </div>
+          <button
+            onClick={() => setShowDemoBenchmark(true)}
+            style={{
+              background: 'transparent',
+              border: '1px solid #30363d',
+              color: '#8b949e',
+              padding: '2px 8px',
+              borderRadius: 4,
+              fontSize: 10,
+              cursor: 'pointer'
+            }}
+          >
+            Preview Demo Benchmark
+          </button>
+        </div>
+      )}
+
       {/* Header controls */}
       <div style={{
         display: 'flex',
@@ -172,7 +332,12 @@ export function DetectionTrendChart() {
       }}>
         <div>
           <h3 style={{ margin: 0, fontSize: 14, color: '#f0f6fc', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ color: '#ef4444' }}>📈</span> Unauthorized Detection Frequency
+            <span style={{ color: '#ef4444' }}>📈</span> Detection Frequency Trend
+            {showDemoBenchmark && (
+              <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, background: 'rgba(245, 158, 11, 0.2)', color: '#fbbf24', border: '1px solid rgba(245, 158, 11, 0.4)' }}>
+                ILLUSTRATIVE SAMPLE
+              </span>
+            )}
           </h3>
           <p style={{ margin: '2px 0 0 0', fontSize: 11, color: '#8b949e' }}>
             Real-time & historical trend monitoring for infringed / unauthorized media appearances
@@ -232,9 +397,11 @@ export function DetectionTrendChart() {
         marginBottom: 16,
       }}>
         <div style={{ background: '#0d1117', border: '1px solid #1e2d3d', borderRadius: 8, padding: '10px 12px' }}>
-          <div style={{ fontSize: 10, color: '#8b949e', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total Scans</div>
+          <div style={{ fontSize: 10, color: '#8b949e', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total Events</div>
           <div style={{ fontSize: 18, fontWeight: 700, color: '#f0f6fc', marginTop: 2 }}>{totalDetections.toLocaleString()}</div>
-          <div style={{ fontSize: 10, color: '#38bdf8', marginTop: 2 }}>Observed events</div>
+          <div style={{ fontSize: 10, color: '#38bdf8', marginTop: 2 }}>
+            {showDemoBenchmark ? 'Sample counts' : 'Database detections'}
+          </div>
         </div>
 
         <div style={{ background: '#0d1117', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: 8, padding: '10px 12px' }}>
@@ -252,7 +419,7 @@ export function DetectionTrendChart() {
         <div style={{ background: '#0d1117', border: '1px solid #1e2d3d', borderRadius: 8, padding: '10px 12px' }}>
           <div style={{ fontSize: 10, color: '#8b949e', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Peak Spike</div>
           <div style={{ fontSize: 18, fontWeight: 700, color: '#38bdf8', marginTop: 2 }}>
-            {Math.max(...trendData.map(d => d.unauthorized))} <span style={{ fontSize: 11, fontWeight: 400 }}>/ interval</span>
+            {chartData.length > 0 ? Math.max(...chartData.map(d => d.unauthorized)) : 0} <span style={{ fontSize: 11, fontWeight: 400 }}>/ interval</span>
           </div>
           <div style={{ fontSize: 10, color: '#8b949e', marginTop: 2 }}>Highest detection rate</div>
         </div>
@@ -274,14 +441,15 @@ export function DetectionTrendChart() {
           <span style={{ fontSize: 11, fontWeight: 600, color: '#8b949e', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             Detection Volume & Decision Timeline ({timeRange})
           </span>
-          <span style={{ fontSize: 10, color: '#22c55e', display: 'flex', alignItems: 'center', gap: 4 }}>
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e' }} /> Live Sync Active
+          <span style={{ fontSize: 10, color: showDemoBenchmark ? '#fbbf24' : '#22c55e', display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: showDemoBenchmark ? '#fbbf24' : '#22c55e' }} />
+            {showDemoBenchmark ? 'Illustrative Mode' : 'Live Sync Active'}
           </span>
         </div>
 
         <div style={{ flex: 1, width: '100%', minHeight: 200 }}>
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={trendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+            <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
               <defs>
                 <linearGradient id="colorUnauthorized" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#ef4444" stopOpacity={0.8}/>
@@ -308,6 +476,7 @@ export function DetectionTrendChart() {
                 stroke="#484f58"
                 tick={{ fill: '#8b949e', fontSize: 10 }}
                 tickLine={false}
+                allowDecimals={false}
               />
               <Tooltip content={<CustomTooltip />} />
               <Legend
@@ -350,6 +519,21 @@ export function DetectionTrendChart() {
             </AreaChart>
           </ResponsiveContainer>
         </div>
+
+        {!hasHistoricalData && !showDemoBenchmark && (
+          <div style={{
+            marginTop: 8,
+            padding: '6px 10px',
+            borderRadius: 4,
+            background: 'rgba(30, 41, 59, 0.5)',
+            border: '1px solid #1e2d3d',
+            fontSize: 10,
+            color: '#94a3b8',
+            textAlign: 'center'
+          }}>
+            Zero recorded events in this timeframe. Newly completed forensic scans and investigations will immediately plot onto this real timeline.
+          </div>
+        )}
       </div>
 
       {/* Platform Distribution BarChart */}
@@ -366,10 +550,10 @@ export function DetectionTrendChart() {
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={platformBreakdown} layout="vertical" margin={{ top: 0, right: 20, left: 20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#21262d" horizontal={false} />
-              <XAxis type="number" stroke="#484f58" tick={{ fill: '#8b949e', fontSize: 9 }} hide />
-              <YAxis type="category" dataKey="name" stroke="#484f58" tick={{ fill: '#c9d1d9', fontSize: 10 }} width={70} axisLine={false} tickLine={false} />
+              <XAxis type="number" stroke="#484f58" tick={{ fill: '#8b949e', fontSize: 9 }} hide allowDecimals={false} />
+              <YAxis type="category" dataKey="name" stroke="#484f58" tick={{ fill: '#c9d1d9', fontSize: 10 }} width={100} axisLine={false} tickLine={false} />
               <Tooltip cursor={{ fill: 'rgba(255,255,255,0.03)' }} content={<CustomTooltip />} />
-              <Bar dataKey="count" name="Infringement Count" fill="#38bdf8" radius={[0, 4, 4, 0]} barSize={12} />
+              <Bar dataKey="count" name="Detection Count" fill="#38bdf8" radius={[0, 4, 4, 0]} barSize={12} />
             </BarChart>
           </ResponsiveContainer>
         </div>

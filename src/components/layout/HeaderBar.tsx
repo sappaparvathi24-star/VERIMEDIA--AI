@@ -52,6 +52,11 @@ const PAGE_TITLES: Record<TabId, { title: string; subtitle: string; icon: string
     title: 'Live Media Stream',
     subtitle: 'Real-time platform detection logs & alerts',
     icon: '📡'
+  },
+  intelligence: {
+    title: 'Gemini AI Intelligence & Multimodal Copilot',
+    subtitle: 'Multimodal reasoning, automated forensic dossiers & technical explainer',
+    icon: '✨'
   }
 }
 
@@ -162,6 +167,32 @@ export function HeaderBar() {
             </Tooltip>
           ))}
         </div>
+
+        {/* Gemini AI Intelligence Button */}
+        <Tooltip content="Gemini AI Intelligence: Multimodal Copilot, Executive Dossiers & Technical Explainer" position="bottom">
+          <button
+            onClick={() => useStore.getState().setActiveTab('intelligence')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.25) 0%, rgba(56, 189, 248, 0.25) 100%)',
+              border: '1px solid rgba(168, 85, 247, 0.4)',
+              padding: '6px 12px',
+              borderRadius: 6,
+              color: '#ffffff',
+              fontSize: 11,
+              fontWeight: 800,
+              cursor: 'pointer',
+              transition: 'all 0.15s',
+              boxShadow: '0 0 12px rgba(168, 85, 247, 0.2)'
+            }}
+            className="hover:scale-105"
+          >
+            <span>✨</span>
+            <span>Gemini AI</span>
+          </button>
+        </Tooltip>
 
         {/* Live Monitoring Modal Trigger */}
         <Tooltip content="Live Platform Ingestion Jobs & Discovery Scheduler" position="bottom">

@@ -105,6 +105,7 @@ export interface DetectionResult {
   ai_analysis: AIAnalysis
   timestamp: string
   case_id: string | null
+  investigationId?: string | null
   processing_ms: number
   is_demo?: boolean
   mode?: string
@@ -152,6 +153,47 @@ export interface DetectionResult {
       entropy?: number
       luminance?: number
     }
+    ocr?: {
+      supported?: boolean
+      text?: string
+      confidence?: number
+      wordCount?: number
+      language?: string
+      hasText?: boolean
+      error?: string
+    }
+    c2pa?: {
+      status: string
+      manifest?: {
+        title?: string | null
+        claim_generator?: string | null
+        assertions?: number
+        ingredients?: number
+        signature_info?: any
+      } | null
+      message?: string
+      isRealAnalysis?: boolean
+    }
+    videoMetadata?: {
+      supported?: boolean
+      status?: string
+      isRealAnalysis?: boolean
+      codec?: string | null
+      codecLongName?: string | null
+      duration?: number
+      fps?: number | null
+      frameCount?: number | null
+      resolution?: { width?: number | null; height?: number | null } | null
+      bitrate?: number
+      byteSize?: number
+      audioCodec?: string | null
+      audioChannels?: number | null
+      audioSampleRate?: number | null
+      container?: string | null
+      creationTime?: string | null
+      streamCount?: number
+      reason?: string
+    } | null
   }
   artifact?: {
     id: string
@@ -255,5 +297,5 @@ export interface GraphEdge {
   width: number
 }
 
-export type TabId = 'scanner' | 'propagation' | 'forensic' | 'origin' | 'discovery' | 'reasoning' | 'cases' | 'trends' | 'system' | 'feed'
+export type TabId = 'scanner' | 'propagation' | 'forensic' | 'origin' | 'discovery' | 'reasoning' | 'cases' | 'trends' | 'system' | 'feed' | 'intelligence'
 export type ScenarioKey = Scenario

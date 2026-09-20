@@ -1,4 +1,5 @@
 // VeriMedia AI — Evidence Fusion & Reasoning Traceability (Phase K & 18)
+import { buildMediaTimeline } from './timeline.js';
 
 export function fuseEvidenceAndReasoning(store, investigationId, options = {}) {
   const inv = store.getInvestigation(investigationId);
@@ -36,6 +37,25 @@ export function fuseEvidenceAndReasoning(store, investigationId, options = {}) {
     baseConfidence = 0.85;
   }
 
+  const timeline = buildMediaTimeline(store, investigationId);
+  const artifacts = (inv?.artifactIds || []).map(id => store.getArtifact(id)).filter(Boolean);
+
+  const storyline = (timeline.events || []).map((evt, idx) => ({
+    step: idx + 1,
+    id: evt.id,
+    title: evt.sourceName || evt.artifactName || `Appearance ${idx + 1}`,
+    artifactName: evt.artifactName,
+    timestamp: evt.publishedAt || evt.observedAt,
+    platform: evt.platform || 'WEB',
+    description: evt.metadata?.description || `Observed on ${evt.sourceName || evt.platform} (${evt.status})`,
+    status: evt.status,
+    evidenceIds: evt.evidenceIds || []
+  }));
+
+  const whatWeKnow = timeline.whatWeKnow || [];
+  const whatRemainsUnknown = timeline.whatRemainsUnknown || [];
+  const summary = `Investigation ${investigationId} analyzed ${artifacts.length} artifact(s) across ${distinctIndependenceChannels} independent channel(s) with ${allInvestigationFindings.length} finding(s).`;
+
   return {
     investigationId,
     distinctIndependenceChannels,
@@ -44,6 +64,11 @@ export function fuseEvidenceAndReasoning(store, investigationId, options = {}) {
     calibratedConfidence: baseConfidence,
     evidenceLedger: evidenceList,
     findings: allInvestigationFindings,
+    timeline,
+    storyline,
+    whatWeKnow,
+    whatRemainsUnknown,
+    summary,
     fusedAt: new Date().toISOString()
   };
 }
