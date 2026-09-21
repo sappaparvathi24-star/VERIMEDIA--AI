@@ -1,8 +1,9 @@
 // VeriMedia AI — Detection Hook with Real-Time Forensic Pipeline Streaming
 import { useCallback, useRef } from 'react'
-import { detect, fileDMCA, listCases, registerMediaArtifact, getForensicJob } from '../services/api'
+import { detect, fileDMCA, listCases, registerMediaArtifact, getForensicJob, searchMultiSource } from '../services/api'
 import { useStore } from '../store'
 import type { DetectionRequest, DMCARequest, DetectionResult } from '../types'
+import { generateTenComparisonReports } from '../matching/candidateReportsGenerator'
 
 export function useDetection() {
   const {
@@ -177,6 +178,16 @@ export function useDetection() {
       // Clear pending stage timers
       stageTimers.forEach(t => clearTimeout(t))
 
+      // Generate the 10 comparison reports with 3-way classification
+      const comparisonSummary = generateTenComparisonReports(
+        result.artifact || { filename: req.caption || 'Investigated Asset', title: req.caption },
+        (result as any).candidates || [],
+        req.scenario || 'normal'
+      )
+      ;(result as any).comparisonSummary = comparisonSummary
+      ;(result as any).comparisonReports = comparisonSummary.reports
+      ;(result as any).candidates = comparisonSummary.reports
+
       // Stage 6: Final Fusion
       setScanProgress(100, 5, 'Stage 6: Epistemic Signal Fusion & Verdict', 'Calibrated trust score synthesized and evidence dossier compiled.')
       addScanLog(`Analysis finalized: Verdict=${result.ai_analysis.decision} | Trust=${result.trust.trust_score ?? 'N/A'}/100`, 'fusion', 'success')
@@ -239,6 +250,16 @@ export function useDetection() {
         scenario: 'normal',
         artifactId: art.id
       })
+
+      // Generate the 10 comparison reports with 3-way classification for uploaded media
+      const comparisonSummary = generateTenComparisonReports(
+        result.artifact || art || { filename: file.name, title: file.name },
+        (result as any).candidates || [],
+        'normal'
+      )
+      ;(result as any).comparisonSummary = comparisonSummary
+      ;(result as any).comparisonReports = comparisonSummary.reports
+      ;(result as any).candidates = comparisonSummary.reports
 
       setScanProgress(100, 5, 'Stage 6: Epistemic Signal Fusion & Verdict', 'All forensic signals calibrated and evidence record compiled.')
       addScanLog(`Investigation complete for ${file.name}. Trust score: ${result.trust?.trust_score ?? 'N/A'}/100`, 'fusion', 'success')

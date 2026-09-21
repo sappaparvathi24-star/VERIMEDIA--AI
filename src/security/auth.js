@@ -583,6 +583,21 @@ export function authorizeChain(provenanceService) {
       }
     }
 
+    const findingId = req.params.findingId || (req.path?.includes('findings') || req.baseUrl?.includes('findings') ? req.params.id : null);
+    if (findingId && provenanceService) {
+      const fnd = provenanceService.getFinding(findingId);
+      if (fnd && fnd.investigationId) {
+        const fndInv = provenanceService.getInvestigation(fnd.investigationId);
+        if (fndInv && fndInv.organizationId && fndInv.organizationId !== req.organizationId && !fndInv.isDemo) {
+          return res.status(403).json({
+            error: "Forbidden: Access denied to finding outside user organization",
+            findingId,
+            userOrg: req.organizationId
+          });
+        }
+      }
+    }
+
     next();
   };
 }

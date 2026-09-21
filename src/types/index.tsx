@@ -299,7 +299,7 @@ export interface GraphEdge {
   width: number
 }
 
-export type TabId = 'scanner' | 'propagation' | 'forensic' | 'origin' | 'discovery' | 'reasoning' | 'cases' | 'trends' | 'system' | 'feed' | 'intelligence' | 'review' | 'debug'
+export type TabId = 'scanner' | 'propagation' | 'forensic' | 'origin' | 'discovery' | 'reasoning' | 'cases' | 'trends' | 'system' | 'feed' | 'intelligence' | 'debug'
 export type ScenarioKey = Scenario
 
 export type ForensicStageStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'SKIPPED' | 'FAILED'
@@ -324,5 +324,89 @@ export interface ScanLogEntry {
   level: 'info' | 'success' | 'warn' | 'error'
   stage: string
   message: string
+}
+
+// ── Multi-Candidate Comparison & 3-Way Classification ──────────────────────────
+export type ThreeWayClassification = 'KNOWN' | 'UNKNOWN' | 'NOT_SO'
+
+export interface CandidateTransformation {
+  isCropped?: boolean
+  cropPercentage?: number
+  cropDetails?: string
+  isRecompressed?: boolean
+  compressionDelta?: string
+  isManipulated?: boolean
+  manipulationFlags?: string[]
+  watermarkAltered?: boolean
+  aspectRatioDiff?: string
+  resolutionChange?: string
+  synthesisDetected?: boolean
+  faceTampering?: boolean
+}
+
+export interface CandidateSignalDelta {
+  spatialVariance: number
+  colorDrift: number
+  frequencyAnomaly: number
+  exifConsistency: 'MATCH' | 'DISCREPANCY' | 'STRIPPED' | 'UNAVAILABLE'
+  perceptualDistance: number
+}
+
+export interface CandidateProvenance {
+  isEarliestAppearance?: boolean
+  earliestTimestamp?: string
+  formattedDate?: string
+  indexingOrder?: number
+  syndicationRoute?: string
+  publisherTier?: 'WIRE_SERVICE' | 'VERIFIED_OUTLET' | 'SOCIAL_PLATFORM' | 'ANONYMOUS_FORUM' | 'ARCHIVE'
+}
+
+export interface CandidateRecommendation {
+  action: 'CONFIRM_AUTHENTIC_SOURCE' | 'FLAG_UNAUTHORIZED_DERIVATIVE' | 'FILE_DMCA_TAKEDOWN' | 'DISMISS_UNRELATED'
+  rationale: string
+  riskTier: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'
+}
+
+export interface ComparisonReport {
+  id: string
+  candidateIndex: number
+  title: string
+  url: string
+  domain: string
+  publisher?: string
+  author?: string
+  publishedAt?: string
+  formattedDate?: string
+  platform: string
+  thumbnailUrl?: string | null
+  mediaUrl?: string | null
+  snippet?: string
+
+  // Grounded Similarity & Scoring
+  matchScore: number // 0 - 100
+  similarity: number // 0.0 - 1.0
+  visionScore?: number | null
+  phashSimilarity?: number | null
+  hammingDistance?: number | null
+  similarityBasis?: string
+
+  // 3-Way Classification
+  classification: ThreeWayClassification
+  classificationLabel: string
+  classificationReason: string
+
+  // Forensic Transformations & Metrics
+  transformations: CandidateTransformation
+  signalDelta: CandidateSignalDelta
+  provenance: CandidateProvenance
+  recommendation: CandidateRecommendation
+}
+
+export interface ComparisonCandidateSummary {
+  total: number
+  knownCount: number
+  unknownCount: number
+  notSoCount: number
+  reports: ComparisonReport[]
 }
 

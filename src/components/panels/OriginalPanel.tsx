@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useStore } from '../../store'
 import { useDetection } from '../../hooks/useDetection'
 import { D3ProvenanceTree } from '../charts/D3ProvenanceTree'
-import { getInvestigationGenealogy } from '../../services/api'
+import { getInvestigationGenealogy, getEarliestAppearanceSearch } from '../../services/api'
 import type { Scenario } from '../../types'
 
 const PRESETS: { key: Scenario; label: string; icon: string }[] = [
@@ -18,6 +18,11 @@ export function OriginPanel() {
   const [activeSubTab, setActiveSubTab] = useState<'tree' | 'transformations' | 'metrics' | 'custody'>('tree')
   const [genealogyData, setGenealogyData] = useState<{ nodes: unknown[]; links: unknown[] } | null>(null)
   const [genealogyLoading, setGenealogyLoading] = useState(false)
+
+  // Google Search Grounding state
+  const [groundedSearchData, setGroundedSearchData] = useState<any>(null)
+  const [isSearchingGrounding, setIsSearchingGrounding] = useState(false)
+  const [groundingError, setGroundingError] = useState<string | null>(null)
 
   useEffect(() => {
     const invId = currentResult?.investigationId || currentResult?.case_id
@@ -46,6 +51,27 @@ export function OriginPanel() {
       content_type: 'news',
       scenario: preset,
     })
+  }
+
+  const runGoogleSearchGrounding = async () => {
+    setIsSearchingGrounding(true)
+    setGroundingError(null)
+    try {
+      const invId = currentResult?.investigationId || currentResult?.case_id
+      const query = (currentResult as any)?.artifact?.filename || (currentResult as any)?.title || (currentResult as any)?.caption || 'Media Earliest Appearance Search'
+      const res = await getEarliestAppearanceSearch({
+        query,
+        filename: (currentResult as any)?.artifact?.filename,
+        sha256: (currentResult as any)?.sha256 || currentResult?.fingerprint_hash || undefined,
+        investigationId: invId || undefined,
+        scenario: (currentResult as any)?.scenario || 'normal'
+      })
+      setGroundedSearchData(res)
+    } catch (err: any) {
+      setGroundingError(err?.response?.data?.error || err?.message || 'Google Search Grounding query failed')
+    } finally {
+      setIsSearchingGrounding(false)
+    }
   }
 
   if (!currentResult) {
@@ -319,6 +345,177 @@ export function OriginPanel() {
           </div>
         </div>
       </div>
+
+      {/* GOOGLE SEARCH GROUNDED ORIGIN & EARLIEST APPEARANCE CARD */}
+      <div style={{
+        background: 'linear-gradient(135deg, rgba(13, 17, 23, 0.95) 0%, rgba(15, 23, 42, 0.95) 100%)',
+        border: '1px solid rgba(56, 189, 248, 0.3)',
+        borderRadius: 10,
+        padding: '18px 22px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 14,
+        boxShadow: '0 4px 20px rgba(0, 0, 0, 0.4)'
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 18 }}>🌐</span>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 800, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: 8 }}>
+                Google Search Grounded Origin Intelligence
+                <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, background: 'rgba(56,189,248,0.15)', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 700 }}>
+                  gemini-3.5-flash + googleSearch
+                </span>
+              </div>
+              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
+                Live web search grounding verifies the earliest known publication, first news wire release, and original canonical URL.
+              </div>
+            </div>
+          </div>
+
+          <button
+            onClick={runGoogleSearchGrounding}
+            disabled={isSearchingGrounding}
+            style={{
+              background: isSearchingGrounding ? '#1e293b' : 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+              color: '#ffffff',
+              border: '1px solid #38bdf8',
+              borderRadius: 6,
+              padding: '8px 18px',
+              fontSize: 12,
+              fontWeight: 800,
+              cursor: isSearchingGrounding ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              boxShadow: '0 2px 8px rgba(2, 132, 199, 0.3)'
+            }}
+          >
+            {isSearchingGrounding ? '◌ Querying Google Search Grounding…' : '🔎 Execute Grounded Search'}
+          </button>
+        </div>
+
+        {groundingError && (
+          <div style={{ padding: '10px 14px', borderRadius: 6, background: 'rgba(239, 68, 68, 0.1)', border: '1px solid #ef4444', color: '#f87171', fontSize: 12 }}>
+            ⚠️ {groundingError}
+          </div>
+        )}
+
+        {/* Display Grounded Search Results */}
+        {groundedSearchData && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 4 }}>
+            {/* Earliest Identified Source Hero Box */}
+            {groundedSearchData.earliestAppearance && (
+              <div style={{
+                background: '#080c10',
+                border: '1px solid #22c55e',
+                borderRadius: 8,
+                padding: 16,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 8
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 11, fontFamily: 'monospace', color: '#4ade80', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    ★ EARLIEST IDENTIFIED PUBLICATION (GROUNDED SOURCE)
+                  </span>
+                  <span style={{ fontSize: 11, background: 'rgba(34,197,94,0.2)', color: '#4ade80', padding: '2px 8px', borderRadius: 4, fontFamily: 'monospace', fontWeight: 700 }}>
+                    Confidence: {Math.round((groundedSearchData.earliestAppearance.confidenceScore || 0.95) * 100)}%
+                  </span>
+                </div>
+
+                <div style={{ fontSize: 15, fontWeight: 800, color: '#f8fafc' }}>
+                  {groundedSearchData.earliestAppearance.title}
+                </div>
+
+                <div style={{ fontSize: 12, color: '#cbd5e1', display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                  <span>🏢 <strong>Publisher:</strong> {groundedSearchData.earliestAppearance.publisher} ({groundedSearchData.earliestAppearance.domain})</span>
+                  <span>🕒 <strong>Timestamp:</strong> {groundedSearchData.earliestAppearance.formattedDate || groundedSearchData.earliestAppearance.publishedAt}</span>
+                  <span>📡 <strong>Type:</strong> {groundedSearchData.earliestAppearance.platform}</span>
+                </div>
+
+                {groundedSearchData.earliestAppearance.url && (
+                  <div style={{ fontSize: 11, color: '#38bdf8', fontFamily: 'monospace', wordBreak: 'break-all' }}>
+                    🔗 <a href={groundedSearchData.earliestAppearance.url} target="_blank" rel="noopener noreferrer" style={{ color: '#38bdf8', textDecoration: 'underline' }}>
+                      {groundedSearchData.earliestAppearance.url}
+                    </a>
+                  </div>
+                )}
+
+                {groundedSearchData.earliestAppearance.snippet && (
+                  <div style={{ fontSize: 12, color: '#94a3b8', background: '#0d1117', padding: 10, borderRadius: 6, border: '1px solid #1e2d3d', fontStyle: 'italic' }}>
+                    "{groundedSearchData.earliestAppearance.snippet}"
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Google Search Grounding Sources & Web Queries */}
+            {groundedSearchData.groundingSources && groundedSearchData.groundingSources.length > 0 && (
+              <div style={{ background: '#080c10', border: '1px solid #1e2d3d', borderRadius: 8, padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: '#38bdf8', fontFamily: 'monospace' }}>
+                  🌐 GOOGLE SEARCH GROUNDING SOURCES ({groundedSearchData.groundingSources.length})
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {groundedSearchData.groundingSources.map((src: any, idx: number) => (
+                    <a
+                      key={idx}
+                      href={src.uri}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ fontSize: 11, color: '#38bdf8', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 6 }}
+                    >
+                      <span>↗</span>
+                      <span style={{ fontWeight: 600 }}>{src.title || src.uri}</span>
+                      <span style={{ color: '#64748b', fontFamily: 'monospace' }}>({src.uri})</span>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Timeline Appearances */}
+            {groundedSearchData.timelineAppearances && groundedSearchData.timelineAppearances.length > 0 && (
+              <div style={{ background: '#080c10', border: '1px solid #1e2d3d', borderRadius: 8, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: '#f8fafc', fontFamily: 'monospace', textTransform: 'uppercase' }}>
+                  📅 Chronological Publication Lineage
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {groundedSearchData.timelineAppearances.map((item: any, idx: number) => (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: '#0d1117', border: '1px solid #1e2d3d', borderRadius: 6 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <span style={{ fontSize: 11, fontWeight: 800, color: item.isEarliest ? '#4ade80' : '#38bdf8', fontFamily: 'monospace' }}>
+                          #{item.order || idx + 1}
+                        </span>
+                        <div>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: '#f8fafc' }}>
+                            {item.title}
+                          </div>
+                          <div style={{ fontSize: 10, color: '#64748b' }}>
+                            {item.platform} • {item.domain} • {new Date(item.timestamp).toLocaleString()}
+                          </div>
+                        </div>
+                      </div>
+                      <span style={{
+                        fontSize: 9,
+                        fontWeight: 800,
+                        padding: '2px 6px',
+                        borderRadius: 4,
+                        fontFamily: 'monospace',
+                        background: item.isEarliest ? 'rgba(34,197,94,0.2)' : 'rgba(56,189,248,0.15)',
+                        color: item.isEarliest ? '#4ade80' : '#38bdf8'
+                      }}>
+                        {item.type}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
 
       {/* Main Content View by Selected Sub-Tab */}
       {activeSubTab === 'tree' && (

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useStore } from '../../store'
-import { getProviders, getSearchTransparency, searchMultiSource, getInvestigationCandidates } from '../../services/api'
+import { getProviders, getSearchTransparency, searchMultiSource, getInvestigationCandidates, fetchGroundedSearch, GroundedSearchResult } from '../../services/api'
 
 interface ProviderInfo {
   id: string
@@ -81,9 +81,32 @@ export function DiscoveryPanel() {
   const [searchMode, setSearchMode] = useState<'VISUAL' | 'MANUAL_TEXT'>('VISUAL')
   const [lastExecutedQuery, setLastExecutedQuery] = useState<string>('')
 
+  // Google Search Grounding state (gemini-3.5-flash)
+  const [groundedResult, setGroundedResult] = useState<GroundedSearchResult | null>(null)
+  const [isGroundedLoading, setIsGroundedLoading] = useState<boolean>(false)
+  const [groundedError, setGroundedError] = useState<string | null>(null)
+
   const referenceThumbnail = (currentResult as any)?.thumbnailUrl || (currentResult as any)?.mediaUrl || (currentResult as any)?.previewUrl || (currentResult as any)?.url || null
   const artifactName = (currentResult as any)?.filename || (currentResult as any)?.title || currentResult?.caption || 'Uploaded Media Artifact'
   const artifactId = (currentResult as any)?.id || (currentResult as any)?.artifactId || null
+
+  async function runGroundedDiscovery() {
+    setIsGroundedLoading(true)
+    setGroundedError(null)
+    try {
+      const qTerm = testQuery.trim() || artifactName || 'Media authenticity verification'
+      const res = await fetchGroundedSearch({
+        query: qTerm,
+        filename: artifactName,
+        context: 'Discovery Intelligence & Live Web Grounding'
+      })
+      setGroundedResult(res)
+    } catch (err: any) {
+      setGroundedError(err?.response?.data?.error || err?.message || 'Grounded search query failed')
+    } finally {
+      setIsGroundedLoading(false)
+    }
+  }
 
   useEffect(() => {
     fetchProvidersAndTransparency()
@@ -512,6 +535,137 @@ export function DiscoveryPanel() {
           )}
         </div>
       )}
+
+      {/* GOOGLE SEARCH GROUNDING DISCOVERY CARD (gemini-3.5-flash + googleSearch) */}
+      <div style={{
+        background: 'linear-gradient(135deg, rgba(13, 17, 23, 0.95) 0%, rgba(15, 23, 42, 0.95) 100%)',
+        border: '1.5px solid rgba(56, 189, 248, 0.4)',
+        borderRadius: 10,
+        padding: 18,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 14,
+        boxShadow: '0 4px 20px rgba(56, 189, 248, 0.08)'
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 20 }}>🔍</span>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 900, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span>Google Search Grounded Discovery Intelligence</span>
+                <span style={{
+                  fontSize: 10,
+                  fontWeight: 800,
+                  padding: '2px 8px',
+                  borderRadius: 4,
+                  background: 'rgba(56, 189, 248, 0.2)',
+                  color: '#38bdf8',
+                  fontFamily: 'monospace'
+                }}>
+                  gemini-3.5-flash + googleSearch
+                </span>
+              </div>
+              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
+                Perform live real-time Google Search grounding to locate news wire reports, fact-checks, and web citations.
+              </div>
+            </div>
+          </div>
+
+          <button
+            onClick={runGroundedDiscovery}
+            disabled={isGroundedLoading}
+            style={{
+              background: isGroundedLoading ? '#1e293b' : 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+              color: '#ffffff',
+              border: '1px solid #38bdf8',
+              borderRadius: 6,
+              padding: '8px 18px',
+              fontSize: 12,
+              fontWeight: 800,
+              cursor: isGroundedLoading ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              boxShadow: '0 2px 8px rgba(2, 132, 199, 0.3)'
+            }}
+          >
+            {isGroundedLoading ? '◌ Querying Google Search Grounding…' : '⚡ Run Search Grounded Verification'}
+          </button>
+        </div>
+
+        {groundedError && (
+          <div style={{ padding: '10px 14px', borderRadius: 6, background: 'rgba(239, 68, 68, 0.1)', border: '1px solid #ef4444', color: '#f87171', fontSize: 12 }}>
+            ⚠️ {groundedError}
+          </div>
+        )}
+
+        {/* Display Grounded Search Analysis & Citations */}
+        {groundedResult && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, background: '#080c10', border: '1px solid #1e2d3d', borderRadius: 8, padding: 14 }}>
+            {/* Grounded Summary text */}
+            <div>
+              <div style={{ fontSize: 11, fontFamily: 'monospace', color: '#38bdf8', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
+                ★ GROUNDED VERIFICATION ANALYSIS ({groundedResult.model})
+              </div>
+              <div style={{ fontSize: 12, color: '#e2e8f0', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+                {groundedResult.data?.groundedAnalysis || 'Analysis complete.'}
+              </div>
+            </div>
+
+            {/* Executed Search Queries */}
+            {groundedResult.data?.searchQueriesExecuted && groundedResult.data.searchQueriesExecuted.length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', paddingTop: 6, borderTop: '1px solid #1e2d3d' }}>
+                <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 700 }}>Google Queries Executed:</span>
+                {groundedResult.data.searchQueriesExecuted.map((q, qIdx) => (
+                  <span key={qIdx} style={{ fontSize: 10, fontFamily: 'monospace', padding: '2px 8px', borderRadius: 4, background: '#161b22', border: '1px solid #30363d', color: '#cbd5e1' }}>
+                    🔍 "{q}"
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {/* Grounding Web Citations Links */}
+            {groundedResult.data?.groundingWebSources && groundedResult.data.groundingWebSources.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 6, borderTop: '1px solid #1e2d3d' }}>
+                <span style={{ fontSize: 11, color: '#4ade80', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span>🔗 Verified Web Grounding Citations:</span>
+                  <span style={{ fontSize: 10, opacity: 0.8 }}>({groundedResult.data.groundingWebSources.length} sources)</span>
+                </span>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 8 }}>
+                  {groundedResult.data.groundingWebSources.map((src, sIdx) => (
+                    <a
+                      key={sIdx}
+                      href={src.uri}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        padding: '8px 10px',
+                        background: '#0d1117',
+                        border: '1px solid #1e2d3d',
+                        borderRadius: 6,
+                        color: '#38bdf8',
+                        textDecoration: 'none',
+                        fontSize: 11,
+                        transition: 'border-color 0.2s'
+                      }}
+                      onMouseEnter={e => (e.currentTarget.style.borderColor = '#38bdf8')}
+                      onMouseLeave={e => (e.currentTarget.style.borderColor = '#1e2d3d')}
+                    >
+                      <span>🌐</span>
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 600 }}>
+                        {src.title || src.uri}
+                      </span>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* PRIMARY IMAGE-FIRST REVERSE DISCOVERY CARD */}
       <div style={{

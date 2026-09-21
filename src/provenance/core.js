@@ -115,15 +115,15 @@ export const AppearanceStatus = {
 };
 
 export const FindingStatus = {
+  UNASSESSED: 'UNASSESSED',
   SUPPORTED: 'SUPPORTED',
   PARTIALLY_SUPPORTED: 'PARTIALLY_SUPPORTED',
   CONTRADICTED: 'CONTRADICTED',
-  INFERRED: 'INFERRED',
   INCONCLUSIVE: 'INCONCLUSIVE',
-  CONFLICTING: 'CONFLICTING',
   UNKNOWN: 'UNKNOWN',
-  UNASSESSED: 'UNASSESSED',
-  RESOLVED: 'RESOLVED'
+  IN_REVIEW: 'IN_REVIEW',
+  RESOLVED: 'RESOLVED',
+  ARCHIVED: 'ARCHIVED'
 };
 
 export const ReviewDecision = {
@@ -140,12 +140,12 @@ export const InvestigationStatus = {
   ARCHIVED: 'ARCHIVED'
 };
 
-// Legal status transitions for investigations
-export const INVESTIGATION_STATUS_TRANSITIONS = {
+export const LEGAL_INVESTIGATION_TRANSITIONS = {
   OPEN: ['IN_REVIEW', 'RESOLVED', 'ARCHIVED'],
   IN_REVIEW: ['OPEN', 'RESOLVED', 'ARCHIVED'],
-  RESOLVED: ['ARCHIVED'],
-  ARCHIVED: []
+  RESOLVED: ['OPEN', 'IN_REVIEW', 'ARCHIVED'],
+  ARCHIVED: ['OPEN'],
+  ACTIVE: ['IN_REVIEW', 'RESOLVED', 'ARCHIVED', 'OPEN']
 };
 
 export const EvidencePolarity = {
@@ -356,7 +356,6 @@ export class ProvenanceStore {
     this.monitoringJobs = new Map();
     this.alerts = new Map();
     this.reportAuditRecords = new Map();
-    this.findingReviews = new Map();
   }
 
   async hydrate() {
@@ -383,7 +382,6 @@ export class ProvenanceStore {
     this.monitoringJobs.clear();
     this.alerts.clear();
     this.reportAuditRecords.clear();
-    this.findingReviews.clear();
   }
 
   // ── INVESTIGATION ──────────────────────────────────────────────────────────
@@ -414,6 +412,30 @@ export class ProvenanceStore {
 
   getInvestigation(id) {
     return this.investigations.get(id) || null;
+  }
+
+  updateInvestigationStatus(id, newStatus) {
+    const inv = this.getInvestigation(id);
+    if (!inv) {
+      throw new Error(`Investigation not found: ${id}`);
+    }
+
+    const currentStatus = inv.status || 'OPEN';
+    const normalizedNew = String(newStatus).toUpperCase();
+    const validStatuses = ['OPEN', 'IN_REVIEW', 'RESOLVED', 'ARCHIVED'];
+    if (!validStatuses.includes(normalizedNew)) {
+      throw new Error(`Invalid investigation status '${newStatus}'. Allowed: ${validStatuses.join(', ')}`);
+    }
+
+    const allowed = LEGAL_INVESTIGATION_TRANSITIONS[currentStatus] || ['OPEN', 'IN_REVIEW', 'RESOLVED', 'ARCHIVED'];
+    if (currentStatus !== normalizedNew && !allowed.includes(normalizedNew)) {
+      throw new Error(`Cannot transition investigation status from '${currentStatus}' to '${normalizedNew}'. Allowed transitions: ${allowed.join(', ')}`);
+    }
+
+    inv.status = normalizedNew;
+    inv.updatedAt = new Date().toISOString();
+    persistence.saveInvestigation(inv);
+    return inv;
   }
 
   addNote(investigationId, { author = 'Lead Analyst', text, tags = [] } = {}) {
@@ -646,6 +668,7 @@ export class ProvenanceStore {
     confidence = 0.85,
     evidenceIds = [],
     limitations = [],
+    reviews = [],
     metadata = {}
   }) {
     const findId = id || `FND-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
@@ -662,7 +685,9 @@ export class ProvenanceStore {
       confidence,
       evidenceIds: [...evidenceIds],
       limitations: [...limitations],
+      reviews: Array.isArray(reviews) ? [...reviews] : [],
       createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
       metadata: { ...metadata }
     };
     this.findings.set(findId, finding);
@@ -683,85 +708,97 @@ export class ProvenanceStore {
   }
 
   getFindings(investigationId) {
-    const all = Array.from(this.findings.values());
-    if (!investigationId) return all;
-    return all.filter(f => f.investigationId === investigationId);
+    if (investigationId) {
+      return Array.from(this.findings.values()).filter(f => f.investigationId === investigationId);
+    }
+    return Array.from(this.findings.values());
   }
 
   updateFinding(id, patch = {}) {
-    const finding = this.findings.get(id);
-    if (!finding) throw new Error(`Finding not found: ${id}`);
-    const updated = {
-      ...finding,
-      ...patch,
-      id: finding.id,
-      investigationId: finding.investigationId,
-      createdAt: finding.createdAt,
-      updatedAt: new Date().toISOString()
-    };
-    this.findings.set(id, updated);
-    persistence.saveFinding(updated);
-    return updated;
+    const finding = this.getFinding(id);
+    if (!finding) return null;
+
+    if (patch.status === FindingStatus.RESOLVED || patch.status === 'RESOLVED') {
+      if (!finding.reviews || finding.reviews.length === 0) {
+        throw new Error('Cannot mark finding as RESOLVED without at least one human review.');
+      }
+    }
+
+    if (patch.title !== undefined) finding.title = patch.title;
+    if (patch.statement !== undefined) {
+      finding.statement = patch.statement;
+      finding.summary = patch.statement;
+    }
+    if (patch.summary !== undefined) finding.summary = patch.summary;
+    if (patch.category !== undefined) finding.category = patch.category;
+    if (patch.status !== undefined) finding.status = patch.status;
+    if (patch.confidence !== undefined) finding.confidence = patch.confidence;
+    if (patch.evidenceIds !== undefined && Array.isArray(patch.evidenceIds)) {
+      finding.evidenceIds = [...patch.evidenceIds];
+    }
+    if (patch.limitations !== undefined && Array.isArray(patch.limitations)) {
+      finding.limitations = [...patch.limitations];
+    }
+    if (patch.metadata !== undefined) {
+      finding.metadata = { ...finding.metadata, ...patch.metadata };
+    }
+    finding.updatedAt = new Date().toISOString();
+
+    persistence.saveFinding(finding);
+    return finding;
   }
 
-  createReview({
-    id,
-    findingId,
-    investigationId,
-    reviewerId,
-    reviewerEmail,
-    decision,
-    rationale = '',
-    statusBefore,
-    statusAfter
-  }) {
-    if (!Object.values(ReviewDecision).includes(decision)) {
-      throw new Error(`Invalid review decision: ${decision}. Must be one of ${Object.values(ReviewDecision).join(', ')}`);
+  recordFindingReview(id, { decision, rationale, reviewer = 'Lead Analyst', reviewerId, reviewerRole, metadata = {} } = {}) {
+    const finding = this.getFinding(id);
+    if (!finding) {
+      throw new Error(`Finding not found: ${id}`);
     }
-    const reviewId = id || `REV-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
+
+    const validDecisions = ['ACCEPT', 'REJECT', 'INCONCLUSIVE', 'REQUEST_FURTHER_INVESTIGATION'];
+    if (!validDecisions.includes(decision)) {
+      throw new Error(`Invalid decision: ${decision}. Must be one of ${validDecisions.join(', ')}`);
+    }
+
+    if ((decision === 'REJECT' || decision === 'INCONCLUSIVE') && (!rationale || !String(rationale).trim())) {
+      throw new Error(`Rationale is required for ${decision} decisions.`);
+    }
+
+    const statusBefore = finding.status;
+    let statusAfter = finding.status;
+    if (decision === 'ACCEPT') {
+      statusAfter = FindingStatus.SUPPORTED;
+    } else if (decision === 'REJECT') {
+      statusAfter = FindingStatus.CONTRADICTED;
+    } else if (decision === 'INCONCLUSIVE') {
+      statusAfter = FindingStatus.INCONCLUSIVE;
+    } else if (decision === 'REQUEST_FURTHER_INVESTIGATION') {
+      statusAfter = FindingStatus.UNASSESSED;
+    }
+
     const review = {
-      id: reviewId,
-      findingId,
-      investigationId,
-      reviewerId: reviewerId || 'ANALYST',
-      reviewerEmail: reviewerEmail || reviewerId || 'analyst',
+      id: `REV-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`,
+      findingId: id,
       decision,
-      rationale,
+      reviewer: reviewer || 'Lead Analyst',
+      reviewerId: reviewerId || null,
+      reviewerRole: reviewerRole || null,
+      timestamp: new Date().toISOString(),
+      rationale: rationale ? String(rationale).trim() : '',
       statusBefore,
       statusAfter,
-      createdAt: new Date().toISOString()
+      metadata: { ...metadata }
     };
-    this.findingReviews.set(reviewId, review);
-    persistence.saveReview(review);
-    return review;
-  }
 
-  getReviews(findingId) {
-    return Array.from(this.findingReviews.values())
-      .filter(r => r.findingId === findingId)
-      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-  }
-
-  updateInvestigationStatus(investigationId, newStatus, actorId) {
-    const inv = this.getInvestigation(investigationId);
-    if (!inv) throw new Error(`Investigation not found: ${investigationId}`);
-
-    const currentStatus = inv.status;
-    const allowed = INVESTIGATION_STATUS_TRANSITIONS[currentStatus] || [];
-    if (!allowed.includes(newStatus)) {
-      throw new Error(
-        `Cannot transition investigation from ${currentStatus} to ${newStatus}. ` +
-        `Allowed transitions: ${allowed.length ? allowed.join(', ') : 'none'}`
-      );
+    if (!finding.reviews) {
+      finding.reviews = [];
     }
+    // Reviews are append-only — never overwrite a prior review
+    finding.reviews.push(review);
+    finding.status = statusAfter;
+    finding.updatedAt = review.timestamp;
 
-    inv.status = newStatus;
-    inv.updatedAt = new Date().toISOString();
-    inv.statusHistory = inv.statusHistory || [];
-    inv.statusHistory.push({ from: currentStatus, to: newStatus, at: inv.updatedAt, by: actorId || 'SYSTEM' });
-    this.investigations.set(investigationId, inv);
-    persistence.saveInvestigation(inv);
-    return inv;
+    persistence.saveFinding(finding);
+    return { finding, review };
   }
 
   // ── REAL IMAGE FORENSIC PIPELINE ──────────────────────────────────────────

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react'
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import {
   SplitSquareVertical,
   Columns2,
@@ -29,14 +29,17 @@ import {
   ArrowUpRight,
   History,
   Link2,
-  FileCheck
+  FileCheck,
+  FileSpreadsheet
 } from 'lucide-react'
-import type { DetectionResult, Scenario } from '../../types'
+import type { DetectionResult, Scenario, ComparisonReport } from '../../types'
 import { useStore } from '../../store'
 import { useDetection } from '../../hooks/useDetection'
 import { Tooltip } from '../ui/Tooltip'
 import { fetchEarliestAppearance, type EarliestAppearanceResult } from '../../services/api'
 import { SequentialForensicReport } from '../forensics/SequentialForensicReport'
+import { CandidateComparisonHub } from './CandidateComparisonHub'
+import { generateTenComparisonReports } from '../../matching/candidateReportsGenerator'
 
 interface ForensicViewerProps {
   result?: DetectionResult | null
@@ -44,7 +47,7 @@ interface ForensicViewerProps {
   compact?: boolean
 }
 
-type ViewMode = 'side-by-side' | 'split-slider' | 'heatmap-diff' | 'sequential'
+type ViewMode = 'side-by-side' | 'split-slider' | 'heatmap-diff' | 'sequential' | 'candidate-hub'
 type OverlayType = 'none' | 'ela' | 'face-landmarks' | 'prnu-noise' | 'edge-diff'
 
 export function ForensicViewer({ result: propResult, compact = false, onClose }: ForensicViewerProps) {
@@ -61,6 +64,7 @@ export function ForensicViewer({ result: propResult, compact = false, onClose }:
   const [activeMetaTab, setActiveMetaTab] = useState<'exif' | 'crypto' | 'signals' | 'source'>('exif')
   const [copiedHash, setCopiedHash] = useState<boolean>(false)
   const [highlightDiff, setHighlightDiff] = useState<boolean>(true)
+  const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null)
 
   // Earliest Known Appearance State (Google Search API)
   const [earliestData, setEarliestData] = useState<EarliestAppearanceResult | null>(null)
@@ -125,6 +129,26 @@ export function ForensicViewer({ result: propResult, compact = false, onClose }:
     (result as any)?.previewUrl ||
     (result as any)?.media_url ||
     (result?.artifact?.id ? `/api/artifacts/${result.artifact.id}/file` : null)
+
+  // 10 Automated Comparison Reports with 3-Way Classification
+  const comparisonReports: ComparisonReport[] = useMemo(() => {
+    if ((result as any)?.comparisonReports && Array.isArray((result as any).comparisonReports) && (result as any).comparisonReports.length > 0) {
+      return (result as any).comparisonReports
+    }
+    if ((result as any)?.comparisonSummary?.reports && Array.isArray((result as any).comparisonSummary.reports) && (result as any).comparisonSummary.reports.length > 0) {
+      return (result as any).comparisonSummary.reports
+    }
+    return generateTenComparisonReports(
+      result?.artifact || { filename: (result as any)?.caption || 'Uploaded Reference Asset', title: (result as any)?.caption },
+      (result as any)?.candidates || [],
+      result?.scenario || 'normal'
+    ).reports
+  }, [result])
+
+  const activeCandidate = useMemo(() => {
+    if (!comparisonReports || comparisonReports.length === 0) return null
+    return comparisonReports.find(c => c.id === selectedCandidateId) || comparisonReports[0]
+  }, [comparisonReports, selectedCandidateId])
 
   const elaData = (result?.forensics as any)?.ela
   const elaMeanError = elaData?.meanError ?? (signals?.jpeg_artifact ? Number((signals.jpeg_artifact * 30).toFixed(1)) : 18.5)
@@ -294,6 +318,17 @@ export function ForensicViewer({ result: propResult, compact = false, onClose }:
               <span>Delta Heatmap</span>
             </button>
             <button
+              onClick={() => setViewMode('candidate-hub')}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded transition ${
+                viewMode === 'candidate-hub'
+                  ? 'bg-cyan-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>10 Reports Hub</span>
+            </button>
+            <button
               onClick={() => setViewMode('sequential')}
               className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded transition ${
                 viewMode === 'sequential'
@@ -379,6 +414,19 @@ export function ForensicViewer({ result: propResult, compact = false, onClose }:
         <div className="flex-1 overflow-hidden">
           <SequentialForensicReport result={result} onClose={onClose} />
         </div>
+      ) : viewMode === 'candidate-hub' ? (
+        <div className="flex-1 overflow-y-auto p-4 bg-[#080c12]">
+          <CandidateComparisonHub
+            reports={comparisonReports}
+            activeCandidateId={selectedCandidateId}
+            uploadedMediaUrl={displayMediaUrl}
+            uploadedFilename={result?.artifact?.filename || 'Uploaded Reference Media'}
+            onSelectCandidate={(c) => {
+              setSelectedCandidateId(c.id)
+              setViewMode('side-by-side')
+            }}
+          />
+        </div>
       ) : (
         <div className="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0">
           {/* Left/Center Visual Comparison Stage */}
@@ -386,13 +434,13 @@ export function ForensicViewer({ result: propResult, compact = false, onClose }:
           {/* Dual-Pane View Container */}
           {viewMode === 'side-by-side' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1">
-              {/* Left Pane: Reference / Input File */}
+              {/* Left Pane: Reference / Uploaded Input File */}
               <div className="flex flex-col bg-[#0e1522] border border-[#1e2d3d] rounded-xl overflow-hidden shadow-lg">
                 <div className="flex items-center justify-between px-3 py-2 bg-[#131c2b] border-b border-[#1e2d3d]">
                   <div className="flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-emerald-400" />
                     <span className="text-xs font-bold font-mono text-emerald-400">
-                      INPUT FILE (REFERENCE)
+                      UPLOADED FILE (INPUT REFERENCE)
                     </span>
                   </div>
                   <span className="text-[10px] text-slate-400 font-mono">
@@ -438,7 +486,7 @@ export function ForensicViewer({ result: propResult, compact = false, onClose }:
                     {/* File identity badge */}
                     <div className="absolute bottom-3 left-3 bg-slate-900/80 backdrop-blur border border-slate-600/40 px-2.5 py-1 rounded text-[11px] font-mono text-slate-400 flex items-center gap-1.5">
                       <Fingerprint className="w-3.5 h-3.5 text-slate-400" />
-                      <span>{result?.artifact?.filename || result?.caption || 'No file loaded'}</span>
+                      <span className="truncate max-w-[200px]">{result?.artifact?.filename || result?.caption || 'Uploaded Reference'}</span>
                     </div>
                   </div>
                 </div>
@@ -449,31 +497,45 @@ export function ForensicViewer({ result: propResult, compact = false, onClose }:
                 </div>
               </div>
 
-              {/* Right Pane: Analyzed Target Suspect Asset */}
+              {/* Right Pane: Comparing Candidate Asset */}
               <div className="flex flex-col bg-[#0e1522] border border-[#1e2d3d] rounded-xl overflow-hidden shadow-lg">
                 <div className="flex items-center justify-between px-3 py-2 bg-[#131c2b] border-b border-[#1e2d3d]">
-                  <div className="flex items-center gap-2">
-                    <span className={`w-2 h-2 rounded-full ${isManipulated ? 'bg-rose-500 animate-pulse' : 'bg-emerald-400'}`} />
-                    <span className={`text-xs font-bold font-mono ${isManipulated ? 'text-rose-400' : 'text-emerald-400'}`}>
-                      ANALYZED TARGET (SUSPECT ASSET)
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-xs font-bold font-mono text-cyan-400 truncate">
+                      COMPARING CANDIDATE #{activeCandidate?.candidateIndex ?? 1}: {activeCandidate?.title ?? 'Candidate Asset'}
                     </span>
+                    {activeCandidate && (
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold border shrink-0 ${
+                        activeCandidate.classification === 'KNOWN'
+                          ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/40'
+                          : activeCandidate.classification === 'NOT_SO'
+                          ? 'bg-rose-950/80 text-rose-300 border-rose-500/40'
+                          : 'bg-amber-950/80 text-amber-300 border-amber-500/40'
+                      }`}>
+                        {activeCandidate.classification === 'KNOWN'
+                          ? 'KNOWN MATCH'
+                          : activeCandidate.classification === 'NOT_SO'
+                          ? 'NOT SO / MANIPULATED'
+                          : 'UNKNOWN'}
+                      </span>
+                    )}
                   </div>
-                  <span className="text-[10px] text-slate-400 font-mono">
+                  <span className="text-[10px] text-slate-400 font-mono shrink-0">
                     Overlay: <span className="text-cyan-400 font-bold uppercase">{activeOverlay}</span>
                   </span>
                 </div>
 
-                {/* Analyzed Media Frame with Forensic Overlays */}
+                {/* Comparing Media Frame with Forensic Overlays */}
                 <div className="relative flex-1 min-h-[260px] sm:min-h-[340px] flex items-center justify-center bg-[#05080f] p-4 overflow-hidden">
                   <div
                     className="relative w-full h-full max-h-[360px] rounded-lg border border-slate-800 flex items-center justify-center overflow-hidden bg-gradient-to-br from-slate-900 via-[#0d1524] to-slate-950"
                     style={{ transform: `scale(${zoomLevel})`, transition: 'transform 0.15s ease-out' }}
                   >
-                    {displayMediaUrl ? (
+                    {activeCandidate?.thumbnailUrl || activeCandidate?.mediaUrl || displayMediaUrl ? (
                       <div className="relative flex items-center justify-center w-full h-full">
                         <img
-                          src={displayMediaUrl}
-                          alt="Analyzed Media Target"
+                          src={activeCandidate?.thumbnailUrl || activeCandidate?.mediaUrl || displayMediaUrl || ''}
+                          alt={activeCandidate?.title || "Comparing Media Target"}
                           className="max-w-full max-h-[340px] w-auto h-auto object-contain rounded select-none shadow-md"
                         />
 
@@ -546,22 +608,22 @@ export function ForensicViewer({ result: propResult, compact = false, onClose }:
                       </svg>
                     )}
 
-                    {/* Tampering Detection Badge */}
-                    <div className="absolute bottom-3 left-3 bg-slate-900/90 backdrop-blur border border-rose-500/40 px-2.5 py-1 rounded text-[11px] font-mono text-rose-400 flex items-center gap-1.5">
-                      <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
-                      <span>{isManipulated ? 'Neural Blending & ELA Inconsistency' : 'Passes Integrity Baseline'}</span>
+                    {/* Similarity Score Pill */}
+                    <div className="absolute top-3 right-3 bg-slate-900/90 backdrop-blur border border-cyan-500/40 px-2.5 py-1 rounded text-[11px] font-mono text-cyan-300">
+                      Match: {activeCandidate ? `${(activeCandidate.similarity * 100).toFixed(1)}%` : `${(confidence * 100).toFixed(1)}%`}
                     </div>
 
-                    {/* Confidence Score Pill */}
-                    <div className="absolute top-3 right-3 bg-slate-900/90 backdrop-blur border border-cyan-500/40 px-2.5 py-1 rounded text-[11px] font-mono text-cyan-300">
-                      Confidence: {(confidence * 100).toFixed(1)}%
+                    {/* Source domain badge */}
+                    <div className="absolute bottom-3 left-3 bg-slate-900/90 backdrop-blur border border-slate-700/50 px-2.5 py-1 rounded text-[11px] font-mono text-slate-300 flex items-center gap-1.5">
+                      <Globe className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>{activeCandidate?.platform || activeCandidate?.domain || 'Web Origin'}</span>
                     </div>
                   </div>
                 </div>
 
                 <div className="p-3 bg-[#0a0f18] border-t border-[#1e2d3d] flex items-center justify-between text-xs text-slate-400">
-                  <span>Trust Score: <strong className={trustScore < 40 ? 'text-rose-400' : 'text-emerald-400'}>{trustScore}/100</strong></span>
-                  <span className="font-mono text-cyan-400">Fingerprint: {sha256 ? sha256.substring(0, 12) + '...' : '—'}</span>
+                  <span className="truncate max-w-[200px]">Delta: <strong className="text-cyan-300">{activeCandidate?.transformations?.cropDetails || (activeCandidate?.transformations?.isCropped ? 'Cropped derivative' : activeCandidate?.transformations?.isManipulated ? 'Manipulated derivative' : 'Direct match')}</strong></span>
+                  <span className="font-mono text-slate-400">Date: {activeCandidate?.formattedDate || activeCandidate?.publishedAt || 'Recent'}</span>
                 </div>
               </div>
             </div>
@@ -573,10 +635,10 @@ export function ForensicViewer({ result: propResult, compact = false, onClose }:
               <div className="flex items-center justify-between px-4 py-2.5 bg-[#131c2b] border-b border-[#1e2d3d]">
                 <div className="flex items-center gap-3">
                   <span className="text-xs font-bold font-mono text-cyan-400">
-                    INTERACTIVE SPLIT-VIEW COMPARISON
+                    INTERACTIVE SPLIT-VIEW: UPLOADED VS. CANDIDATE #{activeCandidate?.candidateIndex ?? 1}
                   </span>
-                  <span className="text-[11px] text-slate-400">
-                    (Drag the divider left/right to reveal underlying master vs. suspect synthesis)
+                  <span className="text-[11px] text-slate-400 hidden sm:inline">
+                    (Drag the divider left/right to reveal underlying uploaded master vs. candidate)
                   </span>
                 </div>
                 <span className="text-xs font-mono text-slate-300">Split: {Math.round(sliderPosition)}%</span>
@@ -586,20 +648,20 @@ export function ForensicViewer({ result: propResult, compact = false, onClose }:
                 ref={containerRef}
                 className="relative flex-1 bg-[#05080f] select-none cursor-ew-resize overflow-hidden"
               >
-                {/* Full Suspect View (Bottom Layer) */}
+                {/* Full Candidate View (Bottom Layer) */}
                 <div className="absolute inset-0 flex items-center justify-center p-4">
                   <div className="w-full h-full max-h-[380px] bg-slate-900 rounded-lg flex items-center justify-center border border-rose-900/40 relative overflow-hidden">
-                    {displayMediaUrl ? (
+                    {activeCandidate?.thumbnailUrl || activeCandidate?.mediaUrl || displayMediaUrl ? (
                       <div className="relative flex items-center justify-center w-full h-full">
                         <img
-                          src={displayMediaUrl}
-                          alt="Suspect Media"
+                          src={activeCandidate?.thumbnailUrl || activeCandidate?.mediaUrl || displayMediaUrl || ''}
+                          alt="Candidate Media"
                           className="max-w-full max-h-[360px] w-auto h-auto object-contain select-none"
                         />
                         {/* Overlay on bottom layer */}
                         <div className="absolute inset-0 bg-gradient-to-tr from-rose-600/40 via-amber-500/20 to-cyan-500/20 mix-blend-color-dodge pointer-events-none" />
-                        <div className="absolute bottom-4 right-4 bg-slate-950/85 backdrop-blur border border-rose-500/50 px-3 py-1 rounded text-xs font-mono text-rose-300">
-                          Forensic Overlay Layer
+                        <div className="absolute bottom-4 right-4 bg-slate-950/85 backdrop-blur border border-cyan-500/50 px-3 py-1 rounded text-xs font-mono text-cyan-300">
+                          Candidate #{activeCandidate?.candidateIndex ?? 1}: {activeCandidate?.platform || 'Comparison'} ({(Number(activeCandidate?.similarity ?? 0.9) * 100).toFixed(0)}% match)
                         </div>
                       </div>
                     ) : (
@@ -607,9 +669,9 @@ export function ForensicViewer({ result: propResult, compact = false, onClose }:
                         <div className="w-20 h-20 rounded-full bg-rose-950 border-2 border-rose-500 mx-auto flex items-center justify-center text-2xl animate-pulse">
                           🎭
                         </div>
-                        <div className="text-sm font-bold text-rose-400 font-mono">SUSPECT TAMPERED MEDIA</div>
+                        <div className="text-sm font-bold text-rose-400 font-mono">CANDIDATE MEDIA</div>
                         <div className="text-xs text-slate-400 max-w-sm">
-                          High-frequency ELA variance and facial synthesis boundaries active across frame.
+                          High-frequency variance and facial synthesis boundaries active across frame.
                         </div>
                       </div>
                     )}
@@ -631,7 +693,7 @@ export function ForensicViewer({ result: propResult, compact = false, onClose }:
                             className="max-w-full max-h-[360px] w-auto h-auto object-contain select-none"
                           />
                           <div className="absolute bottom-4 left-4 bg-slate-950/85 backdrop-blur border border-emerald-500/50 px-3 py-1 rounded text-xs font-mono text-emerald-300">
-                            Original Master Frame
+                            Uploaded Reference Master
                           </div>
                         </div>
                       ) : (
@@ -741,6 +803,89 @@ export function ForensicViewer({ result: propResult, compact = false, onClose }:
             </div>
           )}
 
+          {/* 10 Candidate Quick-Switch Strip (Automated Reports) */}
+          {comparisonReports && comparisonReports.length > 0 && (
+            <div className="mt-4 bg-[#0e1522] border border-[#1e2d3d] rounded-xl p-3 shadow-lg">
+              <div className="flex items-center justify-between mb-2.5 flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-cyan-400" />
+                  <span className="text-xs font-bold font-mono text-white uppercase tracking-wider">
+                    Automated Candidate Matches (Top 10 Reports)
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full bg-cyan-950 border border-cyan-500/40 text-[10px] font-mono text-cyan-300">
+                    {comparisonReports.length} Generated Reports
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-slate-400 font-mono hidden md:inline">
+                    Click any candidate to compare side-by-side:
+                  </span>
+                  <button
+                    onClick={() => setViewMode('candidate-hub')}
+                    className="px-2 py-1 rounded bg-cyan-950 hover:bg-cyan-900 border border-cyan-500/50 text-cyan-300 text-[11px] font-semibold flex items-center gap-1 transition cursor-pointer"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5" />
+                    <span>Open Full 10 Reports Hub</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-5 md:grid-cols-10 gap-2">
+                {comparisonReports.map((c) => {
+                  const isSelected = activeCandidate?.id === c.id
+                  const isKnown = c.classification === 'KNOWN'
+                  const isNotSo = c.classification === 'NOT_SO'
+
+                  return (
+                    <button
+                      key={c.id}
+                      onClick={() => {
+                        setSelectedCandidateId(c.id)
+                        if (viewMode === 'heatmap-diff' || viewMode === 'sequential') {
+                          setViewMode('side-by-side')
+                        }
+                      }}
+                      className={`flex flex-col rounded-lg border p-1.5 text-left transition-all cursor-pointer relative group ${
+                        isSelected
+                          ? 'bg-cyan-950/70 border-cyan-400 shadow-[0_0_12px_rgba(0,212,255,0.35)] ring-1 ring-cyan-400'
+                          : 'bg-[#080d16] border-slate-800 hover:border-slate-600 hover:bg-[#0c1422]'
+                      }`}
+                    >
+                      <div className="relative w-full aspect-video rounded overflow-hidden bg-black mb-1">
+                        <img
+                          src={c.thumbnailUrl || c.mediaUrl || displayMediaUrl || ''}
+                          alt={c.title}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                        />
+                        <span className="absolute top-0.5 left-0.5 bg-black/80 px-1 py-0.2 rounded text-[8px] font-mono text-cyan-300 font-bold">
+                          #{c.candidateIndex}
+                        </span>
+                        <span className={`absolute bottom-0.5 right-0.5 px-1 py-0.2 rounded text-[8px] font-bold ${
+                          isKnown
+                            ? 'bg-emerald-500 text-slate-950'
+                            : isNotSo
+                            ? 'bg-rose-500 text-white'
+                            : 'bg-amber-500 text-slate-950'
+                        }`}>
+                          {(c.similarity * 100).toFixed(0)}%
+                        </span>
+                      </div>
+                      <div className="text-[10px] font-semibold text-slate-200 truncate leading-tight">{c.title}</div>
+                      <div className="flex items-center justify-between text-[8px] font-mono text-slate-400 mt-0.5">
+                        <span className="truncate max-w-[50px]">{c.platform}</span>
+                        <span className={`font-bold ${
+                          isKnown ? 'text-emerald-400' : isNotSo ? 'text-rose-400' : 'text-amber-400'
+                        }`}>
+                          {c.classification}
+                        </span>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Quick Scenario Preset Benchmarks */}
           <div className="mt-3 flex items-center justify-between flex-wrap gap-2 pt-2 border-t border-[#1e2d3d]/60 text-xs">
             <span className="text-slate-400 font-semibold flex items-center gap-1.5">
@@ -778,6 +923,22 @@ export function ForensicViewer({ result: propResult, compact = false, onClose }:
               </button>
             </div>
           </div>
+
+          {/* Embedded Full 10-Report Candidate Comparison Hub */}
+          {comparisonReports && comparisonReports.length > 0 && (
+            <div className="mt-6 pt-4 border-t border-[#1e2d3d]">
+              <CandidateComparisonHub
+                reports={comparisonReports}
+                activeCandidateId={selectedCandidateId}
+                uploadedMediaUrl={displayMediaUrl}
+                uploadedFilename={result?.artifact?.filename || 'Uploaded Reference Media'}
+                onSelectCandidate={(c) => {
+                  setSelectedCandidateId(c.id)
+                  setViewMode('side-by-side')
+                }}
+              />
+            </div>
+          )}
         </div>
 
         {/* Right Drawer: Confidence Score & Metadata Breakdown Panel */}

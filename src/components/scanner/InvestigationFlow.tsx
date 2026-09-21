@@ -40,6 +40,7 @@ import { OriginPanel } from '../panels/OriginPanel'
 import { PropagationGraph } from '../panels/PropagationGraph'
 import { EvidenceReasoningCard } from '../panels/EvidenceReasoningCard'
 import type { Platform, ContentType } from '../../types'
+import { DEMO_PIECES, buildDemoDetectionResult, type DemoPiece } from '../../data/demoPieces'
 
 const STAGES = [
   {
@@ -192,6 +193,12 @@ export function InvestigationFlow() {
     setUsername('')
     setCurrentStage(1)
     if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  function handleLaunchDemo(demo: DemoPiece) {
+    const demoResult = buildDemoDetectionResult(demo)
+    setCurrentResult(demoResult)
+    setCurrentStage(1)
   }
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -607,6 +614,136 @@ export function InvestigationFlow() {
             </div>
           )}
         </div>
+
+        {/* Instant Benchmark Demo Pieces Showcase */}
+        {!selectedFile && (
+          <div style={{ marginTop: 32, width: '100%' }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: 14
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Sparkles size={16} style={{ color: '#00d4ff' }} />
+                <span style={{ fontSize: 13, fontWeight: 700, color: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Instant Real-Time Demo Pieces & Scenarios
+                </span>
+              </div>
+              <span style={{ fontSize: 11, color: '#64748b' }}>
+                Pre-configured with 10 comparison reports & 3-way classifications
+              </span>
+            </div>
+
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+              gap: 12
+            }}>
+              {DEMO_PIECES.map((demo) => (
+                <button
+                  key={demo.id}
+                  onClick={() => handleLaunchDemo(demo)}
+                  style={{
+                    background: '#0e1624',
+                    border: '1px solid #1e2d3d',
+                    borderRadius: 10,
+                    padding: 12,
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 8,
+                    overflow: 'hidden'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = '#00d4ff'
+                    e.currentTarget.style.transform = 'translateY(-2px)'
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = '#1e2d3d'
+                    e.currentTarget.style.transform = 'translateY(0)'
+                  }}
+                >
+                  <div style={{
+                    width: '100%',
+                    height: 80,
+                    borderRadius: 6,
+                    overflow: 'hidden',
+                    background: '#060a12',
+                    position: 'relative'
+                  }}>
+                    <img
+                      src={demo.mediaUrl}
+                      alt={demo.title}
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'cover'
+                      }}
+                    />
+                    <div style={{
+                      position: 'absolute',
+                      bottom: 4,
+                      right: 4,
+                      background: 'rgba(0,0,0,0.8)',
+                      padding: '2px 6px',
+                      borderRadius: 4,
+                      fontSize: 9,
+                      fontWeight: 700,
+                      color: demo.category === 'DEEPFAKE' ? '#f43f5e' : '#38bdf8',
+                      fontFamily: 'monospace'
+                    }}>
+                      {demo.category}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div style={{
+                      fontSize: 12,
+                      fontWeight: 700,
+                      color: '#f8fafc',
+                      lineHeight: 1.3,
+                      marginBottom: 4,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap'
+                    }}>
+                      {demo.title}
+                    </div>
+                    <div style={{
+                      fontSize: 10,
+                      color: '#94a3b8',
+                      lineHeight: 1.3,
+                      display: '-webkit-box',
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: 'vertical',
+                      overflow: 'hidden'
+                    }}>
+                      {demo.description}
+                    </div>
+                  </div>
+
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginTop: 'auto',
+                    paddingTop: 6,
+                    borderTop: '1px solid #1a273b',
+                    fontSize: 10,
+                    color: '#00d4ff',
+                    fontWeight: 600
+                  }}>
+                    <span>10 Reports</span>
+                    <ArrowRight size={12} />
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     )
   }

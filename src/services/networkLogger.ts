@@ -338,6 +338,15 @@ class NetworkLoggerService {
       ;(config as any).__networkLogId = id
       ;(config as any).__startTime = performance.now()
 
+      // Log to browser DevTools Console
+      console.log(
+        `%c⚡ [API Request] %c${entry.method} %c${entry.url || entry.fullUrl}`,
+        'background: #082f49; color: #38bdf8; font-weight: bold; padding: 2px 5px; border-radius: 3px;',
+        'color: #fbbf24; font-weight: bold;',
+        'color: #cbd5e1;',
+        entry.requestBody ? entry.requestBody : ''
+      )
+
       this.logs.unshift(entry)
       if (this.logs.length > this.maxLogs) {
         this.logs.pop()
@@ -372,6 +381,15 @@ class NetworkLoggerService {
           entry.fidelitySummary = audit.summary
           entry.detectedSignals = audit.signals
 
+          // Log to browser DevTools Console
+          console.log(
+            `%c✓ [API Response ${response.status}] %c${entry.url || entry.fullUrl} %c(${durationMs}ms) [${audit.fidelity}]`,
+            'background: #064e3b; color: #34d399; font-weight: bold; padding: 2px 5px; border-radius: 3px;',
+            'color: #f1f5f9; font-weight: 500;',
+            'color: #94a3b8;',
+            response.data
+          )
+
           this.notify()
         }
       }
@@ -398,6 +416,16 @@ class NetworkLoggerService {
           entry.isRealData = false
           entry.fidelitySummary = error.message || audit.summary
           entry.detectedSignals = [...audit.signals, 'error_intercepted']
+
+          // Log to browser DevTools Console
+          console.warn(
+            `%c⚠ [API ${entry.status || 'ERR'}] %c${entry.url || entry.fullUrl} %c(${durationMs}ms)`,
+            'background: #451a03; color: #fbbf24; font-weight: bold; padding: 2px 5px; border-radius: 3px;',
+            'color: #f87171; font-weight: 500;',
+            'color: #94a3b8;',
+            error.message,
+            error.response?.data || error
+          )
 
           this.notify()
         }

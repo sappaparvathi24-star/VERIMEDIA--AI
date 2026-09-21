@@ -58,11 +58,6 @@ const PAGE_TITLES: Record<TabId, { title: string; subtitle: string; icon: string
     subtitle: 'Multimodal reasoning, automated forensic dossiers & technical explainer',
     icon: '✨'
   },
-  review: {
-    title: 'Human Review',
-    subtitle: 'AI assists the investigation; the investigator makes the final decision',
-    icon: '🧑‍⚖️'
-  },
   debug: {
     title: 'API Network Traffic & Backend Fidelity Inspector',
     subtitle: 'Real-time HTTP traffic debugger, binary forensic verification & cURL inspector',

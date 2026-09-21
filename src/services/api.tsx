@@ -278,6 +278,20 @@ export const analyzeMultimodalGemini = async (payload: {
   }).then(r => r.data)
 }
 
+export const getEarliestAppearanceSearch = async (payload: {
+  query?: string
+  filename?: string
+  sha256?: string
+  investigationId?: string
+  mediaUrl?: string
+  scenario?: string
+}) => {
+  const token = await getToken()
+  return axios.post(`${BASE}/api/forensics/earliest-appearance`, payload, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {}
+  }).then(r => r.data)
+}
+
 export const analyzeForensicsGemini = async (payload: any) => {
   const token = await getToken()
   return axios.post(`${BASE}/analyze`, payload, {
@@ -374,6 +388,39 @@ export const fetchEarliestAppearance = async (params: {
 }): Promise<EarliestAppearanceResult> => {
   const token = await getToken()
   return axios.post(`${BASE}/api/forensics/earliest-appearance`, params, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {}
+  }).then(r => r.data)
+}
+
+// ── Google Search Grounding Discovery ──────────────────────────────────────
+export interface GroundedSearchResult {
+  status: string
+  model: string
+  data: {
+    query: string
+    groundedAnalysis: string
+    verifiedSources: Array<{
+      title: string
+      url: string
+      publisher: string
+      publishedDate?: string
+      summary?: string
+      verificationStatus?: string
+    }>
+    searchQueriesExecuted: string[]
+    groundingWebSources: Array<{ uri: string; title: string }>
+  }
+  groundingMetadata?: any
+  queriedAt: string
+}
+
+export const fetchGroundedSearch = async (params: {
+  query?: string
+  filename?: string
+  context?: string
+}): Promise<GroundedSearchResult> => {
+  const token = await getToken()
+  return axios.post(`${BASE}/api/discovery/grounded-search`, params, {
     headers: token ? { Authorization: `Bearer ${token}` } : {}
   }).then(r => r.data)
 }

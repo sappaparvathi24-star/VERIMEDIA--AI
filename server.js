@@ -2559,6 +2559,39 @@ app.get('/api/investigations/:id', requireAuth, authorizeChain(provenanceService
   res.json(inv);
 });
 
+// Update investigation status with legal transition enforcement
+app.patch('/api/investigations/:id/status', generalLimiter, requireAuth, authorizeChain(provenanceService), (req, res) => {
+  try {
+    const inv = provenanceService.getInvestigation(req.params.id);
+    if (!inv) {
+      return res.status(404).json({ error: 'Investigation not found' });
+    }
+
+    const { status } = req.body;
+    if (!status || typeof status !== 'string') {
+      return res.status(400).json({ error: 'Status is required' });
+    }
+
+    const previousStatus = inv.status;
+    const updatedInv = provenanceService.updateInvestigationStatus(req.params.id, status);
+
+    logAuditEvent({
+      investigationId: req.params.id,
+      actor: req.user?.email || 'Lead Analyst',
+      action: AuditAction.INVESTIGATION_STATUS_UPDATE,
+      objectType: AuditObjectType.INVESTIGATION,
+      objectId: req.params.id,
+      beforeState: { status: previousStatus },
+      afterState: { status: updatedInv.status },
+      req
+    });
+
+    res.json(updatedInv);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 // Full provenance dossier: timeline, artifacts, relationships, what we know, what remains unknown
 app.get('/api/investigations/:id/provenance', requireAuth, authorizeChain(provenanceService), (req, res) => {
   const prov = provenanceService.getProvenance(req.params.id);
@@ -2609,52 +2642,63 @@ app.get('/api/findings/:id/trace', requireAuth, (req, res) => {
   }
 });
 
-// ── Human Review and Finding Decisions ────────────────────────────────────
+// ── Findings Management & Human Review Decisions (Phase J) ───────────────────
 
-// List findings for an investigation (with evidence counts)
+// List all findings for an investigation
 app.get('/api/investigations/:id/findings', requireAuth, authorizeChain(provenanceService), (req, res) => {
   try {
     const inv = provenanceService.getInvestigation(req.params.id);
-    if (!inv) return res.status(404).json({ error: 'Investigation not found' });
+    if (!inv) {
+      return res.status(404).json({ error: 'Investigation not found' });
+    }
     const findings = provenanceService.getFindings(req.params.id);
-    const enriched = findings.map(f => ({
-      ...f,
-      evidenceCount: Array.isArray(f.evidenceIds) ? f.evidenceIds.length : 0,
-      reviewCount: provenanceService.getReviews(f.id).length
-    }));
-    res.json(enriched);
+    res.json(findings);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Create a finding under an investigation
+// Create a new finding under an investigation
 app.post('/api/investigations/:id/findings', generalLimiter, requireAuth, authorizeChain(provenanceService), (req, res) => {
   try {
     const inv = provenanceService.getInvestigation(req.params.id);
-    if (!inv) return res.status(404).json({ error: 'Investigation not found' });
-
-    const { title, statement, summary, category, status, confidence, evidenceIds, limitations, metadata } = req.body;
-    if (!statement && !summary && !title) {
-      return res.status(400).json({ error: 'Finding must have a statement, summary, or title' });
+    if (!inv) {
+      return res.status(404).json({ error: 'Investigation not found' });
     }
 
-    const finding = provenanceService.createFinding({
-      investigationId: req.params.id,
+    const {
       title,
-      statement: statement || summary || title,
-      summary: summary || statement || title,
+      summary,
+      statement,
       category,
       status,
       confidence,
       evidenceIds,
       limitations,
       metadata
+    } = req.body;
+
+    const findStatement = statement || summary || title;
+    if (!findStatement || typeof findStatement !== 'string' || !findStatement.trim()) {
+      return res.status(400).json({ error: 'Finding title or statement is required' });
+    }
+
+    const finding = provenanceService.createFinding({
+      investigationId: req.params.id,
+      title: title ? String(title).trim() : 'Forensic Finding',
+      statement: String(findStatement).trim(),
+      summary: summary ? String(summary).trim() : String(findStatement).trim(),
+      category: category || 'ANALYSIS',
+      status: status || 'SUPPORTED',
+      confidence: confidence !== undefined ? Number(confidence) : 0.85,
+      evidenceIds: Array.isArray(evidenceIds) ? evidenceIds : [],
+      limitations: Array.isArray(limitations) ? limitations : [],
+      metadata: metadata || {}
     });
 
     logAuditEvent({
       investigationId: req.params.id,
-      actor: req.user?.email,
+      actor: req.user?.email || 'Lead Analyst',
       action: AuditAction.FINDING_CREATE,
       objectType: AuditObjectType.FINDING,
       objectId: finding.id,
@@ -2668,117 +2712,106 @@ app.post('/api/investigations/:id/findings', generalLimiter, requireAuth, author
   }
 });
 
-// Update a finding's statement or status
-app.patch('/api/findings/:id', requireAuth, (req, res) => {
+// Get a single finding with evidence & review chain
+app.get('/api/findings/:id', requireAuth, authorizeChain(provenanceService), (req, res) => {
   try {
-    const finding = provenanceService.store
-      ? provenanceService.store.getFinding(req.params.id)
-      : null;
-    if (!finding) return res.status(404).json({ error: 'Finding not found' });
-
-    // Enforce: cannot set RESOLVED without at least one review
-    if (req.body.status === 'RESOLVED') {
-      const reviews = provenanceService.getReviews(req.params.id);
-      if (!reviews || reviews.length === 0) {
-        return res.status(400).json({ error: 'A finding cannot be set to RESOLVED without at least one human review' });
-      }
+    const finding = provenanceService.getFinding(req.params.id);
+    if (!finding) {
+      return res.status(404).json({ error: 'Finding not found' });
     }
-
-    const updated = provenanceService.updateFinding(req.params.id, req.body);
-    logAuditEvent({
-      investigationId: finding.investigationId,
-      actor: req.user?.email,
-      action: AuditAction.FINDING_UPDATE,
-      objectType: AuditObjectType.FINDING,
-      objectId: req.params.id,
-      beforeState: { status: finding.status },
-      afterState: { status: updated.status },
-      req
-    });
-    res.json(updated);
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-});
-
-// Record a human review decision on a finding (append-only)
-app.post('/api/findings/:id/review', generalLimiter, requireAuth, (req, res) => {
-  try {
-    const finding = provenanceService.store
-      ? provenanceService.store.getFinding(req.params.id)
-      : null;
-    if (!finding) return res.status(404).json({ error: 'Finding not found' });
-
-    // Authorization: reviewer must belong to the same investigation
-    const inv = provenanceService.getInvestigation(finding.investigationId);
-    if (!inv) return res.status(404).json({ error: 'Investigation not found' });
-    const reviewerEmail = req.user?.email || 'analyst';
-    const reviewerOrg = req.user?.orgId || req.user?.organizationId;
-    const invOrg = inv.orgId || inv.organizationId;
-    if (invOrg && reviewerOrg && invOrg !== reviewerOrg) {
-      return res.status(403).json({ error: 'You do not have permission to review findings in this investigation' });
-    }
-
-    const { decision, rationale } = req.body;
-    const { review, finding: updatedFinding } = provenanceService.reviewFinding(req.params.id, {
-      decision,
-      rationale,
-      reviewer: { id: req.user?.id, email: reviewerEmail }
-    });
-
-    logAuditEvent({
-      investigationId: finding.investigationId,
-      actor: reviewerEmail,
-      action: AuditAction.FINDING_REVIEW,
-      objectType: AuditObjectType.REVIEW,
-      objectId: review.id,
-      beforeState: { findingStatus: review.statusBefore },
-      afterState: { decision, findingStatus: review.statusAfter, rationale },
-      req
-    });
-
-    res.status(201).json({ review, finding: updatedFinding });
-  } catch (err) {
-    const isValidation = err.message.includes('Rationale is required') ||
-      err.message.includes('Invalid decision') ||
-      err.message.includes('not found');
-    res.status(isValidation ? 400 : 500).json({ error: err.message });
-  }
-});
-
-// List the full review chain for a finding
-app.get('/api/findings/:id/reviews', requireAuth, (req, res) => {
-  try {
-    const finding = provenanceService.store
-      ? provenanceService.store.getFinding(req.params.id)
-      : null;
-    if (!finding) return res.status(404).json({ error: 'Finding not found' });
-    const reviews = provenanceService.getReviews(req.params.id);
-    res.json(reviews);
+    res.json(finding);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Change investigation status with legal transition enforcement
-app.patch('/api/investigations/:id/status', requireAuth, authorizeChain(provenanceService), (req, res) => {
+// Update a finding (with strict review prerequisite for RESOLVED status)
+app.patch('/api/findings/:id', generalLimiter, requireAuth, authorizeChain(provenanceService), (req, res) => {
   try {
-    const { status } = req.body;
-    if (!status) return res.status(400).json({ error: 'status is required' });
-    const updated = provenanceService.updateInvestigationStatus(req.params.id, status, req.user?.email);
+    const finding = provenanceService.getFinding(req.params.id);
+    if (!finding) {
+      return res.status(404).json({ error: 'Finding not found' });
+    }
+
+    const previousState = { ...finding };
+    const updatedFinding = provenanceService.updateFinding(req.params.id, req.body);
+
     logAuditEvent({
-      investigationId: req.params.id,
-      actor: req.user?.email,
-      action: AuditAction.INVESTIGATION_STATUS_CHANGE,
-      objectType: AuditObjectType.INVESTIGATION,
+      investigationId: finding.investigationId,
+      actor: req.user?.email || 'Lead Analyst',
+      action: AuditAction.FINDING_UPDATE,
+      objectType: AuditObjectType.FINDING,
       objectId: req.params.id,
-      afterState: { status },
+      beforeState: { status: previousState.status, confidence: previousState.confidence },
+      afterState: { status: updatedFinding.status, confidence: updatedFinding.confidence },
       req
     });
-    res.json(updated);
+
+    res.json(updatedFinding);
   } catch (err) {
-    const isTransition = err.message.includes('Cannot transition');
-    res.status(isTransition ? 400 : 500).json({ error: err.message });
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Record a human review decision on a finding (append-only review chain)
+app.post('/api/findings/:id/review', generalLimiter, requireAuth, authorizeChain(provenanceService), (req, res) => {
+  try {
+    const finding = provenanceService.getFinding(req.params.id);
+    if (!finding) {
+      return res.status(404).json({ error: 'Finding not found' });
+    }
+
+    const { decision, rationale, metadata } = req.body;
+    if (!decision || typeof decision !== 'string') {
+      return res.status(400).json({ error: 'Review decision is required' });
+    }
+
+    const normalizedDecision = decision.toUpperCase().trim();
+    const validDecisions = ['ACCEPT', 'REJECT', 'INCONCLUSIVE', 'REQUEST_FURTHER_INVESTIGATION'];
+    if (!validDecisions.includes(normalizedDecision)) {
+      return res.status(400).json({
+        error: `Invalid decision '${decision}'. Must be one of: ${validDecisions.join(', ')}`
+      });
+    }
+
+    if ((normalizedDecision === 'REJECT' || normalizedDecision === 'INCONCLUSIVE') && (!rationale || !String(rationale).trim())) {
+      return res.status(400).json({
+        error: `Rationale is required for ${normalizedDecision} decisions.`
+      });
+    }
+
+    const result = provenanceService.recordFindingReview(req.params.id, {
+      decision: normalizedDecision,
+      rationale: rationale ? String(rationale).trim() : '',
+      reviewer: req.user?.email || req.user?.name || 'Lead Analyst',
+      reviewerId: req.user?.id || null,
+      reviewerRole: req.user?.role || 'ANALYST',
+      metadata: metadata || {}
+    });
+
+    logAuditEvent({
+      investigationId: finding.investigationId,
+      actor: req.user?.email || 'Lead Analyst',
+      action: AuditAction.FINDING_REVIEW,
+      objectType: AuditObjectType.REVIEW,
+      objectId: result.review.id,
+      afterState: {
+        findingId: req.params.id,
+        decision: result.review.decision,
+        statusAfter: result.review.statusAfter,
+        rationale: result.review.rationale
+      },
+      req
+    });
+
+    res.json({
+      success: true,
+      message: `Review recorded: ${normalizedDecision}`,
+      finding: result.finding,
+      review: result.review
+    });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
   }
 });
 
@@ -3756,6 +3789,100 @@ app.get('/api/forensics/earliest-appearance', async (req, res) => {
     body: req.query
   };
   return app._router.handle({ ...req, method: 'POST', body: req.query }, res);
+});
+
+// ---------------------------------------------------------------------------
+// GOOGLE SEARCH GROUNDED DISCOVERY ANALYSIS (GEMINI 3.5 FLASH + GOOGLE SEARCH)
+// ---------------------------------------------------------------------------
+app.post('/api/discovery/grounded-search', async (req, res) => {
+  const clientIp = req.ip || req.connection?.remoteAddress || 'unknown';
+  if (!checkRateLimit(clientIp)) {
+    return res.status(429).json({ error: 'Rate limit exceeded. Please wait a moment.' });
+  }
+
+  const { query, filename, context } = req.body || {};
+  const targetQuery = (query || filename || 'Deepfake media investigation').trim();
+
+  const ai = getGenAI();
+  if (!ai) {
+    return res.status(503).json({ error: 'Gemini API is not configured or unavailable' });
+  }
+
+  const prompt = `You are a specialized media discovery verification analyst for VeriMedia AI.
+Use the Google Search tool to find live real-world news reports, web appearances, social media discussions, wire releases, and fact-checking verifications for this media asset/topic:
+Query: "${targetQuery}"
+Context: "${context || 'Media authenticity & reverse visual discovery'}"
+
+Perform live Google Search grounding to discover verified articles, platform links, publishing organization names, dates, and fact-check reports.
+Respond ONLY with valid JSON conforming to this structure:
+{
+  "query": "${targetQuery}",
+  "groundedAnalysis": "Comprehensive grounded analysis summarizing live web findings...",
+  "verifiedSources": [
+    {
+      "title": "Headline or article title",
+      "url": "https://...",
+      "publisher": "Associated Press / Reuters / BBC / Snopes / PolitiFact",
+      "publishedDate": "2026-02-15",
+      "summary": "Snippet summary of the findings...",
+      "verificationStatus": "VERIFIED_AUTHENTIC"
+    }
+  ],
+  "searchQueriesExecuted": ["query 1", "query 2"],
+  "groundingWebSources": [
+    { "title": "...", "uri": "..." }
+  ]
+}`;
+
+  try {
+    const candidateModels = ['gemini-3.5-flash', 'gemini-3.8-flash', 'gemini-flash-latest'];
+    for (const model of candidateModels) {
+      try {
+        const response = await ai.models.generateContent({
+          model,
+          contents: prompt,
+          config: {
+            tools: [{ googleSearch: {} }]
+          }
+        });
+
+        if (response && response.text) {
+          const match = response.text.match(/\{[\s\S]*\}/);
+          let parsed = null;
+          if (match) {
+            try { parsed = JSON.parse(match[0]); } catch (_) {}
+          }
+
+          const metadata = response.candidates?.[0]?.groundingMetadata;
+          const groundingWebSources = metadata?.groundingChunks
+            ?.filter(c => c.web?.uri)
+            ?.map(c => ({ uri: c.web.uri, title: c.web.title || c.web.uri })) || [];
+          const searchQueriesExecuted = metadata?.webSearchQueries || [];
+
+          return res.json({
+            status: 'ok',
+            model,
+            data: parsed || {
+              query: targetQuery,
+              groundedAnalysis: response.text,
+              verifiedSources: [],
+              searchQueriesExecuted,
+              groundingWebSources
+            },
+            groundingMetadata: metadata || null,
+            queriedAt: new Date().toISOString()
+          });
+        }
+      } catch (err) {
+        if (err?.message?.includes('RESOURCE_EXHAUSTED') || err?.status === 429) {
+          break;
+        }
+      }
+    }
+    return res.status(502).json({ error: 'Grounded search failed across all candidate models' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ---------------------------------------------------------------------------
