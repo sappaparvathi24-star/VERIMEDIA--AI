@@ -82,7 +82,8 @@ function fetchJson(url, options = {}) {
     const req = client.request(urlObj, {
       method: options.method || 'GET',
       headers: {
-        'Accept': 'application/json',
+        'User-Agent': process.env.REDDIT_USER_AGENT || 'VeriMedia-AI/1.0 (Mozilla/5.0 Forensic Verification Bot)',
+        'Accept': 'application/json, text/plain, */*',
         ...options.headers
       },
       timeout: options.timeout || DISCOVERY_TIMEOUT_MS
@@ -266,44 +267,54 @@ export async function searchArchiveOrg(targetUrl) {
   const cached = getCached(cacheKey);
   if (cached) return cached;
 
-  const url = `https://web.archive.org/cdx/search/cdx?url=${encodeURIComponent(targetUrl.trim())}&output=json&limit=30`;
-  const data = await fetchJson(url);
+  try {
+    const url = `https://web.archive.org/cdx/search/cdx?url=${encodeURIComponent(targetUrl.trim())}&output=json&limit=30`;
+    const data = await fetchJson(url, {
+      headers: {
+        'User-Agent': process.env.REDDIT_USER_AGENT || 'VeriMedia-AI/1.0 (Mozilla/5.0 Forensic Verification Bot)'
+      }
+    });
 
-  if (!Array.isArray(data) || data.length <= 1) {
+    if (!Array.isArray(data) || data.length <= 1) {
+      setCached(cacheKey, []);
+      return [];
+    }
+
+    // The first element is header: ["urlkey","timestamp","original","mimetype","statuscode","digest","length"]
+    const headers = data[0];
+    const rows = data.slice(1);
+
+    const results = rows.map(row => {
+      const ts = row[1]; // e.g. 20240315120000 -> YYYY-MM-DDTHH:mm:ssZ
+      let formattedDate = null;
+      if (ts && ts.length >= 14) {
+        const year = ts.slice(0, 4);
+        const month = ts.slice(4, 6);
+        const day = ts.slice(6, 8);
+        const hour = ts.slice(8, 10);
+        const min = ts.slice(10, 12);
+        const sec = ts.slice(12, 14);
+        formattedDate = `${year}-${month}-${day}T${hour}:${min}:${sec}Z`;
+      }
+
+      return {
+        timestamp: ts,
+        publishedAt: formattedDate,
+        originalUrl: row[2],
+        archivedUrl: `https://web.archive.org/web/${ts}/${row[2]}`,
+        mimeType: row[3],
+        statusCode: row[4],
+        digest: row[5]
+      };
+    });
+
+    setCached(cacheKey, results);
+    return results;
+  } catch (err) {
+    console.warn('[SearchProxy] Internet Archive API unavailable:', err.message);
     setCached(cacheKey, []);
     return [];
   }
-
-  // The first element is header: ["urlkey","timestamp","original","mimetype","statuscode","digest","length"]
-  const headers = data[0];
-  const rows = data.slice(1);
-
-  const results = rows.map(row => {
-    const ts = row[1]; // e.g. 20240315120000 -> YYYY-MM-DDTHH:mm:ssZ
-    let formattedDate = null;
-    if (ts && ts.length >= 14) {
-      const year = ts.slice(0, 4);
-      const month = ts.slice(4, 6);
-      const day = ts.slice(6, 8);
-      const hour = ts.slice(8, 10);
-      const min = ts.slice(10, 12);
-      const sec = ts.slice(12, 14);
-      formattedDate = `${year}-${month}-${day}T${hour}:${min}:${sec}Z`;
-    }
-
-    return {
-      timestamp: ts,
-      publishedAt: formattedDate,
-      originalUrl: row[2],
-      archivedUrl: `https://web.archive.org/web/${ts}/${row[2]}`,
-      mimeType: row[3],
-      statusCode: row[4],
-      digest: row[5]
-    };
-  });
-
-  setCached(cacheKey, results);
-  return results;
 }
 
 /**
@@ -340,25 +351,37 @@ export async function searchGoogleImages(query, apiKey, cx, options = {}) {
   if (cached) return cached;
 
   try {
-    const url = `https://www.googleapis.com/customsearch/v1?searchType=image&num=10&start=${start}&q=${encodeURIComponent(query.trim())}&key=${effectiveKey}&cx=${effectiveCx}`;
+    let url = `https://www.googleapis.com/customsearch/v1?searchType=image&num=10&start=${start}&q=${encodeURIComponent(query.trim())}&key=${effectiveKey}&cx=${effectiveCx}`;
     incrementGoogleQuota();
 
-    const data = await fetchJson(url);
+    let data = null;
+    try {
+      data = await fetchJson(url);
+    } catch (imgTypeErr) {
+      // Fallback: If searchType=image is restricted or unsupported by the CX, try standard Web search query
+      console.warn('[SearchProxy] Image search restricted on CX, trying standard web search fallback:', imgTypeErr.message);
+      const fallbackUrl = `https://www.googleapis.com/customsearch/v1?num=10&start=${start}&q=${encodeURIComponent(query.trim())}&key=${effectiveKey}&cx=${effectiveCx}`;
+      data = await fetchJson(fallbackUrl);
+    }
+
     const items = data?.items || [];
-    const results = items.map(item => ({
-      title: item.title,
-      link: item.link,
-      displayLink: item.displayLink,
-      snippet: item.snippet,
-      imageUrl: item.link,
-      thumbnailUrl: item.image?.thumbnailLink || item.link,
-      contextLink: item.image?.contextLink,
-      byteSize: item.image?.byteSize || null,
-      width: item.image?.width || null,
-      height: item.image?.height || null,
-      source: 'google_search',
-      sourceType: 'EXTERNAL_API_VERIFIED'
-    }));
+    const results = items.map((item) => {
+      const ogImg = item.pagemap?.cse_image?.[0]?.src || item.pagemap?.metatags?.[0]?.['og:image'];
+      return {
+        title: item.title,
+        link: item.link,
+        displayLink: item.displayLink,
+        snippet: item.snippet,
+        imageUrl: item.image?.thumbnailLink || ogImg || item.link,
+        thumbnailUrl: item.image?.thumbnailLink || ogImg || item.link,
+        contextLink: item.image?.contextLink || item.link,
+        byteSize: item.image?.byteSize || null,
+        width: item.image?.width || null,
+        height: item.image?.height || null,
+        source: 'google_search',
+        sourceType: 'EXTERNAL_API_VERIFIED'
+      };
+    });
 
     const payload = {
       available: true,

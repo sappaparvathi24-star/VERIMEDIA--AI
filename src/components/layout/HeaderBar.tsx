@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import { useStore } from '../../store'
 import { Tooltip } from '../ui/Tooltip'
+import { runBackendConnectivityDiagnostic, type DiagnosticResult } from '../../services/api'
 import type { TabId } from '../../types'
 
 const PAGE_TITLES: Record<TabId, { title: string; subtitle: string; icon: string }> = {
@@ -73,7 +75,26 @@ const STAT_DESCRIPTIONS: Record<string, string> = {
 }
 
 export function HeaderBar() {
-  const { activeTab, stats, health, currentResult, setCurrentResult, setActiveTab, setShowHeroOverlay, setShowMonitoringModal, setShowCommandPalette, setShowEvidenceModal } = useStore()
+  const { activeTab, stats, health, currentResult, setCurrentResult, setActiveTab, setShowHeroOverlay, setShowMonitoringModal, setShowCommandPalette, setShowEvidenceModal, setHealth } = useStore()
+  const [isDiagnosing, setIsDiagnosing] = useState(false)
+  const [diagResult, setDiagResult] = useState<DiagnosticResult | null>(null)
+  const [showDiagModal, setShowDiagModal] = useState(false)
+
+  const handlePingDiagnostic = async () => {
+    setIsDiagnosing(true)
+    try {
+      const res = await runBackendConnectivityDiagnostic()
+      setDiagResult(res)
+      setShowDiagModal(true)
+      if (res.status === 200 && res.data) {
+        setHealth(res.data)
+      }
+    } catch (e) {
+      console.error('Diagnostic run failed:', e)
+    } finally {
+      setIsDiagnosing(false)
+    }
+  }
 
   const current = PAGE_TITLES[activeTab] || PAGE_TITLES.scanner
 
@@ -254,6 +275,33 @@ export function HeaderBar() {
           </button>
         </Tooltip>
 
+        {/* Manual Backend Connectivity & CORS Diagnostic Button */}
+        <Tooltip content="Check System Status: Ping /health endpoint & log detailed network, header & CORS diagnostics to browser console" position="bottom">
+          <button
+            onClick={handlePingDiagnostic}
+            disabled={isDiagnosing}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              background: isDiagnosing ? 'rgba(0, 212, 255, 0.2)' : 'linear-gradient(135deg, rgba(14, 165, 233, 0.25) 0%, rgba(3, 105, 161, 0.35) 100%)',
+              border: '1px solid rgba(56, 189, 248, 0.5)',
+              padding: '6px 12px',
+              borderRadius: 6,
+              color: '#38bdf8',
+              fontSize: 11,
+              fontWeight: 800,
+              cursor: isDiagnosing ? 'wait' : 'pointer',
+              boxShadow: '0 0 10px rgba(56, 189, 248, 0.2)',
+              transition: 'all 0.15s'
+            }}
+            className="hover:border-cyan-400 hover:text-white"
+          >
+            <span>{isDiagnosing ? '⏳' : '🩺'}</span>
+            <span>{isDiagnosing ? 'Checking...' : 'Check System Status'}</span>
+          </button>
+        </Tooltip>
+
         {/* Backend Status Indicator */}
         <Tooltip content="5-Engine VeriMedia Engine API: Nominal Operational Status" position="bottom">
           <div style={{
@@ -302,6 +350,227 @@ export function HeaderBar() {
           </button>
         </Tooltip>
       </div>
+
+      {/* Connectivity & CORS Diagnostic Modal Overlay */}
+      {showDiagModal && diagResult && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(3, 7, 18, 0.85)',
+          backdropFilter: 'blur(8px)',
+          zIndex: 9999,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 20
+        }}>
+          <div style={{
+            width: '100%',
+            maxWidth: 640,
+            background: '#0d1117',
+            border: '1px solid #1e2d3d',
+            borderRadius: 12,
+            boxShadow: '0 20px 50px rgba(0,0,0,0.8)',
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column'
+          }}>
+            {/* Modal Header */}
+            <div style={{
+              padding: '16px 20px',
+              background: 'linear-gradient(90deg, rgba(0,212,255,0.1) 0%, rgba(13,17,23,1) 100%)',
+              borderBottom: '1px solid #1e2d3d',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 20 }}>🛠️</span>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: '#f8fafc' }}>
+                    Backend Connectivity & Network Diagnostic
+                  </h3>
+                  <p style={{ margin: 0, fontSize: 11, color: '#64748b' }}>
+                    Target: {diagResult.url}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowDiagModal(false)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#94a3b8',
+                  fontSize: 18,
+                  cursor: 'pointer',
+                  padding: '4px 8px'
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 14, maxHeight: '75vh', overflowY: 'auto' }}>
+              {/* Status Bar */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(3, 1fr)',
+                gap: 10,
+                background: '#161b22',
+                padding: 12,
+                borderRadius: 8,
+                border: '1px solid #21262d'
+              }}>
+                <div>
+                  <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>HTTP Status</div>
+                  <div style={{ fontSize: 16, fontWeight: 800, color: diagResult.status === 200 ? '#4ade80' : '#ef4444', fontFamily: 'monospace' }}>
+                    {diagResult.status ? `${diagResult.status} ${diagResult.statusText}` : 'FAIL / NETWORK ERR'}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>Latency</div>
+                  <div style={{ fontSize: 16, fontWeight: 800, color: '#facc15', fontFamily: 'monospace' }}>
+                    {diagResult.latencyMs} ms
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>CORS Audit</div>
+                  <div style={{
+                    fontSize: 12,
+                    fontWeight: 800,
+                    color: diagResult.corsStatus === 'OK' ? '#4ade80' : '#f87171',
+                    fontFamily: 'monospace',
+                    marginTop: 4
+                  }}>
+                    {diagResult.corsStatus === 'OK' ? '✓ PASS' : diagResult.corsStatus === 'MISSING_ALLOW_ORIGIN' ? '⚠️ MISSING HEADER' : '❌ PREFLIGHT / BLOCKED'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Console Info Callout */}
+              <div style={{
+                background: 'rgba(0, 212, 255, 0.08)',
+                border: '1px solid rgba(0, 212, 255, 0.3)',
+                padding: '10px 14px',
+                borderRadius: 8,
+                fontSize: 12,
+                color: '#38bdf8',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10
+              }}>
+                <span style={{ fontSize: 16 }}>💻</span>
+                <span>Detailed headers, network status object & CORS validation log group were dispatched to the browser Developer Console. Press <strong style={{ color: '#ffffff' }}>F12 / Cmd+Option+I</strong> to view.</span>
+              </div>
+
+              {/* Response Headers JSON */}
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Response Headers ({Object.keys(diagResult.headers).length}):
+                </div>
+                <pre style={{
+                  background: '#040d1a',
+                  border: '1px solid #1e2d3d',
+                  padding: 12,
+                  borderRadius: 6,
+                  fontSize: 11,
+                  fontFamily: 'monospace',
+                  color: '#a7f3d0',
+                  maxHeight: 140,
+                  overflowY: 'auto',
+                  margin: 0
+                }}>
+                  {JSON.stringify(diagResult.headers, null, 2)}
+                </pre>
+              </div>
+
+              {/* Response Body Payload JSON */}
+              {diagResult.data && (
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    /api/health Payload:
+                  </div>
+                  <pre style={{
+                    background: '#040d1a',
+                    border: '1px solid #1e2d3d',
+                    padding: 12,
+                    borderRadius: 6,
+                    fontSize: 11,
+                    fontFamily: 'monospace',
+                    color: '#38bdf8',
+                    maxHeight: 140,
+                    overflowY: 'auto',
+                    margin: 0
+                  }}>
+                    {JSON.stringify(diagResult.data, null, 2)}
+                  </pre>
+                </div>
+              )}
+
+              {/* Error Details if any */}
+              {diagResult.error && (
+                <div style={{
+                  background: 'rgba(239, 68, 68, 0.1)',
+                  border: '1px solid rgba(239, 68, 68, 0.4)',
+                  padding: 12,
+                  borderRadius: 6,
+                  color: '#f87171',
+                  fontSize: 12,
+                  fontFamily: 'monospace'
+                }}>
+                  <strong>Error:</strong> {diagResult.error}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{
+              padding: '12px 20px',
+              background: '#161b22',
+              borderTop: '1px solid #1e2d3d',
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: 10
+            }}>
+              <button
+                onClick={handlePingDiagnostic}
+                style={{
+                  background: 'rgba(0,212,255,0.15)',
+                  border: '1px solid #00d4ff',
+                  color: '#00d4ff',
+                  padding: '6px 14px',
+                  borderRadius: 6,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: 'pointer'
+                }}
+              >
+                ↻ Re-run Diagnostic
+              </button>
+              <button
+                onClick={() => setShowDiagModal(false)}
+                style={{
+                  background: '#21262d',
+                  border: '1px solid #30363d',
+                  color: '#f8fafc',
+                  padding: '6px 14px',
+                  borderRadius: 6,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: 'pointer'
+                }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </header>
   )
 }

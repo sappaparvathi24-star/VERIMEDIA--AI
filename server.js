@@ -353,6 +353,7 @@ function buildIntegrationStatus() {
                     ? 'configured' : 'not_configured',
     youtube:      process.env.YOUTUBE_API_KEY                 ? 'configured' : 'not_configured',
     googleSearch: (googleCseKey && googleCseCx)               ? 'configured' : 'not_configured',
+    googleVision: (process.env.GOOGLE_VISION_API_KEY || googleCseKey || process.env.GEMINI_API_KEY) ? 'configured' : 'not_configured',
     reddit:       'configured',  // uses public unauthenticated JSON endpoint — no key required
     instagram:    process.env.INSTAGRAM_ACCESS_TOKEN          ? 'configured' : 'not_configured',
     x:            (process.env.X_API_KEY || process.env.X_ACCESS_TOKEN) ? 'configured' : 'not_configured',
@@ -2104,7 +2105,10 @@ const handleRegisterArtifact = async (req, res) => {
         mimeType: artifact.mimeType,
         byteSize: artifact.byteSize,
         dimensions: artifact.dimensions,
-        metadata: artifact.metadata
+        metadata: artifact.metadata,
+        fileUrl: `/api/artifacts/${artifact.id}/file`,
+        previewUrl: `/api/artifacts/${artifact.id}/file`,
+        dataUrl: getArtifactMedia(artifact.id)?.dataUrl || null
       },
       forensicAnalysis,
       extractedMetadata: {
