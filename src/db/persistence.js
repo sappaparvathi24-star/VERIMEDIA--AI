@@ -59,6 +59,13 @@ export class PersistenceManager {
           }
         }
       }
+
+      if (store.findingReviews) {
+        const reviews = this.loadReviews();
+        for (const rev of reviews) {
+          store.findingReviews.set(rev.id, rev);
+        }
+      }
       this.isHydrated = true;
     } catch (err) {
       console.warn('[Persistence] Local SQLite hydration warning:', err.message);
@@ -1156,6 +1163,77 @@ export class PersistenceManager {
       events = events.slice(0, Number(filter.limit));
     }
     return events;
+  }
+
+  saveReview(review) {
+    if (!review || !review.id) return;
+    this.inMemoryStore.set(`rev_${review.id}`, review);
+
+    try {
+      const db = getDatabase();
+      if (!db) return;
+      db.prepare(`
+        INSERT INTO finding_reviews (
+          id, finding_id, investigation_id, reviewer_id, reviewer_email,
+          decision, rationale, status_before, status_after, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO NOTHING
+      `).run(
+        review.id,
+        review.findingId,
+        review.investigationId,
+        review.reviewerId || 'ANALYST',
+        review.reviewerEmail || review.reviewerId || 'analyst',
+        review.decision,
+        review.rationale || '',
+        review.statusBefore || '',
+        review.statusAfter || '',
+        review.createdAt || new Date().toISOString()
+      );
+    } catch (err) {
+      console.warn('[Persistence] saveReview SQLite error:', err.message);
+    }
+  }
+
+  loadReviews(filter = {}) {
+    try {
+      const db = getDatabase();
+      if (db) {
+        let query = 'SELECT * FROM finding_reviews WHERE 1=1';
+        const params = [];
+        if (filter.findingId) {
+          query += ' AND finding_id = ?';
+          params.push(filter.findingId);
+        }
+        if (filter.investigationId) {
+          query += ' AND investigation_id = ?';
+          params.push(filter.investigationId);
+        }
+        query += ' ORDER BY created_at ASC';
+        const rows = db.prepare(query).all(...params);
+        if (rows && rows.length > 0) {
+          return rows.map(r => ({
+            id: r.id,
+            findingId: r.finding_id,
+            investigationId: r.investigation_id,
+            reviewerId: r.reviewer_id,
+            reviewerEmail: r.reviewer_email,
+            decision: r.decision,
+            rationale: r.rationale,
+            statusBefore: r.status_before,
+            statusAfter: r.status_after,
+            createdAt: r.created_at
+          }));
+        }
+      }
+    } catch (err) {
+      console.warn('[Persistence] loadReviews SQLite error:', err.message);
+    }
+    return Array.from(this.inMemoryStore.values())
+      .filter(x => x.id?.startsWith('REV-'))
+      .filter(x => !filter.findingId || x.findingId === filter.findingId)
+      .filter(x => !filter.investigationId || x.investigationId === filter.investigationId)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   }
 }
 

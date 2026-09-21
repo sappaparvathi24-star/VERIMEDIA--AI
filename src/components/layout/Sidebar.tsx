@@ -71,6 +71,12 @@ const WORKSPACE_TOOLS: NavItem[] = [
     description: 'Unified scan interface for images, videos, audio, URLs and live captions',
   },
   {
+    id: 'review',
+    label: 'Human Review',
+    icon: '🧑‍⚖️',
+    description: 'Record investigator decisions on findings — AI assists, you decide',
+  },
+  {
     id: 'cases',
     label: 'DMCA & Cases',
     icon: '📋',

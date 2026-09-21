@@ -15,6 +15,7 @@ import { EvidenceReasoningCard } from '../components/panels/EvidenceReasoningCar
 import { CasesPanel } from '../components/panels/CasesPanel'
 import { SystemPanel } from '../components/panels/SystemPanel'
 import { GeminiIntelligencePanel } from '../components/panels/GeminiIntelligencePanel'
+import { ReviewPanel } from '../components/panels/ReviewPanel'
 import { EvidenceModal } from '../components/modals/EvidenceModal'
 import { DMCAModal } from '../components/modals/DMCAModal'
 import { MonitoringJobModal } from '../components/modals/MonitoringJobModal'
@@ -317,6 +318,12 @@ export function Dashboard() {
           {activeTab === 'feed' && (
             <div style={{ height: '100%', width: '100%', overflow: 'auto', padding: 20 }}>
               <FeedPanel />
+            </div>
+          )}
+
+          {activeTab === 'review' && (
+            <div style={{ height: '100%', width: '100%', overflow: 'hidden' }}>
+              <ReviewPanel />
             </div>
           )}
         </main>

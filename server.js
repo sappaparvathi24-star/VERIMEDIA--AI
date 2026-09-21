@@ -2358,6 +2358,179 @@ app.get('/api/findings/:id/trace', requireAuth, (req, res) => {
   }
 });
 
+// ── Human Review and Finding Decisions ────────────────────────────────────
+
+// List findings for an investigation (with evidence counts)
+app.get('/api/investigations/:id/findings', requireAuth, authorizeChain(provenanceService), (req, res) => {
+  try {
+    const inv = provenanceService.getInvestigation(req.params.id);
+    if (!inv) return res.status(404).json({ error: 'Investigation not found' });
+    const findings = provenanceService.getFindings(req.params.id);
+    const enriched = findings.map(f => ({
+      ...f,
+      evidenceCount: Array.isArray(f.evidenceIds) ? f.evidenceIds.length : 0,
+      reviewCount: provenanceService.getReviews(f.id).length
+    }));
+    res.json(enriched);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Create a finding under an investigation
+app.post('/api/investigations/:id/findings', generalLimiter, requireAuth, authorizeChain(provenanceService), (req, res) => {
+  try {
+    const inv = provenanceService.getInvestigation(req.params.id);
+    if (!inv) return res.status(404).json({ error: 'Investigation not found' });
+
+    const { title, statement, summary, category, status, confidence, evidenceIds, limitations, metadata } = req.body;
+    if (!statement && !summary && !title) {
+      return res.status(400).json({ error: 'Finding must have a statement, summary, or title' });
+    }
+
+    const finding = provenanceService.createFinding({
+      investigationId: req.params.id,
+      title,
+      statement: statement || summary || title,
+      summary: summary || statement || title,
+      category,
+      status,
+      confidence,
+      evidenceIds,
+      limitations,
+      metadata
+    });
+
+    logAuditEvent({
+      investigationId: req.params.id,
+      actor: req.user?.email,
+      action: AuditAction.FINDING_CREATE,
+      objectType: AuditObjectType.FINDING,
+      objectId: finding.id,
+      afterState: { title: finding.title, status: finding.status },
+      req
+    });
+
+    res.status(201).json(finding);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Update a finding's statement or status
+app.patch('/api/findings/:id', requireAuth, (req, res) => {
+  try {
+    const finding = provenanceService.store
+      ? provenanceService.store.getFinding(req.params.id)
+      : null;
+    if (!finding) return res.status(404).json({ error: 'Finding not found' });
+
+    // Enforce: cannot set RESOLVED without at least one review
+    if (req.body.status === 'RESOLVED') {
+      const reviews = provenanceService.getReviews(req.params.id);
+      if (!reviews || reviews.length === 0) {
+        return res.status(400).json({ error: 'A finding cannot be set to RESOLVED without at least one human review' });
+      }
+    }
+
+    const updated = provenanceService.updateFinding(req.params.id, req.body);
+    logAuditEvent({
+      investigationId: finding.investigationId,
+      actor: req.user?.email,
+      action: AuditAction.FINDING_UPDATE,
+      objectType: AuditObjectType.FINDING,
+      objectId: req.params.id,
+      beforeState: { status: finding.status },
+      afterState: { status: updated.status },
+      req
+    });
+    res.json(updated);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Record a human review decision on a finding (append-only)
+app.post('/api/findings/:id/review', generalLimiter, requireAuth, (req, res) => {
+  try {
+    const finding = provenanceService.store
+      ? provenanceService.store.getFinding(req.params.id)
+      : null;
+    if (!finding) return res.status(404).json({ error: 'Finding not found' });
+
+    // Authorization: reviewer must belong to the same investigation
+    const inv = provenanceService.getInvestigation(finding.investigationId);
+    if (!inv) return res.status(404).json({ error: 'Investigation not found' });
+    const reviewerEmail = req.user?.email || 'analyst';
+    const reviewerOrg = req.user?.orgId || req.user?.organizationId;
+    const invOrg = inv.orgId || inv.organizationId;
+    if (invOrg && reviewerOrg && invOrg !== reviewerOrg) {
+      return res.status(403).json({ error: 'You do not have permission to review findings in this investigation' });
+    }
+
+    const { decision, rationale } = req.body;
+    const { review, finding: updatedFinding } = provenanceService.reviewFinding(req.params.id, {
+      decision,
+      rationale,
+      reviewer: { id: req.user?.id, email: reviewerEmail }
+    });
+
+    logAuditEvent({
+      investigationId: finding.investigationId,
+      actor: reviewerEmail,
+      action: AuditAction.FINDING_REVIEW,
+      objectType: AuditObjectType.REVIEW,
+      objectId: review.id,
+      beforeState: { findingStatus: review.statusBefore },
+      afterState: { decision, findingStatus: review.statusAfter, rationale },
+      req
+    });
+
+    res.status(201).json({ review, finding: updatedFinding });
+  } catch (err) {
+    const isValidation = err.message.includes('Rationale is required') ||
+      err.message.includes('Invalid decision') ||
+      err.message.includes('not found');
+    res.status(isValidation ? 400 : 500).json({ error: err.message });
+  }
+});
+
+// List the full review chain for a finding
+app.get('/api/findings/:id/reviews', requireAuth, (req, res) => {
+  try {
+    const finding = provenanceService.store
+      ? provenanceService.store.getFinding(req.params.id)
+      : null;
+    if (!finding) return res.status(404).json({ error: 'Finding not found' });
+    const reviews = provenanceService.getReviews(req.params.id);
+    res.json(reviews);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Change investigation status with legal transition enforcement
+app.patch('/api/investigations/:id/status', requireAuth, authorizeChain(provenanceService), (req, res) => {
+  try {
+    const { status } = req.body;
+    if (!status) return res.status(400).json({ error: 'status is required' });
+    const updated = provenanceService.updateInvestigationStatus(req.params.id, status, req.user?.email);
+    logAuditEvent({
+      investigationId: req.params.id,
+      actor: req.user?.email,
+      action: AuditAction.INVESTIGATION_STATUS_CHANGE,
+      objectType: AuditObjectType.INVESTIGATION,
+      objectId: req.params.id,
+      afterState: { status },
+      req
+    });
+    res.json(updated);
+  } catch (err) {
+    const isTransition = err.message.includes('Cannot transition');
+    res.status(isTransition ? 400 : 500).json({ error: err.message });
+  }
+});
+
 // ── Analyst Notes (Phase E) ────────────────────────────────────────────────
 app.get('/api/investigations/:id/notes', requireAuth, authorizeChain(provenanceService), (req, res) => {
   const inv = provenanceService.getInvestigation(req.params.id);

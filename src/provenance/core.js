@@ -116,9 +116,36 @@ export const AppearanceStatus = {
 
 export const FindingStatus = {
   SUPPORTED: 'SUPPORTED',
+  PARTIALLY_SUPPORTED: 'PARTIALLY_SUPPORTED',
+  CONTRADICTED: 'CONTRADICTED',
   INFERRED: 'INFERRED',
   INCONCLUSIVE: 'INCONCLUSIVE',
-  CONFLICTING: 'CONFLICTING'
+  CONFLICTING: 'CONFLICTING',
+  UNKNOWN: 'UNKNOWN',
+  UNASSESSED: 'UNASSESSED',
+  RESOLVED: 'RESOLVED'
+};
+
+export const ReviewDecision = {
+  ACCEPT: 'ACCEPT',
+  REJECT: 'REJECT',
+  INCONCLUSIVE: 'INCONCLUSIVE',
+  REQUEST_FURTHER_INVESTIGATION: 'REQUEST_FURTHER_INVESTIGATION'
+};
+
+export const InvestigationStatus = {
+  OPEN: 'OPEN',
+  IN_REVIEW: 'IN_REVIEW',
+  RESOLVED: 'RESOLVED',
+  ARCHIVED: 'ARCHIVED'
+};
+
+// Legal status transitions for investigations
+export const INVESTIGATION_STATUS_TRANSITIONS = {
+  OPEN: ['IN_REVIEW', 'RESOLVED', 'ARCHIVED'],
+  IN_REVIEW: ['OPEN', 'RESOLVED', 'ARCHIVED'],
+  RESOLVED: ['ARCHIVED'],
+  ARCHIVED: []
 };
 
 export const EvidencePolarity = {
@@ -329,6 +356,7 @@ export class ProvenanceStore {
     this.monitoringJobs = new Map();
     this.alerts = new Map();
     this.reportAuditRecords = new Map();
+    this.findingReviews = new Map();
   }
 
   async hydrate() {
@@ -355,6 +383,7 @@ export class ProvenanceStore {
     this.monitoringJobs.clear();
     this.alerts.clear();
     this.reportAuditRecords.clear();
+    this.findingReviews.clear();
   }
 
   // ── INVESTIGATION ──────────────────────────────────────────────────────────
@@ -651,6 +680,88 @@ export class ProvenanceStore {
 
   getFinding(id) {
     return this.findings.get(id) || null;
+  }
+
+  getFindings(investigationId) {
+    const all = Array.from(this.findings.values());
+    if (!investigationId) return all;
+    return all.filter(f => f.investigationId === investigationId);
+  }
+
+  updateFinding(id, patch = {}) {
+    const finding = this.findings.get(id);
+    if (!finding) throw new Error(`Finding not found: ${id}`);
+    const updated = {
+      ...finding,
+      ...patch,
+      id: finding.id,
+      investigationId: finding.investigationId,
+      createdAt: finding.createdAt,
+      updatedAt: new Date().toISOString()
+    };
+    this.findings.set(id, updated);
+    persistence.saveFinding(updated);
+    return updated;
+  }
+
+  createReview({
+    id,
+    findingId,
+    investigationId,
+    reviewerId,
+    reviewerEmail,
+    decision,
+    rationale = '',
+    statusBefore,
+    statusAfter
+  }) {
+    if (!Object.values(ReviewDecision).includes(decision)) {
+      throw new Error(`Invalid review decision: ${decision}. Must be one of ${Object.values(ReviewDecision).join(', ')}`);
+    }
+    const reviewId = id || `REV-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
+    const review = {
+      id: reviewId,
+      findingId,
+      investigationId,
+      reviewerId: reviewerId || 'ANALYST',
+      reviewerEmail: reviewerEmail || reviewerId || 'analyst',
+      decision,
+      rationale,
+      statusBefore,
+      statusAfter,
+      createdAt: new Date().toISOString()
+    };
+    this.findingReviews.set(reviewId, review);
+    persistence.saveReview(review);
+    return review;
+  }
+
+  getReviews(findingId) {
+    return Array.from(this.findingReviews.values())
+      .filter(r => r.findingId === findingId)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  }
+
+  updateInvestigationStatus(investigationId, newStatus, actorId) {
+    const inv = this.getInvestigation(investigationId);
+    if (!inv) throw new Error(`Investigation not found: ${investigationId}`);
+
+    const currentStatus = inv.status;
+    const allowed = INVESTIGATION_STATUS_TRANSITIONS[currentStatus] || [];
+    if (!allowed.includes(newStatus)) {
+      throw new Error(
+        `Cannot transition investigation from ${currentStatus} to ${newStatus}. ` +
+        `Allowed transitions: ${allowed.length ? allowed.join(', ') : 'none'}`
+      );
+    }
+
+    inv.status = newStatus;
+    inv.updatedAt = new Date().toISOString();
+    inv.statusHistory = inv.statusHistory || [];
+    inv.statusHistory.push({ from: currentStatus, to: newStatus, at: inv.updatedAt, by: actorId || 'SYSTEM' });
+    this.investigations.set(investigationId, inv);
+    persistence.saveInvestigation(inv);
+    return inv;
   }
 
   // ── REAL IMAGE FORENSIC PIPELINE ──────────────────────────────────────────

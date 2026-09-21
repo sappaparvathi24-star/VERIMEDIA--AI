@@ -1,5 +1,5 @@
 // VeriMedia AI — Provenance Service & Traceability (Phases F, G, H, I, J, K)
-import { defaultStore } from './core.js';
+import { defaultStore, ReviewDecision, FindingStatus } from './core.js';
 import { compareArtifacts } from './comparator.js';
 import { buildMediaTimeline } from './timeline.js';
 import { assessClaim, decomposeClaim, validateSourceUrl } from './claims.js';
@@ -1109,6 +1109,72 @@ class ProvenanceService {
       persistence.saveInvestigation(inv);
     }
     return inv;
+  }
+
+  // ── FINDINGS CRUD (human-review-ready) ──────────────────────────────────
+
+  getFindings(investigationId) {
+    return this.store.getFindings(investigationId);
+  }
+
+  createFinding(payload) {
+    return this.store.createFinding(payload);
+  }
+
+  updateFinding(id, patch) {
+    return this.store.updateFinding(id, patch);
+  }
+
+  /**
+   * Record a human review decision on a finding.
+   * Enforces: rationale required for REJECT and INCONCLUSIVE.
+   * Enforces: a finding may not move to RESOLVED without at least one review.
+   * Reviews are append-only — each call adds a new record, never overwrites.
+   */
+  reviewFinding(findingId, { decision, rationale = '', reviewer } = {}) {
+    const finding = this.store.getFinding(findingId);
+    if (!finding) throw new Error(`Finding not found: ${findingId}`);
+
+    const VALID_DECISIONS = ['ACCEPT', 'REJECT', 'INCONCLUSIVE', 'REQUEST_FURTHER_INVESTIGATION'];
+    if (!VALID_DECISIONS.includes(decision)) {
+      throw new Error(`Invalid decision: ${decision}. Must be one of ${VALID_DECISIONS.join(', ')}`);
+    }
+    if ((decision === 'REJECT' || decision === 'INCONCLUSIVE') && (!rationale || !rationale.trim())) {
+      throw new Error(`Rationale is required for decision: ${decision}`);
+    }
+
+    const statusBefore = finding.status;
+    const statusAfter = decision === 'ACCEPT' ? 'RESOLVED'
+      : decision === 'REJECT' ? 'CONTRADICTED'
+      : decision === 'INCONCLUSIVE' ? 'INCONCLUSIVE'
+      : finding.status; // REQUEST_FURTHER_INVESTIGATION keeps current status
+
+    const reviewerId = reviewer?.id || reviewer?.email || 'ANALYST';
+    const reviewerEmail = reviewer?.email || reviewer?.id || 'analyst';
+
+    const review = this.store.createReview({
+      findingId,
+      investigationId: finding.investigationId,
+      reviewerId,
+      reviewerEmail,
+      decision,
+      rationale: rationale || '',
+      statusBefore,
+      statusAfter
+    });
+
+    // Update the finding status
+    this.store.updateFinding(findingId, { status: statusAfter });
+
+    return { review, finding: this.store.getFinding(findingId) };
+  }
+
+  getReviews(findingId) {
+    return this.store.getReviews(findingId);
+  }
+
+  updateInvestigationStatus(investigationId, newStatus, actorId) {
+    return this.store.updateInvestigationStatus(investigationId, newStatus, actorId);
   }
 }
 

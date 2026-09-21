@@ -57,6 +57,11 @@ const PAGE_TITLES: Record<TabId, { title: string; subtitle: string; icon: string
     title: 'Gemini AI Intelligence & Multimodal Copilot',
     subtitle: 'Multimodal reasoning, automated forensic dossiers & technical explainer',
     icon: '✨'
+  },
+  review: {
+    title: 'Human Review',
+    subtitle: 'AI assists the investigation; the investigator makes the final decision',
+    icon: '🧑‍⚖️'
   }
 }
 
