@@ -304,7 +304,7 @@ function getGenAI() {
 async function callGemini(contents, config = {}) {
   const ai = getGenAI();
   if (!ai) return null;
-  const models = ['gemini-3.5-flash', 'gemini-3.8-flash', 'gemini-flash-latest', 'gemini-2.5-flash'];
+  const models = ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.8-flash', 'gemini-flash-latest'];
   for (const model of models) {
     try {
       const response = await ai.models.generateContent({
@@ -323,8 +323,26 @@ async function callGemini(contents, config = {}) {
           groundingMetadata: response.candidates?.[0]?.groundingMetadata || null
         };
       }
-    } catch (_) {
-      // Gracefully advance to next candidate model if current model experiences high demand or temporary unavailability
+    } catch (err) {
+      if (config && config.tools) {
+        try {
+          const { tools, ...configNoTools } = config;
+          const responseNoTools = await ai.models.generateContent({
+            model,
+            contents,
+            config: configNoTools
+          });
+          if (responseNoTools && responseNoTools.text) {
+            return {
+              text: responseNoTools.text,
+              model,
+              groundingChunks: null,
+              webSearchQueries: null,
+              groundingMetadata: null
+            };
+          }
+        } catch (_) {}
+      }
     }
   }
   return null;
@@ -894,7 +912,7 @@ app.post('/api/gemini/multimodal-analyze', analysisLimiter, async (req, res) => 
           ]
         }
       ];
-      const models = ['gemini-3.5-flash', 'gemini-3.8-flash', 'gemini-flash-latest'];
+      const models = ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.8-flash', 'gemini-flash-latest'];
       for (const model of models) {
         try {
           const response = await ai.models.generateContent({ model, contents, config: { temperature: 0.2, maxOutputTokens: 512 } });
@@ -3640,7 +3658,7 @@ Respond ONLY with valid JSON conforming to this structure:
   "searchQueriesUsed": ["${targetQuery} earliest original source", "${targetQuery} first publication date"]
 }`;
 
-    const candidateModels = ['gemini-3.5-flash', 'gemini-3.8-flash', 'gemini-flash-latest'];
+    const candidateModels = ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.8-flash', 'gemini-flash-latest'];
     for (const model of candidateModels) {
       try {
         const response = await ai.models.generateContent({
@@ -3839,7 +3857,7 @@ Respond ONLY with valid JSON conforming to this structure:
 }`;
 
   try {
-    const candidateModels = ['gemini-3.5-flash', 'gemini-3.8-flash', 'gemini-flash-latest'];
+    const candidateModels = ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.8-flash', 'gemini-flash-latest'];
     for (const model of candidateModels) {
       try {
         const response = await ai.models.generateContent({

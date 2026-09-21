@@ -66,7 +66,7 @@ export function GeminiIntelligencePanel() {
       id: 'welcome',
       role: 'assistant',
       content: `### 👋 VeriMedia Gemini Intelligence Copilot Ready
-I am connected to the **Gemini 3.5 Flash Reasoning Engine** with **live Google Search Grounding**. I have real-time context on your active media scans, perceptual fingerprints, web sources, and the SQLite provenance graph.
+I am connected to the **Gemini 3.6 Flash Reasoning Engine** with **live Google Search Grounding**. I have real-time context on your active media scans, perceptual fingerprints, web sources, and the SQLite provenance graph.
 
 **How can I assist your forensic investigation today?**
 - Search & ground live facts, breaking claims, and earliest media appearances
@@ -75,7 +75,7 @@ I am connected to the **Gemini 3.5 Flash Reasoning Engine** with **live Google S
 - Draft legally grounded DMCA takedown briefs with cryptographic citations
 - Explain the physical and mathematical mechanics behind any forensic signal`,
       timestamp: new Date().toLocaleTimeString(),
-      model: 'gemini-3.5-flash',
+      model: 'gemini-3.6-flash',
     },
   ])
   const [inputText, setInputText] = useState('')
@@ -332,7 +332,7 @@ I am connected to the **Gemini 3.5 Flash Reasoning Engine** with **live Google S
             }}
           >
             <Brain size={13} />
-            <span>AI Copilot</span>
+            <span>Gemini Assistant</span>
           </button>
 
           <button
