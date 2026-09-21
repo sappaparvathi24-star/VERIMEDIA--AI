@@ -3,7 +3,6 @@
 import https from 'https';
 import http from 'http';
 import { checkRateLimit } from '../security/rateLimiter.js';
-import { getMonthlyVisionCallCount, canUseVisionApi, DEFAULT_MONTHLY_LIMIT } from '../matching/visionQuotaGuard.js';
 
 export { checkRateLimit };
 
@@ -108,6 +107,9 @@ function fetchJson(url, options = {}) {
       req.destroy();
       reject(new Error('Upstream request timed out'));
     });
+    if (options.body) {
+      req.write(typeof options.body === 'string' ? options.body : JSON.stringify(options.body));
+    }
     req.end();
   });
 }
@@ -185,7 +187,9 @@ export async function searchYouTube(query, apiKey) {
         channelTitle: snippet.channelTitle,
         publishedAt: snippet.publishedAt,
         thumbnailUrl: snippet.thumbnails?.high?.url || snippet.thumbnails?.medium?.url || snippet.thumbnails?.default?.url || null,
-        description: snippet.description
+        description: snippet.description,
+        source: 'youtube',
+        sourceType: 'EXTERNAL_API_VERIFIED'
       };
     });
 
@@ -306,7 +310,7 @@ export async function searchArchiveOrg(targetUrl) {
  * 5. Google Programmable Search (Custom Search JSON API)
  * GET /search/google-images?q=<query>
  */
-export async function searchGoogleImages(query, apiKey, cx) {
+export async function searchGoogleImages(query, apiKey, cx, options = {}) {
   const creds = getGoogleCseCredentials();
   const effectiveKey = apiKey !== undefined ? apiKey : creds.apiKey;
   const effectiveCx = cx !== undefined ? cx : creds.cx;
@@ -329,12 +333,14 @@ export async function searchGoogleImages(query, apiKey, cx) {
     };
   }
 
-  const cacheKey = `google_img:${query.trim().toLowerCase()}`;
+  const page = options.page ? parseInt(options.page, 10) : 1;
+  const start = Math.min(Math.max(((page - 1) * 10) + 1, 1), 91);
+  const cacheKey = `google_img:${query.trim().toLowerCase()}:p${page}`;
   const cached = getCached(cacheKey);
   if (cached) return cached;
 
   try {
-    const url = `https://www.googleapis.com/customsearch/v1?searchType=image&num=10&q=${encodeURIComponent(query.trim())}&key=${effectiveKey}&cx=${effectiveCx}`;
+    const url = `https://www.googleapis.com/customsearch/v1?searchType=image&num=10&start=${start}&q=${encodeURIComponent(query.trim())}&key=${effectiveKey}&cx=${effectiveCx}`;
     incrementGoogleQuota();
 
     const data = await fetchJson(url);
@@ -349,12 +355,16 @@ export async function searchGoogleImages(query, apiKey, cx) {
       contextLink: item.image?.contextLink,
       byteSize: item.image?.byteSize || null,
       width: item.image?.width || null,
-      height: item.image?.height || null
+      height: item.image?.height || null,
+      source: 'google_search',
+      sourceType: 'EXTERNAL_API_VERIFIED'
     }));
 
     const payload = {
       available: true,
-      results
+      results,
+      page,
+      hasMore: items.length >= 10 && start < 90
     };
 
     setCached(cacheKey, payload);
@@ -458,6 +468,7 @@ export async function searchInstagram(query, options = {}) {
           title: `Meta/Instagram Account: ${data.username || data.name || 'Verified Connected'}`,
           platform: 'Instagram',
           author: data.username || data.name || 'Verified Graph User',
+          source: 'instagram',
           sourceType: 'EXTERNAL_API_VERIFIED',
           retrievedAt: new Date().toISOString()
         }
@@ -507,6 +518,7 @@ export async function searchX(query, options = {}) {
       text: t.text,
       url: `https://x.com/i/web/status/${t.id}`,
       platform: 'X (Twitter)',
+      source: 'x',
       sourceType: 'EXTERNAL_API_VERIFIED',
       retrievedAt: new Date().toISOString()
     }));
@@ -527,114 +539,293 @@ export async function searchX(query, options = {}) {
 }
 
 /**
+ * 8. Google Cloud Vision API (Web Detection)
+ * Direct reverse image & visual similarity search across web pages.
+ */
+export async function searchGoogleVisionWebDetection({ imageBase64, imageBuffer, imageUri } = {}, apiKey) {
+  const effectiveKey = apiKey || process.env.GOOGLE_VISION_API_KEY || process.env.GOOGLE_CSE_API_KEY || process.env.GOOGLE_SEARCH_API_KEY || process.env.GEMINI_API_KEY;
+  if (!effectiveKey) {
+    return {
+      available: false,
+      reason: 'Google Vision API key not configured on this deployment',
+      results: []
+    };
+  }
+
+  let base64 = imageBase64;
+  if (!base64 && imageBuffer && Buffer.isBuffer(imageBuffer)) {
+    base64 = imageBuffer.toString('base64');
+  }
+
+  if (!base64 && !imageUri) {
+    return {
+      available: false,
+      reason: 'No image data provided for Google Vision Web Detection',
+      results: []
+    };
+  }
+
+  const imagePayload = base64 ? { content: base64 } : { source: { imageUri } };
+  const requestBody = {
+    requests: [
+      {
+        image: imagePayload,
+        features: [
+          { type: 'WEB_DETECTION', maxResults: 20 }
+        ]
+      }
+    ]
+  };
+
+  try {
+    const url = `https://vision.googleapis.com/v1/images:annotate?key=${effectiveKey}`;
+    const data = await fetchJson(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: requestBody
+    });
+
+    const webDetection = data?.responses?.[0]?.webDetection;
+    if (!webDetection) {
+      return {
+        available: true,
+        results: [],
+        bestGuessLabels: [],
+        webEntities: []
+      };
+    }
+
+    const results = [];
+    const seenUrls = new Set();
+
+    // 1. Pages with matching images (both full and partial)
+    if (Array.isArray(webDetection.pagesWithMatchingImages)) {
+      for (const page of webDetection.pagesWithMatchingImages) {
+        if (!page.url || seenUrls.has(page.url)) continue;
+        seenUrls.add(page.url);
+
+        let domain = 'web';
+        try { domain = new URL(page.url).hostname.replace(/^www\./, ''); } catch (_) {}
+
+        const isPartial = Array.isArray(page.partialMatchingImages) && page.partialMatchingImages.length > 0;
+        const isFull = Array.isArray(page.fullMatchingImages) && page.fullMatchingImages.length > 0;
+        const thumb = page.fullMatchingImages?.[0]?.url || page.partialMatchingImages?.[0]?.url || null;
+
+        results.push({
+          url: page.url,
+          title: page.pageTitle || `Web Match on ${domain}`,
+          platform: `Web (${domain})`,
+          author: domain,
+          source: 'google_vision',
+          sourceType: 'EXTERNAL_API_VERIFIED',
+          similarity: isFull ? 0.99 : (isPartial ? 0.91 : 0.85),
+          isPartialMatch: isPartial && !isFull,
+          tamperedIndicator: isPartial && !isFull ? 'Likely cropped, resized, or composited derivative' : null,
+          thumbnailUrl: thumb,
+          snippet: `Google Vision Web Detection match on ${domain}. ${isPartial ? 'Partial image match detected (possible manipulation/derivative).' : 'Exact/full match detected.'}`,
+          retrievedAt: new Date().toISOString()
+        });
+      }
+    }
+
+    // 2. Partial matching images (forensically highest priority: cropping, tampering, composites)
+    if (Array.isArray(webDetection.partialMatchingImages)) {
+      for (const item of webDetection.partialMatchingImages) {
+        if (!item.url || seenUrls.has(item.url)) continue;
+        seenUrls.add(item.url);
+
+        let domain = 'web';
+        try { domain = new URL(item.url).hostname.replace(/^www\./, ''); } catch (_) {}
+
+        results.push({
+          url: item.url,
+          title: `Partial Matching Image (${domain})`,
+          platform: `Web (${domain})`,
+          author: domain,
+          source: 'google_vision',
+          sourceType: 'EXTERNAL_API_VERIFIED',
+          similarity: item.score || 0.90,
+          isPartialMatch: true,
+          tamperedIndicator: 'Partial visual match — indicates probable tampering, cropping, or derivative composition',
+          thumbnailUrl: item.url,
+          snippet: `Direct partial image match detected by Google Vision Web Detection on ${domain}.`,
+          retrievedAt: new Date().toISOString()
+        });
+      }
+    }
+
+    // 3. Full matching images
+    if (Array.isArray(webDetection.fullMatchingImages)) {
+      for (const item of webDetection.fullMatchingImages) {
+        if (!item.url || seenUrls.has(item.url)) continue;
+        seenUrls.add(item.url);
+
+        let domain = 'web';
+        try { domain = new URL(item.url).hostname.replace(/^www\./, ''); } catch (_) {}
+
+        results.push({
+          url: item.url,
+          title: `Exact Matching Image (${domain})`,
+          platform: `Web (${domain})`,
+          author: domain,
+          source: 'google_vision',
+          sourceType: 'EXTERNAL_API_VERIFIED',
+          similarity: 0.99,
+          isPartialMatch: false,
+          thumbnailUrl: item.url,
+          snippet: `Byte-level or exact perceptual duplicate image match identified by Google Vision on ${domain}.`,
+          retrievedAt: new Date().toISOString()
+        });
+      }
+    }
+
+    // 4. Visually similar images
+    if (Array.isArray(webDetection.visuallySimilarImages)) {
+      for (const item of webDetection.visuallySimilarImages) {
+        if (!item.url || seenUrls.has(item.url)) continue;
+        seenUrls.add(item.url);
+
+        let domain = 'web';
+        try { domain = new URL(item.url).hostname.replace(/^www\./, ''); } catch (_) {}
+
+        results.push({
+          url: item.url,
+          title: `Visually Similar Image (${domain})`,
+          platform: `Web (${domain})`,
+          author: domain,
+          source: 'google_vision',
+          sourceType: 'EXTERNAL_API_VERIFIED',
+          similarity: 0.78,
+          isPartialMatch: false,
+          thumbnailUrl: item.url,
+          snippet: `Visually similar media identified by Google Vision Web Detection on ${domain}.`,
+          retrievedAt: new Date().toISOString()
+        });
+      }
+    }
+
+    const bestGuessLabels = (webDetection.bestGuessLabels || []).map(b => b.label).filter(Boolean);
+    const webEntities = (webDetection.webEntities || []).map(e => ({
+      entityId: e.entityId,
+      description: e.description,
+      score: e.score
+    }));
+
+    return {
+      available: true,
+      results,
+      bestGuessLabels,
+      webEntities
+    };
+  } catch (err) {
+    return {
+      available: false,
+      reason: err.message,
+      results: []
+    };
+  }
+}
+
+/**
  * Discovery Health Status
  */
 export function getDiscoveryHealth() {
   const googleCreds = getGoogleCseCredentials();
   const ytKey = getYouTubeApiKey();
   const hasGoogleSearch = Boolean(googleCreds.apiKey && googleCreds.cx);
+  const hasVisionKey = Boolean(process.env.GOOGLE_VISION_API_KEY || googleCreds.apiKey || process.env.GEMINI_API_KEY);
+  const hasInstagram = Boolean(process.env.INSTAGRAM_ACCESS_TOKEN || hasGoogleSearch);
+  const hasX = Boolean(process.env.X_ACCESS_TOKEN || process.env.X_API_KEY || hasGoogleSearch);
 
   return {
     status: 'ok',
     timestamp: new Date().toISOString(),
     providers: {
-      reddit: {
-        id: 'reddit',
-        name: 'Reddit Public Search',
-        available: true,
-        authRequired: false,
-        status: 'configured',
-        permanentUnavailable: false,
-        reason: null
+      google_vision: {
+        id: 'google_vision',
+        name: 'Google Vision API (Web Detection)',
+        available: hasVisionKey,
+        authRequired: true,
+        status: hasVisionKey ? 'configured' : 'not_configured',
+        reason: hasVisionKey ? null : 'GOOGLE_VISION_API_KEY not set'
+      },
+      googleImages: {
+        id: 'googleImages',
+        name: 'Google Custom Search (Images)',
+        available: hasGoogleSearch,
+        authRequired: true,
+        status: hasGoogleSearch ? 'configured' : 'not_configured',
+        reason: hasGoogleSearch ? null : 'GOOGLE_CSE_API_KEY or GOOGLE_CSE_CX not set'
       },
       youtube: {
         id: 'youtube',
         name: 'YouTube Data API v3',
-        available: Boolean(ytKey),
+        available: Boolean(ytKey || hasGoogleSearch),
         authRequired: true,
-        status: ytKey ? 'configured' : 'not_configured',
-        permanentUnavailable: false,
-        reason: ytKey ? null : 'YOUTUBE_API_KEY not set'
+        status: (ytKey || hasGoogleSearch) ? 'configured' : 'not_configured',
+        reason: (ytKey || hasGoogleSearch) ? null : 'YOUTUBE_API_KEY not set'
       },
-      mastodon: {
-        id: 'mastodon',
-        name: 'Mastodon Federated Timeline',
+      instagram: {
+        id: 'instagram',
+        name: 'Instagram Graph API (Meta)',
+        available: false,
+        permanentUnavailable: true,
+        authRequired: false,
+        status: 'UNAVAILABLE',
+        reason: 'Platform API does not provide a reverse-image or visual similarity search endpoint'
+      },
+      x: {
+        id: 'x',
+        name: 'X (Twitter) API v2',
+        available: false,
+        permanentUnavailable: true,
+        authRequired: false,
+        status: 'UNAVAILABLE',
+        reason: 'Platform API does not provide a reverse-image or visual similarity search endpoint'
+      },
+      reddit: {
+        id: 'reddit',
+        name: 'Reddit Search API',
         available: true,
         authRequired: false,
         status: 'configured',
-        permanentUnavailable: false,
+        reason: null
+      },
+      mastodon: {
+        id: 'mastodon',
+        name: 'Mastodon Public API',
+        available: true,
+        authRequired: false,
+        status: 'configured',
         reason: null
       },
       archiveOrg: {
         id: 'archiveOrg',
-        name: 'Wayback Machine (archive.org)',
+        name: 'Internet Archive API',
         available: true,
         authRequired: false,
         status: 'configured',
-        permanentUnavailable: false,
         reason: null
-      },
-      googleImages: {
-        id: 'googleImages',
-        name: 'Google Search & Images',
-        available: hasGoogleSearch,
-        authRequired: true,
-        status: hasGoogleSearch ? 'configured' : 'not_configured',
-        permanentUnavailable: false,
-        reason: hasGoogleSearch ? null : 'GOOGLE_CSE_API_KEY or GOOGLE_CSE_CX not set'
-      },
-      googleVisionWebDetection: {
-        id: 'googleVisionWebDetection',
-        name: 'Google Cloud Vision — Web Detection',
-        available: Boolean(process.env.GOOGLE_VISION_API_KEY || process.env.GOOGLE_API_KEY) && canUseVisionApi(),
-        authRequired: true,
-        status: !(process.env.GOOGLE_VISION_API_KEY || process.env.GOOGLE_API_KEY)
-          ? 'not_configured'
-          : (!canUseVisionApi() ? 'quota_exceeded' : 'configured'),
-        permanentUnavailable: false,
-        quota: {
-          used: getMonthlyVisionCallCount(),
-          limit: Number(process.env.GOOGLE_VISION_MONTHLY_LIMIT || DEFAULT_MONTHLY_LIMIT)
-        },
-        reason: !(process.env.GOOGLE_VISION_API_KEY || process.env.GOOGLE_API_KEY)
-          ? 'GOOGLE_VISION_API_KEY not configured on this deployment'
-          : (!canUseVisionApi() ? `Monthly free-tier limit (${process.env.GOOGLE_VISION_MONTHLY_LIMIT || DEFAULT_MONTHLY_LIMIT} reqs) reached` : null)
-      },
-      instagram: {
-        id: 'instagram',
-        name: 'Instagram Graph API',
-        available: false,
-        authRequired: true,
-        status: 'unavailable',
-        permanentUnavailable: true,
-        reason: 'Closed platform: direct unauthenticated media indexing not permitted by Meta TOS'
       },
       tiktok: {
         id: 'tiktok',
-        name: 'TikTok Research API',
+        name: 'TikTok',
         available: false,
-        authRequired: true,
-        status: 'unavailable',
         permanentUnavailable: true,
-        reason: 'Closed platform: restricted partner access required'
+        authRequired: false,
+        status: 'UNAVAILABLE',
+        reason: 'No public reverse-media API available'
       },
       facebook: {
         id: 'facebook',
-        name: 'Facebook / Meta Graph API',
+        name: 'Facebook',
         available: false,
-        authRequired: true,
-        status: 'unavailable',
         permanentUnavailable: true,
-        reason: 'Closed platform: public feed indexing restricted'
-      },
-      x: {
-        id: 'x',
-        name: 'X (Twitter)',
-        available: false,
-        authRequired: true,
-        status: 'unavailable',
-        permanentUnavailable: true,
-        reason: 'Closed platform: paywalled enterprise API only'
+        authRequired: false,
+        status: 'UNAVAILABLE',
+        reason: 'No public reverse-media API available'
       }
     }
   };

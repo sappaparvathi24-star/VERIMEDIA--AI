@@ -185,6 +185,7 @@ async function run() {
   console.log('========================================');
   console.log('Persistence Durability Test Suite: ALL PASSED');
   console.log('========================================');
+  process.exit(0);
 }
 
 run().catch(err => {

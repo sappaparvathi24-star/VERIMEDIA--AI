@@ -12,6 +12,7 @@ import {
 import { validateSourceUrl } from './claims.js';
 import { MultiSourceDiscoveryManager } from '../matching/providers/index.js';
 import { buildQuerySignals } from '../matching/querySignals.js';
+import { clipVisualSimilarity } from '../../ml/vision/clipEmbedding.js';
 
 /**
  * Calculates hex Hamming distance between two perceptual hash hex strings.
@@ -94,13 +95,7 @@ export class ExternalDiscoveryAdapter {
   }
 
   async discover(artifact, strategy, options = {}) {
-    const opts = {
-      ...options,
-      imageBase64: options.imageBase64 || artifact?.imageBase64 || artifact?.content || artifact?.previewDataUrl || null,
-      mediaUrl: options.mediaUrl || artifact?.url || artifact?.mediaUrl || null
-    };
-
-    if (!this.enabled && !options.enableExternal && !options.query && !options.signals && !opts.imageBase64 && !opts.mediaUrl) {
+    if (!this.enabled && !options.enableExternal && !options.query && !options.signals) {
       return {
         available: false,
         reason: 'External discovery unavailable — showing indexed evidence only.',
@@ -109,8 +104,8 @@ export class ExternalDiscoveryAdapter {
       };
     }
 
-    const signals = buildQuerySignals(artifact, opts);
-    if (signals.length === 0 && !opts.query && !opts.url && !opts.imageBase64 && !opts.mediaUrl) {
+    const signals = buildQuerySignals(artifact, options);
+    if (signals.length === 0 && !options.query && !options.url) {
       return {
         available: false,
         providerStatuses: this.manager.getTransparencyReport(),
@@ -120,7 +115,11 @@ export class ExternalDiscoveryAdapter {
     }
 
     try {
-      const searchResult = await this.manager.searchAll(signals, opts);
+      const searchResult = await this.manager.searchAll(signals, {
+        ...options,
+        artifactId: artifact?.id,
+        perceptualHash: artifact?.perceptualHash
+      });
       return {
         available: true,
         providerStatuses: searchResult.providerStatuses,
@@ -162,15 +161,24 @@ export class LocalIndexedDiscoveryProvider {
       // 1. Exact SHA-256 Match
       const isExactSha = targetArtifact.sha256 && other.sha256 && targetArtifact.sha256 === other.sha256;
 
-      // 2. Perceptual Similarity Match
+      // 2. Perceptual Similarity & CLIP Visual Similarity Match
       let pDist = 64;
       let visualSim = 0.0;
+      let clipSim = 0.0;
       let isVisuallyRelated = false;
 
       if (targetArtifact.perceptualHash && other.perceptualHash) {
         pDist = hammingDistanceHex(targetArtifact.perceptualHash, other.perceptualHash);
         visualSim = Math.max(0, Math.min(1.0, 1.0 - (pDist / 32.0)));
         isVisuallyRelated = pDist <= 12; // High/Moderate perceptual similarity threshold
+      }
+
+      if (targetArtifact.clipEmbedding && other.clipEmbedding) {
+        clipSim = clipVisualSimilarity(targetArtifact.clipEmbedding, other.clipEmbedding);
+        if (clipSim >= 0.82) {
+          isVisuallyRelated = true;
+          visualSim = Math.max(visualSim, clipSim);
+        }
       }
 
       // Check if match qualifies under selected strategy
@@ -184,17 +192,17 @@ export class LocalIndexedDiscoveryProvider {
         status = CandidateStatus.SUPPORTED;
       } else if (isVisuallyRelated) {
         qualifies = true;
-        if (pDist <= 4) {
+        if (pDist <= 4 || clipSim >= 0.94) {
           relType = CandidateRelationshipType.SAME_CONTENT;
           status = CandidateStatus.SUPPORTED;
-        } else if (pDist <= 10) {
+        } else if (pDist <= 10 || clipSim >= 0.88) {
           relType = CandidateRelationshipType.TRANSFORMED_VERSION;
           status = CandidateStatus.SUPPORTED;
         } else {
           relType = CandidateRelationshipType.POSSIBLY_DERIVED;
           status = CandidateStatus.INCONCLUSIVE;
         }
-      } else if (pDist <= 18) {
+      } else if (pDist <= 18 || clipSim >= 0.78) {
         qualifies = true;
         relType = CandidateRelationshipType.RELATED_MEDIA;
         status = CandidateStatus.INCONCLUSIVE;
@@ -595,11 +603,20 @@ export class DiscoveryService {
             publishedAt: extItem.publishedAt || null,
             retrievedAt: extItem.retrievedAt || new Date().toISOString(),
             contentHash: null,
-            perceptualFingerprint: null,
+            perceptualFingerprint: extItem.candidateHash || null,
+            similarity: extItem.similarity ?? null,
+            classification: extItem.classification || null,
+            matchType: extItem.matchType || (extItem.source === 'google_vision' ? 'visual_match' : 'text_inferred'),
             similarityMeasurements: {
-              comparisonMethod: extItem.similarityStatus || 'EXTERNAL_API_METADATA_SEARCH',
-              similarityStatus: extItem.similarityStatus || 'TEXT_MATCH_ONLY',
-              thumbnailUrl: extItem.thumbnailUrl || null
+              comparisonMethod: extItem.similarityBasis || extItem.similarityStatus || 'EXTERNAL_API_METADATA_SEARCH',
+              similarityStatus: extItem.similarityStatus || (extItem.similarity ? 'MEASURED' : 'TEXT_MATCH_ONLY'),
+              thumbnailUrl: extItem.thumbnailUrl || null,
+              visualSimilarity: extItem.similarity ?? null,
+              phashSimilarity: extItem.phashSimilarity ?? null,
+              visionScore: extItem.visionScore ?? null,
+              hammingDistance: extItem.hammingDistance ?? null,
+              classification: extItem.classification || null,
+              matchType: extItem.matchType || (extItem.source === 'google_vision' ? 'visual_match' : 'text_inferred')
             },
             relationshipType: CandidateRelationshipType.RELATED_MEDIA,
             evidenceIds: [evExt.id],
@@ -623,14 +640,17 @@ export class DiscoveryService {
               'Presence on platform establishes public appearance, not original physical capture authorship.',
               'No public API exists for Instagram, TikTok, Facebook, or X; these closed networks are not indexed.'
             ],
-            transformationIndicators: [],
+            transformationIndicators: extItem.classification === 'MODIFIED_DERIVATIVE' ? ['DERIVATIVE_OR_MODIFIED_MEDIA'] : [],
             isDemo: Boolean(isDemo || artifact.isDemo),
             metadata: {
               observationId: obsExt.id,
               evidenceId: evExt.id,
               sourceType: 'EXTERNAL_API_VERIFIED',
               thumbnailUrl: extItem.thumbnailUrl || null,
-              mediaUrl: extItem.mediaUrl || null
+              mediaUrl: extItem.mediaUrl || null,
+              matchType: extItem.matchType || (extItem.source === 'google_vision' ? 'visual_match' : 'text_inferred'),
+              classification: extItem.classification || null,
+              similarity: extItem.similarity ?? null
             }
           });
 

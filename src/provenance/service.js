@@ -26,8 +26,14 @@ class ProvenanceService {
     this.store = store;
     this.discoveryService = new DiscoveryService(this.store);
     this.monitoringService = new MonitoringService(this.store);
-    // Seed initial cases
-    seedProvenanceData(this.store);
+    // Seed initial cases only if explicitly enabled (defaults to false)
+    if (process.env.SEED_DEMO_DATA === 'true') {
+      seedProvenanceData(this.store);
+    }
+  }
+
+  seedDemoData() {
+    return seedProvenanceData(this.store);
   }
 
   async hydrate() {
@@ -196,8 +202,8 @@ class ProvenanceService {
     return this.store.deleteClaim(id);
   }
 
-  assessClaim(claimId, options = {}) {
-    return assessClaim(this.store, claimId, options);
+  async assessClaim(claimId, options = {}) {
+    return await assessClaim(this.store, claimId, options);
   }
 
   decomposeStatement(statement) {

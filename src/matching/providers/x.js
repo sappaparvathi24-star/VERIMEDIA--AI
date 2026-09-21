@@ -30,6 +30,18 @@ export class XDiscoveryProvider {
   }
 
   async search(signals, opts = {}) {
+    // X (Twitter) API does not provide a reverse-image or visual similarity search endpoint.
+    // For visual/image-driven discovery, honestly return UNSUPPORTED_BY_PLATFORM with zero candidates.
+    if (opts.isVisualSearch || !opts.isManualTextSearch) {
+      return {
+        providerId: this.id,
+        status: 'UNSUPPORTED_BY_PLATFORM',
+        reason: 'X (Twitter) API does not provide a reverse-image or visual similarity search endpoint',
+        matchType: 'unsupported_by_platform',
+        candidates: []
+      };
+    }
+
     const query = typeof signals === 'string' ? signals : signals?.query || signals?.[0]?.term;
     if (!this.isConfigured()) {
       return {

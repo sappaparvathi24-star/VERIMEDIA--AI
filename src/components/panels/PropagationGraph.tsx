@@ -5,6 +5,7 @@ import type { Platform } from '../../types'
 
 const PLATFORMS: Platform[] = ['YouTube', 'Reddit', 'Instagram', 'TikTok', 'X / Twitter', 'Facebook']
 
+// Platform Color Map
 const PLATFORM_COLORS: Record<string, string> = {
   YouTube: '#ef4444',
   Reddit: '#f97316',
@@ -13,6 +14,202 @@ const PLATFORM_COLORS: Record<string, string> = {
   'X / Twitter': '#94a3b8',
   X: '#94a3b8',
   Facebook: '#3b82f6'
+}
+
+// ---------------------------------------------------------------------------
+// THRESHOLDS & ENGINE CONSTANTS (Configurable for Spread & Takedown Policies)
+// ---------------------------------------------------------------------------
+
+/** Parts-Per-Million velocity thresholds for viral dissemination tiers */
+export const PPM_THRESHOLDS = {
+  CRITICAL: 200,
+  HIGH: 100,
+  MODERATE: 40,
+} as const
+
+/** Growth ratio boundaries between cascade time windows */
+export const REPLICATION_THRESHOLDS = {
+  ACCELERATING: 1.15,
+  DECELERATING: 0.85,
+} as const
+
+/** Minimum estimated view reach required before automated takedown recommendation activates */
+export const TAKEDOWN_REACH_THRESHOLD = 250000
+
+/** Verdict decisions that confirm unauthorized or infringing dissemination */
+export const TAKEDOWN_CONFIRMED_DECISIONS = ['TAKEDOWN', 'EMERGENCY_TAKEDOWN'] as const
+
+// ---------------------------------------------------------------------------
+// METRIC DERIVATION HELPERS
+// ---------------------------------------------------------------------------
+
+export type DisseminationLevel = 'Low' | 'Moderate' | 'High' | 'Critical'
+
+/**
+ * Categorizes virality as 'Low', 'Moderate', 'High', or 'Critical' based on the ppm value.
+ */
+export function getDisseminationLevel(ppm?: number | null): DisseminationLevel {
+  const val = typeof ppm === 'number' && !isNaN(ppm) ? ppm : 0
+  if (val >= PPM_THRESHOLDS.CRITICAL) {
+    return 'Critical'
+  }
+  if (val >= PPM_THRESHOLDS.HIGH) {
+    return 'High'
+  }
+  if (val >= PPM_THRESHOLDS.MODERATE) {
+    return 'Moderate'
+  }
+  return 'Low'
+}
+
+/**
+ * Returns UI accent color corresponding to the dissemination virality tier.
+ */
+export function getDisseminationColor(level: DisseminationLevel): string {
+  switch (level) {
+    case 'Critical':
+      return '#dc2626'
+    case 'High':
+      return '#f87171'
+    case 'Moderate':
+      return '#fbbf24'
+    case 'Low':
+    default:
+      return '#4ade80'
+  }
+}
+
+/**
+ * Computes percentage velocity/spread spike over the trailing 60-minute window.
+ * Returns null and an honest fallback indicator if historical time-series telemetry is absent.
+ */
+export function computeVelocitySpike(
+  activeProp: any,
+  events: CascadeNode[]
+): { percent: number | null; label: string; color: string } {
+  // 1. Direct metric from backend telemetry if provided
+  // TODO: Backend should expose activePropagation.velocitySpike60m or activePropagation.velocityHistory
+  // to deliver rolling sliding-window acceleration calculations directly from the ingest stream.
+  if (typeof activeProp?.velocitySpike60m === 'number') {
+    const val = activeProp.velocitySpike60m
+    return {
+      percent: val,
+      label: `${val >= 0 ? '▲ +' : '▼ '}${Math.abs(val).toFixed(0)}% ${val >= 0 ? 'spike' : 'drop'} in last 60m`,
+      color: val >= 0 ? '#4ade80' : '#f87171'
+    }
+  }
+
+  // 2. Compute from event time deltas if multiple timestamped cascade nodes exist
+  if (events.length >= 2) {
+    const maxDelta = Math.max(...events.map(e => e.deltaMinutes || 0))
+    const recentWindowEvents = events.filter(e => (e.deltaMinutes || 0) >= maxDelta - 60)
+    const priorWindowEvents = events.filter(e => (e.deltaMinutes || 0) >= maxDelta - 120 && (e.deltaMinutes || 0) < maxDelta - 60)
+
+    if (priorWindowEvents.length > 0) {
+      const diffRatio = ((recentWindowEvents.length - priorWindowEvents.length) / priorWindowEvents.length) * 100
+      return {
+        percent: diffRatio,
+        label: `${diffRatio >= 0 ? '▲ +' : '▼ '}${Math.abs(diffRatio).toFixed(0)}% ${diffRatio >= 0 ? 'spike' : 'drop'} in last 60m`,
+        color: diffRatio >= 0 ? '#4ade80' : '#f87171'
+      }
+    }
+    if (recentWindowEvents.length > 0 && maxDelta <= 60) {
+      // All observed events occurred within the first 60 minutes of observation
+      return {
+        percent: 100,
+        label: `▲ +100% surge (${recentWindowEvents.length} events in 60m)`,
+        color: '#4ade80'
+      }
+    }
+  }
+
+  // 3. Fallback: Data unavailable in current props/state
+  return {
+    percent: null,
+    label: 'Rate stable (no 60m delta baseline)',
+    color: '#94a3b8'
+  }
+}
+
+/**
+ * Computes replication factor R0 and secondary repost acceleration trend from cascade events.
+ */
+export function computeReplicationMetrics(
+  activeProp: any,
+  events: CascadeNode[]
+): {
+  r0: number | null
+  r0Formatted: string
+  trend: string
+  trendLabel: string
+  color: string
+} {
+  // 1. Direct API metric from backend if available
+  // TODO: Backend should expose activePropagation.replicationFactor or activePropagation.r0
+  // to deliver authoritative multi-generation branching factors.
+  if (typeof activeProp?.replicationFactor === 'number') {
+    const val = activeProp.replicationFactor
+    const isAcc = val > REPLICATION_THRESHOLDS.ACCELERATING
+    const isDec = val < REPLICATION_THRESHOLDS.DECELERATING
+    return {
+      r0: val,
+      r0Formatted: `${val.toFixed(1)}x`,
+      trend: isAcc ? 'exponential' : isDec ? 'decelerating' : 'stable',
+      trendLabel: isAcc
+        ? 'Secondary reposts accelerating'
+        : isDec
+          ? 'Secondary reposts decelerating'
+          : 'Secondary reposts stable',
+      color: isAcc ? '#fbbf24' : isDec ? '#4ade80' : '#38bdf8'
+    }
+  }
+
+  // 2. Derive replication factor from cascade events
+  const originEvents = events.filter(e => e.status === 'ORIGIN')
+  const secondaryEvents = events.filter(e => e.status !== 'ORIGIN')
+
+  if (originEvents.length > 0 && secondaryEvents.length > 0) {
+    const rawR0 = secondaryEvents.length / originEvents.length
+    
+    // Evaluate acceleration trajectory between early and late cascade half
+    const sorted = [...events].sort((a, b) => a.deltaMinutes - b.deltaMinutes)
+    const midTime = (sorted[sorted.length - 1].deltaMinutes - sorted[0].deltaMinutes) / 2
+    const firstHalfSecondary = sorted.filter(e => e.deltaMinutes <= sorted[0].deltaMinutes + midTime && e.status !== 'ORIGIN').length
+    const secondHalfSecondary = sorted.filter(e => e.deltaMinutes > sorted[0].deltaMinutes + midTime && e.status !== 'ORIGIN').length
+
+    const isAccelerating = secondHalfSecondary > firstHalfSecondary
+    const isDecelerating = secondHalfSecondary < firstHalfSecondary && firstHalfSecondary > 0
+
+    return {
+      r0: rawR0,
+      r0Formatted: `${rawR0.toFixed(1)}x`,
+      trend: isAccelerating ? 'exponential' : isDecelerating ? 'decelerating' : 'stable',
+      trendLabel: isAccelerating
+        ? 'Secondary reposts accelerating'
+        : isDecelerating
+          ? 'Secondary reposts decelerating'
+          : 'Secondary reposts stable',
+      color: isAccelerating ? '#fbbf24' : isDecelerating ? '#4ade80' : '#38bdf8'
+    }
+  }
+
+  if (events.length === 1) {
+    return {
+      r0: 1.0,
+      r0Formatted: '1.0x',
+      trend: 'linear',
+      trendLabel: 'Single origin node — no secondary reposts',
+      color: '#94a3b8'
+    }
+  }
+
+  return {
+    r0: null,
+    r0Formatted: 'N/A',
+    trend: 'insufficient data',
+    trendLabel: 'Insufficient cascade depth',
+    color: '#94a3b8'
+  }
 }
 
 interface CascadeNode {
@@ -28,7 +225,18 @@ interface CascadeNode {
   status: 'ORIGIN' | 'SYNDICATED' | 'CROPPED' | 'SYNTHETIC' | 'FLAGGED'
 }
 
-export function PropagationGraph() {
+export interface CandidateNode {
+  platform?: string
+  [key: string]: any
+}
+
+export interface PropagationGraphProps {
+  ppm?: number
+  candidates?: CandidateNode[]
+  [key: string]: any
+}
+
+export function PropagationGraph({ ppm: propPpm, candidates: propCandidates }: PropagationGraphProps = {}) {
   const { currentResult, setShowEvidenceModal, setShowDMCAModal, setActiveTab } = useStore()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [viewMode, setViewMode] = useState<'mesh' | 'timeline' | 'genealogy'>('mesh')
@@ -251,10 +459,46 @@ export function PropagationGraph() {
     return () => cancelAnimationFrame(animId)
   }, [currentResult, activePropagation])
 
-  const totalReach = cascadeEvents.reduce((acc, n) => acc + n.reachEstimate, 0)
+  const totalReach = activePropagation?.totalReach ?? cascadeEvents.reduce((acc, n) => acc + n.reachEstimate, 0)
   const velocity = activePropagation?.velocity ?? 4.8
   const urgency = activePropagation?.urgency ?? 'high'
-  const ppm = activePropagation?.ppm ?? 142
+  const ppm = propPpm !== undefined ? propPpm : (activePropagation?.ppm ?? 142)
+
+  // 1. Compute velocity spike over trailing 60m window (or provide honest fallback)
+  const velocitySpike = computeVelocitySpike(activePropagation, cascadeEvents)
+
+  // 2. Derive qualitative dissemination tier from PPM
+  const disseminationLevel = getDisseminationLevel(ppm)
+  const disseminationColor = getDisseminationColor(disseminationLevel)
+
+  // Candidates array from props or investigation context (fallback to cascade events)
+  const candidates: CandidateNode[] =
+    propCandidates ||
+    (currentResult as any)?.candidates ||
+    (currentResult as any)?.discovery?.candidates ||
+    activePropagation?.candidates ||
+    cascadeEvents ||
+    []
+
+  // 3. Compute actual distinct platforms monitored across candidates array
+  const platformCount = new Set(candidates.map(c => c.platform)).size
+
+  // 4. Compute replication factor R0 and empirical acceleration trend
+  const replication = computeReplicationMetrics(activePropagation, cascadeEvents)
+
+  // 5. Evaluate takedown recommendation conditions
+  const decision = currentResult?.ai_analysis?.decision
+  const isConfirmedUnauthorized = Boolean(
+    (decision && (TAKEDOWN_CONFIRMED_DECISIONS as readonly string[]).includes(decision)) ||
+    currentResult?.ai_analysis?.dmca_needed
+  )
+  const isTakedownRecommended = isConfirmedUnauthorized && totalReach >= TAKEDOWN_REACH_THRESHOLD
+  const isReviewRequired = Boolean(
+    decision === 'REVIEW REQUIRED' ||
+    decision === 'SUSPECT' ||
+    currentResult?.trust?.risk_tier === 'high_risk' ||
+    currentResult?.trust?.risk_tier === 'suspect'
+  )
 
   const isScenario = !!(
     currentResult &&
@@ -404,38 +648,38 @@ export function PropagationGraph() {
           <div style={{ fontSize: 22, fontWeight: 800, color: '#38bdf8', fontFamily: 'monospace', marginTop: 4 }}>
             {velocity} <span style={{ fontSize: 12, color: '#94a3b8' }}>shares/min</span>
           </div>
-          <div style={{ fontSize: 11, color: '#4ade80', marginTop: 4 }}>
-            ▲ +34% spike in last 60m
+          <div style={{ fontSize: 11, color: velocitySpike.color, marginTop: 4 }}>
+            {velocitySpike.label}
           </div>
         </div>
 
-        <div style={{ background: '#0d1117', border: '1px solid #1e2d3d', borderRadius: 8, padding: '14px 16px' }}>
+        <div id="ppm-velocity-card" style={{ background: '#0d1117', border: '1px solid #1e2d3d', borderRadius: 8, padding: '14px 16px' }}>
           <div style={{ fontSize: 10, color: '#64748b', fontWeight: 800, textTransform: 'uppercase' }}>PPM Velocity Index</div>
-          <div style={{ fontSize: 22, fontWeight: 800, color: '#f87171', fontFamily: 'monospace', marginTop: 4 }}>
+          <div style={{ fontSize: 22, fontWeight: 800, color: disseminationColor, fontFamily: 'monospace', marginTop: 4 }}>
             {ppm} <span style={{ fontSize: 12, color: '#94a3b8' }}>ppm</span>
           </div>
-          <div style={{ fontSize: 11, color: '#f87171', marginTop: 4 }}>
-            High viral dissemination
+          <div id="dissemination-level" style={{ fontSize: 11, color: disseminationColor, marginTop: 4 }}>
+            {getDisseminationLevel(ppm)}
           </div>
         </div>
 
-        <div style={{ background: '#0d1117', border: '1px solid #1e2d3d', borderRadius: 8, padding: '14px 16px' }}>
+        <div id="platform-monitoring-card" style={{ background: '#0d1117', border: '1px solid #1e2d3d', borderRadius: 8, padding: '14px 16px' }}>
           <div style={{ fontSize: 10, color: '#64748b', fontWeight: 800, textTransform: 'uppercase' }}>Combined Reach</div>
           <div style={{ fontSize: 22, fontWeight: 800, color: '#c084fc', fontFamily: 'monospace', marginTop: 4 }}>
             {(totalReach / 1000).toFixed(0)}k <span style={{ fontSize: 12, color: '#94a3b8' }}>views</span>
           </div>
-          <div style={{ fontSize: 11, color: '#cbd5e1', marginTop: 4 }}>
-            Across 5 monitored platforms
+          <div id="monitored-platforms-count" style={{ fontSize: 11, color: '#cbd5e1', marginTop: 4 }}>
+            Across {new Set(candidates.map(c => c.platform)).size} monitored platforms
           </div>
         </div>
 
         <div style={{ background: '#0d1117', border: '1px solid #1e2d3d', borderRadius: 8, padding: '14px 16px' }}>
           <div style={{ fontSize: 10, color: '#64748b', fontWeight: 800, textTransform: 'uppercase' }}>Replication Factor R₀</div>
-          <div style={{ fontSize: 22, fontWeight: 800, color: '#fbbf24', fontFamily: 'monospace', marginTop: 4 }}>
-            2.4x <span style={{ fontSize: 12, color: '#94a3b8' }}>exponential</span>
+          <div style={{ fontSize: 22, fontWeight: 800, color: replication.color, fontFamily: 'monospace', marginTop: 4 }}>
+            {replication.r0Formatted} <span style={{ fontSize: 12, color: '#94a3b8' }}>{replication.trend}</span>
           </div>
-          <div style={{ fontSize: 11, color: '#fbbf24', marginTop: 4 }}>
-            Secondary reposts accelerating
+          <div style={{ fontSize: 11, color: replication.color, marginTop: 4 }}>
+            {replication.trendLabel}
           </div>
         </div>
       </div>
@@ -480,17 +724,43 @@ export function PropagationGraph() {
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: 10, color: '#64748b', fontWeight: 800, textTransform: 'uppercase' }}>Target Media Node</span>
-                <span style={{
-                  fontSize: 10,
-                  fontWeight: 800,
-                  padding: '2px 8px',
-                  borderRadius: 4,
-                  background: 'rgba(239, 68, 68, 0.15)',
-                  color: '#f87171',
-                  border: '1px solid rgba(239, 68, 68, 0.3)'
-                }}>
-                  TAKEDOWN RECOMMENDED
-                </span>
+                {isTakedownRecommended ? (
+                  <span style={{
+                    fontSize: 10,
+                    fontWeight: 800,
+                    padding: '2px 8px',
+                    borderRadius: 4,
+                    background: 'rgba(239, 68, 68, 0.15)',
+                    color: '#f87171',
+                    border: '1px solid rgba(239, 68, 68, 0.3)'
+                  }}>
+                    TAKEDOWN RECOMMENDED
+                  </span>
+                ) : isReviewRequired ? (
+                  <span style={{
+                    fontSize: 10,
+                    fontWeight: 800,
+                    padding: '2px 8px',
+                    borderRadius: 4,
+                    background: 'rgba(245, 158, 11, 0.15)',
+                    color: '#fbbf24',
+                    border: '1px solid rgba(245, 158, 11, 0.3)'
+                  }}>
+                    REVIEW IN PROGRESS
+                  </span>
+                ) : (
+                  <span style={{
+                    fontSize: 10,
+                    fontWeight: 800,
+                    padding: '2px 8px',
+                    borderRadius: 4,
+                    background: 'rgba(56, 189, 248, 0.12)',
+                    color: '#38bdf8',
+                    border: '1px solid rgba(56, 189, 248, 0.25)'
+                  }}>
+                    MONITORING ACTIVE
+                  </span>
+                )}
               </div>
 
               <h3 style={{ fontSize: 15, fontWeight: 800, color: '#f8fafc', marginTop: 8 }}>

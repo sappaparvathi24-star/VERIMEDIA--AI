@@ -1,6 +1,7 @@
 // VeriMedia AI — Artifact Comparison & Provenance Relationship Inference (Phase F)
 import { RelationshipTypes, FindingStatus, EvidencePolarity } from './core.js';
 import { hashSimilarity } from '../forensics/perceptualHash.js';
+import { clipVisualSimilarity } from '../../ml/vision/clipEmbedding.js';
 
 export function compareArtifacts(store, investigationId, artifactAId, artifactBId, options = {}) {
   const artA = store.getArtifact(artifactAId);
@@ -12,12 +13,24 @@ export function compareArtifacts(store, investigationId, artifactAId, artifactBI
 
   const isExactHash = Boolean(artA.sha256 && artB.sha256 && artA.sha256 === artB.sha256);
   let perceptualSimilarity = 0.0;
+  let clipSimilarity = 0.0;
 
   if (isExactHash) {
     perceptualSimilarity = 1.0;
-  } else if (artA.perceptualHash && artB.perceptualHash) {
-    perceptualSimilarity = hashSimilarity(artA.perceptualHash, artB.perceptualHash);
+    clipSimilarity = 1.0;
+  } else {
+    if (artA.perceptualHash && artB.perceptualHash) {
+      perceptualSimilarity = hashSimilarity(artA.perceptualHash, artB.perceptualHash);
+    }
+    if (artA.clipEmbedding && artB.clipEmbedding) {
+      clipSimilarity = clipVisualSimilarity(artA.clipEmbedding, artB.clipEmbedding);
+    }
   }
+
+  // Combined visual similarity metric
+  const effectiveSimilarity = clipSimilarity > 0
+    ? (perceptualSimilarity > 0 ? Number((perceptualSimilarity * 0.5 + clipSimilarity * 0.5).toFixed(4)) : clipSimilarity)
+    : perceptualSimilarity;
 
   const run = store.createAnalysisRun({
     investigationId,

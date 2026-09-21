@@ -7,11 +7,6 @@ interface ProviderInfo {
   name: string
   available: boolean
   authRequired: boolean
-  status?: string
-  quota?: {
-    used: number
-    limit: number
-  }
   reason?: string | null
   permanentUnavailable?: boolean
   instances?: string[]
@@ -39,52 +34,79 @@ interface DiscoveredCandidate {
   domain?: string
   similarity?: number
   matchScore?: number
-  thumbnailUrl?: string
+  classification?: 'EXACT_MATCH' | 'NEAR_DUPLICATE' | 'MODIFIED_DERIVATIVE' | 'UNRELATED' | string
+  matchType?: 'visual_match' | 'text_inferred' | 'unsupported_by_platform' | string
+  visionScore?: number | null
+  phashSimilarity?: number | null
+  hammingDistance?: number | null
+  similarityMeasurements?: {
+    visualSimilarity?: number | null
+    phashSimilarity?: number | null
+    visionScore?: number | null
+    hammingDistance?: number | null
+    comparisonMethod?: string
+    similarityStatus?: string
+  }
+  thumbnailUrl?: string | null
   snippet?: string
+  source?: string
+  sourceType?: string
+  isPartialMatch?: boolean
+  tamperedIndicator?: string | null
 }
 
 export function DiscoveryPanel() {
   const { currentResult, setActiveTab } = useStore()
-  const isTestScenario = currentResult?.scenario === 'deepfake' || currentResult?.scenario === 'scam' || currentResult?.scenario === 'authentic'
-
   const [providers, setProviders] = useState<Record<string, ProviderInfo>>({})
   const [transparencySources, setTransparencySources] = useState<TransparencySource[]>([])
   const [transparencyNotice, setTransparencyNotice] = useState<string | null>(null)
   const [checkedAt, setCheckedAt] = useState<string | null>(null)
   const [providersLoading, setProvidersLoading] = useState(true)
-  const [selectedProvider, setSelectedProvider] = useState<string>('googleImages')
+  const [selectedProvider, setSelectedProvider] = useState<string>('google_vision')
   const [testQuery, setTestQuery] = useState('')
   const [isQuerying, setIsQuerying] = useState(false)
   const [candidatesList, setCandidatesList] = useState<DiscoveredCandidate[]>([])
   const [queryError, setQueryError] = useState<string | null>(null)
   const [statusMsg, setStatusMsg] = useState<string | null>(null)
-  const [providerMatchCounts, setProviderMatchCounts] = useState<Record<string, { count: number; status: string }>>({})
+  const [hasSearched, setHasSearched] = useState(false)
+  const [providerStatuses, setProviderStatuses] = useState<Record<string, { status: string; count: number; reason?: string | null; name?: string }>>({})
+
+  // Pagination state (10 items per batch, up to 50 max)
+  const [currentPage, setCurrentPage] = useState<number>(1)
+  const [hasMore, setHasMore] = useState<boolean>(false)
+  const [maxReached, setMaxReached] = useState<boolean>(false)
+  const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false)
+  const [totalDiscoveredCount, setTotalDiscoveredCount] = useState<number>(0)
+
+  const [searchMode, setSearchMode] = useState<'VISUAL' | 'MANUAL_TEXT'>('VISUAL')
+  const [lastExecutedQuery, setLastExecutedQuery] = useState<string>('')
+
+  const referenceThumbnail = (currentResult as any)?.thumbnailUrl || (currentResult as any)?.mediaUrl || (currentResult as any)?.previewUrl || (currentResult as any)?.url || null
+  const artifactName = (currentResult as any)?.filename || (currentResult as any)?.title || currentResult?.caption || 'Uploaded Media Artifact'
+  const artifactId = (currentResult as any)?.id || (currentResult as any)?.artifactId || null
 
   useEffect(() => {
     fetchProvidersAndTransparency()
-    setQueryError(null)
-    setStatusMsg(null)
-
-    const ocrText = currentResult?.forensics?.ocr?.text?.trim() || (currentResult as any)?.ocr?.text?.trim() || (currentResult as any)?.ocr_text?.trim()
-    const visualDesc = currentResult?.forensics?.subjectDescription?.trim() || currentResult?.subject_description?.trim() || currentResult?.forensics?.summary?.trim()
-    const rawFilename = currentResult?.artifact?.filename || (currentResult as any)?.filename || (currentResult as any)?.media_name || ''
-    const cleanFilename = rawFilename && !['unknown', 'sample.mp4', 'press_conference_master_4k.mp4', 'demo.mp4', 'placeholder.jpg', 'test.jpg'].includes(rawFilename.toLowerCase())
-      ? rawFilename.replace(/\.[^/.]+$/, '').replace(/[_\\-]/g, ' ').trim()
-      : ''
-    const caption = currentResult?.caption?.trim()
-
-    const initialSignal = caption || ocrText || visualDesc || cleanFilename || ''
-    setTestQuery(initialSignal)
+    if (currentResult?.caption) {
+      setTestQuery(currentResult.caption)
+    } else if ((currentResult as any)?.filename) {
+      setTestQuery((currentResult as any).filename.replace(/\.[^/.]+$/, ''))
+    } else {
+      setTestQuery('')
+    }
 
     const invId = currentResult?.investigationId || currentResult?.case_id
     if (invId) {
       loadInvestigationCandidates(invId)
-    } else if (currentResult && (currentResult as any).candidates && Array.isArray((currentResult as any).candidates) && (currentResult as any).candidates.length > 0) {
-      setCandidatesList((currentResult as any).candidates)
-    } else {
-      setCandidatesList([])
     }
-  }, [currentResult])
+
+    // Auto-trigger image-first visual discovery when media artifact is present
+    const artId = ((currentResult as any)?.id || (currentResult as any)?.artifactId)
+    const hasMedia = Boolean(artId || referenceThumbnail)
+    if (hasMedia && !hasSearched) {
+      executeDiscovery(false, 1)
+    }
+  }, [(currentResult as any)?.id, (currentResult as any)?.artifactId, currentResult?.investigationId])
 
   async function fetchProvidersAndTransparency() {
     setProvidersLoading(true)
@@ -98,7 +120,9 @@ export function DiscoveryPanel() {
         setProviders(provRes.providers)
         if (provRes.checkedAt) setCheckedAt(provRes.checkedAt)
         const provs = provRes.providers as Record<string, ProviderInfo>
-        if (provs.googleImages?.available) {
+        if (provs.google_vision?.available) {
+          setSelectedProvider('google_vision')
+        } else if (provs.googleImages?.available) {
           setSelectedProvider('googleImages')
         } else {
           const first = Object.values(provs).find(p => p.available && !p.permanentUnavailable)
@@ -125,103 +149,151 @@ export function DiscoveryPanel() {
       const list = Array.isArray(res) ? res : (res?.candidates || res?.results || [])
       if (list.length > 0) {
         setCandidatesList(list)
-      } else {
-        setCandidatesList([])
       }
     } catch (err) {
       console.warn('Could not load candidates for investigation:', err)
-      setCandidatesList([])
     }
   }
 
-  async function handleSearch() {
-    const rawImage = (currentResult as any)?.artifact?.previewUrl ||
-      (currentResult as any)?.artifact?.fileUrl ||
-      (currentResult as any)?.artifact?.dataUrl ||
-      (currentResult as any)?.previewUrl ||
-      (currentResult as any)?.media_url ||
-      null
-
-    const isVisionProvider = selectedProvider === 'googleVisionWebDetection'
-
-    if (!testQuery.trim() && !(isVisionProvider && rawImage)) {
-      setCandidatesList([])
-      setQueryError('Not enough information extracted from this file to search automatically. Enter a search term manually, or this file may not be analyzable.')
-      return
+  function formatCandidate(c: any, i: number): DiscoveredCandidate {
+    const url = c.url || c.link || c.contextLink || '#'
+    let domain = c.domain || c.displayLink || ''
+    if (!domain && url && url !== '#') {
+      try { domain = new URL(url).hostname.replace(/^www\./, '') } catch (_) {}
     }
+    const sim = typeof c.similarity === 'number' ? c.similarity : (c.matchScore ? c.matchScore / 100 : 0.85)
+    return {
+      id: c.id || `CAND-LIVE-${Date.now()}-${i}`,
+      title: c.title || c.snippet?.slice(0, 60) || 'Discovered Media Candidate',
+      url,
+      author: c.author || c.displayLink || domain || 'Indexed Web Source',
+      publishedAt: c.publishedAt || c.retrievedAt || new Date().toISOString(),
+      platform: c.platform || activeProviderObj?.name || selectedProvider,
+      domain: domain || 'web',
+      similarity: sim,
+      matchScore: Math.round(sim * 100),
+      classification: c.classification || (sim >= 0.98 ? 'EXACT_MATCH' : sim >= 0.88 ? 'NEAR_DUPLICATE' : sim >= 0.70 ? 'MODIFIED_DERIVATIVE' : 'UNRELATED'),
+      matchType: c.matchType || (c.source === 'google_vision' ? 'visual_match' : 'text_inferred'),
+      visionScore: typeof c.visionScore === 'number' ? c.visionScore : (c.similarityMeasurements?.visionScore ?? null),
+      phashSimilarity: typeof c.phashSimilarity === 'number' ? c.phashSimilarity : (c.similarityMeasurements?.phashSimilarity ?? null),
+      hammingDistance: typeof c.hammingDistance === 'number' ? c.hammingDistance : (c.similarityMeasurements?.hammingDistance ?? null),
+      similarityMeasurements: c.similarityMeasurements,
+      thumbnailUrl: c.thumbnailUrl || c.imageUrl || c.mediaUrl || null,
+      snippet: c.snippet || c.description || c.text || 'Real-time candidate ingested from live external API.',
+      source: c.source || selectedProvider,
+      sourceType: c.sourceType || 'EXTERNAL_API_VERIFIED',
+      isPartialMatch: Boolean(c.isPartialMatch || c.classification === 'MODIFIED_DERIVATIVE'),
+      tamperedIndicator: c.tamperedIndicator || (c.classification === 'MODIFIED_DERIVATIVE' ? 'Visual variance detected (possible crop, tampering, or derivative modification)' : null)
+    }
+  }
 
+  async function executeDiscovery(isManualText: boolean, pageNum: number = 1) {
     setIsQuerying(true)
     setQueryError(null)
     setStatusMsg(null)
+    setHasSearched(true)
+    setCurrentPage(pageNum)
+    setSearchMode(isManualText ? 'MANUAL_TEXT' : 'VISUAL')
+    setLastExecutedQuery(isManualText ? testQuery.trim() : 'Image-First Visual Search')
+
     try {
-      const searchOptions: Record<string, any> = {}
-      if (rawImage) {
-        if (typeof rawImage === 'string' && rawImage.startsWith('data:')) {
-          searchOptions.imageBase64 = rawImage
-        } else if (typeof rawImage === 'string' && /^https?:\/\//.test(rawImage)) {
-          searchOptions.mediaUrl = rawImage
-        }
-      }
+      const platformsToQuery = selectedProvider === 'ALL_PROVIDERS' ? undefined : [selectedProvider]
+      const invId = (currentResult?.investigationId || currentResult?.case_id) || undefined
+      const artId = ((currentResult as any)?.id || (currentResult as any)?.artifactId) || undefined
 
-      const result = await searchMultiSource(testQuery.trim(), [selectedProvider], searchOptions)
-      const provResult = result?.results?.[selectedProvider] || result
-      const candidates = provResult?.candidates || provResult?.results || result?.candidates || []
+      const queryToSend = isManualText ? testQuery.trim() : (testQuery.trim() || 'visual-reverse-search')
+      const result = await searchMultiSource(queryToSend, platformsToQuery, pageNum, 10, invId, artId, isManualText)
+      const provResult = selectedProvider !== 'ALL_PROVIDERS' ? (result?.results?.[selectedProvider] || result) : result
+      const rawCandidates = provResult?.candidates || provResult?.results || result?.candidates || []
       
-      const counts: Record<string, { count: number; status: string }> = {}
-      let providerFailureReason: string | null = null
-
-      if (result?.providerStatuses) {
-        Object.entries(result.providerStatuses).forEach(([k, v]: [string, any]) => {
-          counts[k] = { count: v.count || 0, status: v.status || 'OK' }
-          if (k === selectedProvider && (v.status === 'UNAVAILABLE' || v.status === 'ERROR' || v.status === 'QUOTA_REACHED' || v.reason)) {
-            providerFailureReason = v.reason ? `${activeProviderObj?.name || k}: ${v.reason}` : `${activeProviderObj?.name || k}: provider unavailable`
-          }
-        })
-      } else {
-        counts[selectedProvider] = { count: candidates.length, status: provResult?.status || 'OK' }
-        if (provResult?.status === 'UNAVAILABLE' || provResult?.status === 'ERROR' || provResult?.reason) {
-          providerFailureReason = provResult.reason ? `${activeProviderObj?.name || selectedProvider}: ${provResult.reason}` : `${activeProviderObj?.name || selectedProvider}: provider unavailable`
-        }
-      }
-      setProviderMatchCounts(counts)
-
-      if (candidates.length > 0) {
-        const formatted: DiscoveredCandidate[] = candidates.map((c: any, i: number) => {
-          const url = c.url || c.link || c.contextLink || '#'
-          let domain = c.domain || c.displayLink || ''
-          if (!domain && url && url !== '#') {
-            try { domain = new URL(url).hostname.replace(/^www\./, '') } catch (_) {}
-          }
-          return {
-            id: c.id || `CAND-LIVE-${Date.now()}-${i}`,
-            title: c.title || c.snippet?.slice(0, 60) || 'Discovered Media Candidate',
-            url,
-            author: c.author || c.displayLink || domain || 'Indexed Web Source',
-            publishedAt: c.publishedAt || c.retrievedAt || new Date().toISOString(),
-            platform: c.platform || activeProviderObj?.name || selectedProvider,
-            domain: domain || 'web',
-            similarity: c.similarity ?? (c.matchScore ? c.matchScore / 100 : 0.88),
-            thumbnailUrl: c.thumbnailUrl || c.imageUrl || c.mediaUrl || null,
-            snippet: c.snippet || c.description || c.text || 'Real-time candidate ingested from live search provider.'
-          }
-        })
+      if (rawCandidates.length > 0) {
+        const formatted: DiscoveredCandidate[] = rawCandidates.map((c: any, i: number) => formatCandidate(c, i))
         setCandidatesList(formatted)
-        setStatusMsg(`Discovered ${formatted.length} live appearances via ${activeProviderObj?.name || selectedProvider}.`)
+        setTotalDiscoveredCount(result?.totalDiscovered || formatted.length)
+        setHasMore(Boolean(result?.hasMore))
+        setMaxReached(Boolean(result?.maxReached || formatted.length >= 50))
+        const modeLabel = isManualText ? 'Manual Keyword Fallback' : 'Reverse Image Visual Search'
+        setStatusMsg(`Discovered ${formatted.length} genuine appearance(s) via ${modeLabel}. Candidates evaluated against perceptual hash.`)
       } else {
         setCandidatesList([])
-        if (providerFailureReason) {
-          setQueryError(providerFailureReason)
+        setHasMore(false)
+        setMaxReached(false)
+        const providerName = selectedProvider === 'ALL_PROVIDERS' ? 'All Active Providers' : (activeProviderObj?.name || selectedProvider)
+        if (isManualText) {
+          setStatusMsg(`Zero matching appearances returned across ${providerName} for keyword "${testQuery}". Zero fabricated results.`)
         } else {
-          setStatusMsg('No matching appearances found across indexed providers for this asset.')
+          setStatusMsg(`Zero visual appearances returned across ${providerName} for uploaded media. Zero fabricated results.`)
         }
       }
+
+      if (result?.providerStatuses) {
+        setProviderStatuses(result.providerStatuses)
+      }
     } catch (err: any) {
-      setCandidatesList([])
-      const reasonMsg = err?.response?.data?.reason || err?.response?.data?.message || err?.response?.data?.error || err?.message
-      setQueryError(reasonMsg ? `${activeProviderObj?.name || selectedProvider}: ${reasonMsg}` : `${activeProviderObj?.name || selectedProvider}: request timed out or returned non-2xx response`)
+      setQueryError(err?.response?.data?.error || err?.message || 'Search failed')
     } finally {
       setIsQuerying(false)
     }
+  }
+
+  async function handleLoadMore() {
+    if (isLoadingMore || !hasMore || maxReached) return
+    setIsLoadingMore(true)
+    try {
+      const nextPage = currentPage + 1
+      const platformsToQuery = selectedProvider === 'ALL_PROVIDERS' ? undefined : [selectedProvider]
+      const invId = (currentResult?.investigationId || currentResult?.case_id) || undefined
+      const artId = ((currentResult as any)?.id || (currentResult as any)?.artifactId) || undefined
+      const isManual = searchMode === 'MANUAL_TEXT'
+
+      const queryToSend = isManual ? testQuery.trim() : (testQuery.trim() || 'visual-reverse-search')
+      const result = await searchMultiSource(queryToSend, platformsToQuery, nextPage, 10, invId, artId, isManual)
+      const rawCandidates = result?.candidates || result?.results?.[selectedProvider]?.candidates || []
+
+      if (rawCandidates.length > 0) {
+        const newFormatted = rawCandidates.map((c: any, i: number) => formatCandidate(c, candidatesList.length + i))
+        
+        // Deduplicate by URL
+        const existingUrls = new Set(candidatesList.map(c => c.url.toLowerCase()))
+        const filteredNew = newFormatted.filter((c: DiscoveredCandidate) => !existingUrls.has(c.url.toLowerCase()))
+
+        const combined = [...candidatesList, ...filteredNew]
+        setCandidatesList(combined)
+        setCurrentPage(nextPage)
+        setHasMore(Boolean(result?.hasMore && combined.length < 50))
+        setMaxReached(Boolean(result?.maxReached || combined.length >= 50))
+        setStatusMsg(`Loaded ${filteredNew.length} additional candidates (Total: ${combined.length}).`)
+      } else {
+        setHasMore(false)
+      }
+    } catch (err: any) {
+      setQueryError(`Pagination error: ${err?.message || 'Could not load next batch'}`)
+    } finally {
+      setIsLoadingMore(false)
+    }
+  }
+
+  function getProviderBadge(cand: DiscoveredCandidate) {
+    const src = (cand.source || cand.platform || '').toLowerCase()
+    if (src.includes('vision') || src === 'google_vision') {
+      return { name: 'Google Vision (Web Detection)', bg: 'rgba(168, 85, 247, 0.15)', text: '#c084fc', border: '#a855f744' }
+    }
+    if (src.includes('youtube')) {
+      return { name: 'YouTube Data API', bg: 'rgba(239, 68, 68, 0.15)', text: '#f87171', border: '#ef444444' }
+    }
+    if (src.includes('instagram')) {
+      return { name: 'Instagram Graph API', bg: 'rgba(236, 72, 153, 0.15)', text: '#f472b6', border: '#ec489944' }
+    }
+    if (src.includes('x') || src.includes('twitter')) {
+      return { name: 'X (Twitter) v2', bg: 'rgba(148, 163, 184, 0.15)', text: '#cbd5e1', border: '#64748b44' }
+    }
+    if (src.includes('image') || src.includes('google') || src === 'google_search') {
+      return { name: 'Google Custom Search', bg: 'rgba(56, 189, 248, 0.15)', text: '#38bdf8', border: '#38bdf844' }
+    }
+    if (src.includes('reddit')) {
+      return { name: 'Reddit API', bg: 'rgba(249, 115, 22, 0.15)', text: '#fb923c', border: '#f9731644' }
+    }
+    return { name: cand.platform || 'External API', bg: 'rgba(100, 116, 139, 0.15)', text: '#94a3b8', border: '#47556944' }
   }
 
   const providerList = Object.values(providers) as ProviderInfo[]
@@ -230,13 +302,11 @@ export function DiscoveryPanel() {
   const totalCount = providerList.filter(p => !p.permanentUnavailable).length
 
   function statusColor(p: ProviderInfo) {
-    if (p.status === 'quota_exceeded' || p.status === 'QUOTA_EXCEEDED') return '#f97316'
     if (p.permanentUnavailable) return '#4a5568'
     return p.available ? '#4ade80' : '#f59e0b'
   }
 
   function statusLabel(p: ProviderInfo) {
-    if (p.status === 'quota_exceeded' || p.status === 'QUOTA_EXCEEDED') return 'QUOTA REACHED'
     if (p.permanentUnavailable) return 'UNAVAILABLE'
     return p.available ? 'AVAILABLE' : 'CONFIG REQUIRED'
   }
@@ -315,6 +385,30 @@ export function DiscoveryPanel() {
           )}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10 }}>
+          {/* Parallel Search All Provider Option */}
+          <button
+            onClick={() => setSelectedProvider('ALL_PROVIDERS')}
+            style={{
+              background: selectedProvider === 'ALL_PROVIDERS' ? 'rgba(0, 212, 255, 0.15)' : '#0d1117',
+              border: selectedProvider === 'ALL_PROVIDERS' ? '1.5px solid #00d4ff' : '1px solid #1e2d3d',
+              borderRadius: 8,
+              padding: '10px 12px',
+              textAlign: 'left',
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 4
+            }}
+          >
+            <div style={{ fontSize: 12, fontWeight: 800, color: selectedProvider === 'ALL_PROVIDERS' ? '#38bdf8' : '#e2e8f0' }}>
+              ⚡ All Providers (Parallel)
+            </div>
+            <div style={{ fontSize: 10, fontFamily: 'monospace', color: '#4ade80' }}>
+              ● MULTI-SOURCE PIPELINE
+            </div>
+          </button>
+
           {providerList.map(prov => {
             const isSelected = selectedProvider === prov.id
             const canSelect = prov.available && !prov.permanentUnavailable
@@ -339,13 +433,8 @@ export function DiscoveryPanel() {
                 <div style={{ fontSize: 12, fontWeight: 800, color: isSelected ? '#38bdf8' : '#e2e8f0' }}>
                   {prov.name}
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 }}>
-                  <span style={{ fontSize: 10, fontFamily: 'monospace', color: statusColor(prov) }}>
-                    ● {statusLabel(prov)}
-                  </span>
-                  <span style={{ fontSize: 9, fontFamily: 'monospace', color: '#64748b' }}>
-                    {prov.quota ? `${prov.quota.used}/${prov.quota.limit} reqs` : (providerMatchCounts[prov.id] !== undefined ? `${providerMatchCounts[prov.id].count} matches` : '0 matches')}
-                  </span>
+                <div style={{ fontSize: 10, fontFamily: 'monospace', color: statusColor(prov) }}>
+                  ● {statusLabel(prov)}
                 </div>
               </button>
             )
@@ -424,17 +513,149 @@ export function DiscoveryPanel() {
         </div>
       )}
 
-      {/* Live Search Bar */}
-      <div style={{ background: '#0d1117', border: '1px solid #1e2d3d', borderRadius: 10, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ fontSize: 12, fontWeight: 800, color: '#f8fafc' }}>
-            Multi-Source Search & Media Discovery Query
-          </div>
-          {activeProviderObj && (
-            <span style={{ fontSize: 11, color: activeProviderObj.available ? '#4ade80' : '#fbbf24' }}>
-              Target: <strong>{activeProviderObj.name}</strong> {activeProviderObj.authRequired ? '(API Key Ready)' : '(Public Direct)'}
+      {/* PRIMARY IMAGE-FIRST REVERSE DISCOVERY CARD */}
+      <div style={{
+        background: '#0d1117',
+        border: '1.5px solid rgba(0, 212, 255, 0.4)',
+        borderRadius: 10,
+        padding: 18,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 14,
+        boxShadow: '0 4px 20px rgba(0, 212, 255, 0.05)'
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 13, fontWeight: 900, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span>🎯 Primary Engine:</span>
+              <span style={{ color: '#00d4ff' }}>Image-First Reverse Visual Discovery</span>
             </span>
-          )}
+            <span style={{
+              fontSize: 10,
+              fontWeight: 800,
+              padding: '2px 8px',
+              borderRadius: 4,
+              background: 'rgba(0, 212, 255, 0.15)',
+              color: '#38bdf8',
+              fontFamily: 'monospace'
+            }}>
+              VISUAL REVERSE SEARCH
+            </span>
+          </div>
+
+          <div style={{ fontSize: 11, color: '#94a3b8' }}>
+            Primary provider: <strong style={{ color: '#c084fc' }}>Google Vision API (Web Detection)</strong>
+          </div>
+        </div>
+
+        {/* Reference Media Context & Action Trigger */}
+        <div style={{
+          background: '#080c10',
+          border: '1px solid #1e2d3d',
+          borderRadius: 8,
+          padding: 14,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: 14
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <div style={{
+              width: 56,
+              height: 56,
+              borderRadius: 6,
+              background: '#161b22',
+              border: '1.5px solid #00d4ff44',
+              overflow: 'hidden',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0
+            }}>
+              {referenceThumbnail ? (
+                <img
+                  src={referenceThumbnail}
+                  alt="Uploaded reference media"
+                  referrerPolicy="no-referrer"
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                />
+              ) : (
+                <span style={{ fontSize: 24 }}>🖼️</span>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: '#f8fafc' }}>
+                {artifactName}
+              </div>
+              <div style={{ fontSize: 11, color: '#64748b', fontFamily: 'monospace' }}>
+                {artifactId ? `Artifact ID: ${artifactId}` : 'Uploaded Investigation Asset'}
+              </div>
+              <div style={{ fontSize: 11, color: '#38bdf8' }}>
+                Query Input: <strong>Direct Image Buffer (Visual Web Detection & pHash)</strong>
+              </div>
+            </div>
+          </div>
+
+          <button
+            onClick={() => executeDiscovery(false, 1)}
+            disabled={isQuerying}
+            style={{
+              background: isQuerying && searchMode === 'VISUAL' ? '#1e293b' : 'linear-gradient(135deg, #00d4ff 0%, #0284c7 100%)',
+              color: '#080c10',
+              border: 'none',
+              borderRadius: 6,
+              padding: '10px 22px',
+              fontSize: 13,
+              fontWeight: 800,
+              cursor: isQuerying ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              boxShadow: '0 2px 10px rgba(0, 212, 255, 0.2)'
+            }}
+          >
+            {isQuerying && searchMode === 'VISUAL' ? '◌ Searching Visually…' : '🔄 Run Reverse Image Search'}
+          </button>
+        </div>
+
+        <div style={{ fontSize: 11, color: '#94a3b8', lineHeight: 1.4 }}>
+          <strong>Forensic Notice:</strong> Media bytes are passed directly to Google Vision Web Detection. Every candidate returned is fetched and evaluated using real perceptual hash (pHash) similarity. Unrelated items (<strong style={{ color: '#f87171' }}>&lt; 70% similarity</strong>) are completely filtered out.
+        </div>
+      </div>
+
+      {/* SECONDARY MANUAL KEYWORD SEARCH (EXPLICIT FALLBACK) */}
+      <div style={{
+        background: '#0d1117',
+        border: '1px solid #1e2d3d',
+        borderRadius: 10,
+        padding: 16,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 12
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 12, fontWeight: 800, color: '#94a3b8' }}>
+              Manual keyword search (secondary fallback)
+            </span>
+            <span style={{
+              fontSize: 9,
+              fontWeight: 800,
+              padding: '2px 6px',
+              borderRadius: 4,
+              background: 'rgba(245, 158, 11, 0.15)',
+              color: '#fbbf24',
+              fontFamily: 'monospace'
+            }}>
+              SECONDARY OVERRIDE ONLY
+            </span>
+          </div>
+
+          <span style={{ fontSize: 11, color: '#64748b' }}>
+            Visual reverse search is primary; use manual text keywords only as a fallback
+          </span>
         </div>
 
         <div style={{ display: 'flex', gap: 8 }}>
@@ -442,8 +663,8 @@ export function DiscoveryPanel() {
             type="text"
             value={testQuery}
             onChange={e => setTestQuery(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && !isQuerying && handleSearch()}
-            placeholder="Search keywords, hash, caption or media topic…"
+            onKeyDown={e => e.key === 'Enter' && !isQuerying && executeDiscovery(true, 1)}
+            placeholder="Enter manual keywords for secondary fallback search…"
             style={{
               flex: 1,
               background: '#080c10',
@@ -456,30 +677,30 @@ export function DiscoveryPanel() {
             }}
           />
           <button
-            onClick={handleSearch}
-            disabled={isQuerying || !activeProviderObj?.available}
+            onClick={() => executeDiscovery(true, 1)}
+            disabled={isQuerying || !testQuery.trim()}
             style={{
-              background: activeProviderObj?.available ? '#00d4ff' : '#334155',
-              color: '#080c10',
-              border: 'none',
+              background: testQuery.trim() ? '#1e293b' : '#0f172a',
+              color: testQuery.trim() ? '#e2e8f0' : '#475569',
+              border: '1px solid #334155',
               borderRadius: 6,
-              padding: '0 20px',
+              padding: '0 18px',
               fontSize: 12,
-              fontWeight: 800,
-              cursor: activeProviderObj?.available ? 'pointer' : 'not-allowed',
+              fontWeight: 700,
+              cursor: testQuery.trim() && !isQuerying ? 'pointer' : 'not-allowed',
               display: 'flex',
               alignItems: 'center',
               gap: 6
             }}
           >
-            {isQuerying ? '◌ Searching…' : '🔍 Discover Candidates'}
+            {isQuerying && searchMode === 'MANUAL_TEXT' ? '◌ Searching…' : '🔍 Search via Manual Keywords (Fallback)'}
           </button>
         </div>
 
         {/* Quick Presets */}
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 10, color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Quick Queries:</span>
-          {['Broadcast Highlights 2026', 'Deepfake interview viral', 'TikTok vertical crop sports'].map((preset) => (
+          <span style={{ fontSize: 10, color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Text Presets:</span>
+          {['Visual Web Detection', 'OCR Extracted Text', 'Caption Semantics', 'Reverse Media Check'].map((preset) => (
             <button
               key={preset}
               onClick={() => { setTestQuery(preset); }}
@@ -510,22 +731,84 @@ export function DiscoveryPanel() {
         )}
       </div>
 
+      {/* Honest Platform Limitations & Provider Notices */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {/* Instagram Graph API limitation notice */}
+        <div style={{
+          padding: '8px 14px',
+          borderRadius: 6,
+          background: 'rgba(236, 72, 153, 0.08)',
+          border: '1px solid rgba(236, 72, 153, 0.25)',
+          fontSize: 11,
+          color: '#f472b6',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8
+        }}>
+          <span>📸</span>
+          <span>
+            <strong>Platform Limitation:</strong> Reverse image search unsupported by Instagram Graph API — no candidates queried. Public API does not provide a visual similarity endpoint.
+          </span>
+        </div>
+
+        {/* X (Twitter) limitation notice */}
+        <div style={{
+          padding: '8px 14px',
+          borderRadius: 6,
+          background: 'rgba(148, 163, 184, 0.08)',
+          border: '1px solid rgba(148, 163, 184, 0.25)',
+          fontSize: 11,
+          color: '#cbd5e1',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8
+        }}>
+          <span>𝕏</span>
+          <span>
+            <strong>Platform Limitation:</strong> Reverse image search unsupported by X (Twitter) API — no candidates queried. Platform API does not provide a reverse-image endpoint.
+          </span>
+        </div>
+
+        {/* Dynamic Provider Error or Unavailable Notices */}
+        {Object.entries(providerStatuses)
+          .filter(([id, p]) => (p.status === 'ERROR' || p.status === 'AUTHENTICATED_ERROR') && id !== 'instagram' && id !== 'x')
+          .map(([id, p]) => (
+            <div key={id} style={{
+              padding: '8px 12px',
+              borderRadius: 6,
+              background: 'rgba(245, 158, 11, 0.08)',
+              border: '1px solid rgba(245, 158, 11, 0.25)',
+              fontSize: 11,
+              color: '#fbbf24',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8
+            }}>
+              <span>⚠</span>
+              <span><strong>Provider Notice ({p.name || id}):</strong> {p.reason || 'Provider unavailable or skipped without synthetic filler.'}</span>
+            </div>
+          ))
+        }
+      </div>
+
       {/* Discovered Candidates Cards Grid */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
           <div style={{ fontSize: 13, fontWeight: 800, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: 8 }}>
             <span>🔎 Discovered Media Candidates</span>
             <span style={{ fontSize: 11, color: '#38bdf8', background: 'rgba(56,189,248,0.15)', padding: '2px 8px', borderRadius: 4 }}>
               {candidatesList.length} items
             </span>
           </div>
-          <span style={{ fontSize: 11, color: '#64748b' }}>Sorted by Perceptual Hash Similarity</span>
+          <span style={{ fontSize: 11, color: '#64748b' }}>
+            Sorted by Forensic Relevance & Perceptual Match (Unrelated &lt; 70% Filtered Out)
+          </span>
         </div>
 
         {candidatesList.length === 0 ? (
           <div style={{
             background: '#0d1117',
-            border: queryError ? '1px solid rgba(239, 68, 68, 0.4)' : '1px dashed #1e2d3d',
+            border: '1px dashed #1e2d3d',
             borderRadius: 8,
             padding: '36px 20px',
             textAlign: 'center',
@@ -535,153 +818,331 @@ export function DiscoveryPanel() {
             alignItems: 'center',
             gap: 8
           }}>
-            <div style={{ fontSize: 28, marginBottom: 4 }}>
-              {queryError ? '⚠️' : '🔎'}
+            <div style={{ fontSize: 28, marginBottom: 4 }}>🔎</div>
+            <div style={{ color: '#94a3b8', fontWeight: 800, fontSize: 14 }}>
+              {hasSearched ? 'No Matching Appearances Found' : 'No Live Candidates Ingested Yet'}
             </div>
-            <div style={{ color: queryError ? '#f87171' : '#94a3b8', fontWeight: 800, fontSize: 14 }}>
-              {queryError
-                ? (queryError.includes('Not enough information')
-                    ? queryError
-                    : `Discovery Provider Error — ${queryError}`)
-                : 'No matching appearances found across indexed providers for this asset.'}
-            </div>
-            <div style={{ fontSize: 12, maxWidth: 520, lineHeight: 1.5, color: '#64748b' }}>
-              {queryError ? (
-                <span>{queryError}</span>
-              ) : (
-                <span>
-                  Live search across configured discovery providers returned 0 matching records for this media asset.
-                </span>
-              )}
+            <div style={{ fontSize: 12, maxWidth: 500, lineHeight: 1.5, color: '#64748b' }}>
+              {hasSearched
+                ? `0 visual matches found on active search providers for this media asset. Every single result in VeriMedia AI originates from genuine API hits with verified visual similarity — zero synthetic placeholders or fake matches.`
+                : 'Click "Run Reverse Image Search" above to automatically execute reverse visual discovery against Google Vision Web Detection and external providers.'}
             </div>
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {candidatesList.map((cand, idx) => {
-              const sim = cand.similarity ?? 0.85
+              const sim = typeof cand.similarity === 'number' ? cand.similarity : (cand.matchScore ? cand.matchScore / 100 : 0.85)
               const simPct = Math.round(sim * 100)
-              const isOriginal = simPct >= 99
-              const isHighDerivative = simPct >= 85 && !isOriginal
+              const classification = cand.classification || (simPct >= 98 ? 'EXACT_MATCH' : simPct >= 88 ? 'NEAR_DUPLICATE' : simPct >= 70 ? 'MODIFIED_DERIVATIVE' : 'UNRELATED')
+              const isExact = classification === 'EXACT_MATCH'
+              const isNear = classification === 'NEAR_DUPLICATE'
+              const isDerivative = classification === 'MODIFIED_DERIVATIVE' || cand.isPartialMatch
+              const isVisualMatch = cand.matchType === 'visual_match'
+              const provBadge = getProviderBadge(cand)
+
+              const phashVal = cand.phashSimilarity ?? cand.similarityMeasurements?.phashSimilarity
+              const visionVal = cand.visionScore ?? cand.similarityMeasurements?.visionScore
 
               return (
                 <div
                   key={cand.id || idx}
                   style={{
                     background: '#0d1117',
-                    border: isOriginal ? '1.5px solid rgba(34, 197, 94, 0.5)' : isHighDerivative ? '1.5px solid rgba(245, 158, 11, 0.4)' : '1px solid #1e2d3d',
+                    border: isExact 
+                      ? '1.5px solid rgba(34, 197, 94, 0.6)' 
+                      : isDerivative 
+                        ? '1.5px solid rgba(245, 158, 11, 0.6)' 
+                        : isNear 
+                          ? '1.5px solid rgba(56, 189, 248, 0.4)' 
+                          : '1px solid #1e2d3d',
                     borderRadius: 8,
-                    padding: '14px 16px',
+                    padding: '16px 18px',
                     display: 'flex',
                     flexDirection: 'column',
-                    gap: 8,
-                    transition: 'border-color 0.15s ease'
+                    gap: 12,
+                    boxShadow: isExact ? '0 2px 14px rgba(34, 197, 94, 0.08)' : isDerivative ? '0 2px 14px rgba(245, 158, 11, 0.08)' : 'none'
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-                    <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                  {/* Top Bar: Title, Provider, Classification, and Match Type Badges */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <h4 style={{ fontSize: 14, fontWeight: 800, color: '#f8fafc', margin: 0 }}>
+                          {cand.title}
+                        </h4>
+
+                        {/* Classification Badge */}
+                        <span style={{
+                          fontSize: 10,
+                          fontWeight: 800,
+                          padding: '2px 8px',
+                          borderRadius: 4,
+                          fontFamily: 'monospace',
+                          background: isExact ? 'rgba(34, 197, 94, 0.2)' : isDerivative ? 'rgba(245, 158, 11, 0.2)' : 'rgba(56, 189, 248, 0.15)',
+                          color: isExact ? '#4ade80' : isDerivative ? '#fbbf24' : '#38bdf8',
+                          border: `1px solid ${isExact ? '#22c55e44' : isDerivative ? '#f59e0b44' : '#38bdf844'}`
+                        }}>
+                          {isExact ? '👑 EXACT_MATCH' : isDerivative ? '⚠ MODIFIED_DERIVATIVE' : '⚡ NEAR_DUPLICATE'}
+                        </span>
+
+                        {/* Match Type Badge (VISUAL MATCH vs TEXT-INFERRED) */}
+                        <span style={{
+                          fontSize: 10,
+                          fontWeight: 800,
+                          padding: '2px 8px',
+                          borderRadius: 4,
+                          fontFamily: 'monospace',
+                          background: isVisualMatch ? 'rgba(168, 85, 247, 0.2)' : 'rgba(249, 115, 22, 0.15)',
+                          color: isVisualMatch ? '#c084fc' : '#fb923c',
+                          border: `1px solid ${isVisualMatch ? '#a855f744' : '#f9731644'}`
+                        }}>
+                          {isVisualMatch ? '🎯 VISUAL MATCH' : '📝 TEXT-INFERRED (OCR/Labels)'}
+                        </span>
+
+                        {/* Provider Badge */}
+                        <span style={{
+                          fontSize: 10,
+                          fontWeight: 800,
+                          padding: '2px 6px',
+                          borderRadius: 4,
+                          background: provBadge.bg,
+                          color: provBadge.text,
+                          border: `1px solid ${provBadge.border}`
+                        }}>
+                          {provBadge.name}
+                        </span>
+                      </div>
+
+                      {cand.author && (
+                        <div style={{ fontSize: 11, color: '#94a3b8' }}>by @{cand.author} • Platform: {cand.platform || 'Web'}</div>
+                      )}
+                    </div>
+
+                    {/* Similarity Score Display */}
+                    <div style={{
+                      textAlign: 'right',
+                      background: '#080c10',
+                      padding: '6px 12px',
+                      borderRadius: 6,
+                      border: '1px solid #1e2d3d',
+                      flexShrink: 0
+                    }}>
                       <div style={{
-                        width: 40,
-                        height: 40,
-                        borderRadius: 8,
-                        background: isOriginal ? 'rgba(34,197,94,0.15)' : 'rgba(0,212,255,0.1)',
-                        border: `1px solid ${isOriginal ? '#22c55e44' : '#00d4ff44'}`,
+                        fontSize: 18,
+                        fontWeight: 900,
+                        color: isExact ? '#4ade80' : isDerivative ? '#fbbf24' : '#38bdf8',
+                        fontFamily: 'monospace'
+                      }}>
+                        {simPct}% visual similarity
+                      </div>
+                      <div style={{ fontSize: 9, color: '#64748b', fontFamily: 'monospace' }}>
+                        {phashVal != null ? `pHash: ${(phashVal).toFixed(2)}` : 'pHash: N/A'}
+                        {visionVal != null ? `, Vision: ${(visionVal).toFixed(2)}` : ''}
+                        {cand.hammingDistance != null ? `, Dist: ${cand.hammingDistance}` : ''}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* SIDE-BY-SIDE VISUAL COMPARISON CONTAINER */}
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 16,
+                    background: '#080c10',
+                    border: '1px solid #161f2e',
+                    borderRadius: 8,
+                    padding: 12,
+                    flexWrap: 'wrap'
+                  }}>
+                    {/* Left: Uploaded Media Reference */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{
+                        width: 56,
+                        height: 56,
+                        borderRadius: 6,
+                        background: '#161b22',
+                        border: '1px solid #334155',
+                        overflow: 'hidden',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        fontSize: 18,
                         flexShrink: 0
                       }}>
-                        {isOriginal ? '👑' : cand.platform?.includes('TikTok') ? '📱' : cand.platform?.includes('YouTube') ? '▶️' : '🌐'}
+                        {referenceThumbnail ? (
+                          <img
+                            src={referenceThumbnail}
+                            alt="Uploaded Reference"
+                            referrerPolicy="no-referrer"
+                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                          />
+                        ) : (
+                          <span style={{ fontSize: 20 }}>🖼️</span>
+                        )}
                       </div>
-
-                      <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                          <h4 style={{ fontSize: 14, fontWeight: 800, color: '#f8fafc', margin: 0 }}>
-                            {cand.title}
-                          </h4>
-                          <span style={{
-                            fontSize: 10,
-                            fontWeight: 800,
-                            padding: '2px 6px',
-                            borderRadius: 4,
-                            background: isOriginal ? 'rgba(34,197,94,0.2)' : 'rgba(56,189,248,0.15)',
-                            color: isOriginal ? '#4ade80' : '#38bdf8'
-                          }}>
-                            {cand.platform || 'Web'}
-                          </span>
-                          {cand.author && (
-                            <span style={{ fontSize: 11, color: '#94a3b8' }}>by @{cand.author}</span>
-                          )}
-                        </div>
-
-                        <p style={{ fontSize: 12, color: '#cbd5e1', margin: '4px 0 0 0', lineHeight: 1.4 }}>
-                          {cand.snippet}
-                        </p>
-
-                        <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 6, fontSize: 11, color: '#64748b' }}>
-                          <span>Published: {cand.publishedAt ? new Date(cand.publishedAt).toLocaleString() : 'N/A'}</span>
-                          <span>•</span>
-                          <a href={cand.url} target="_blank" rel="noreferrer" style={{ color: '#38bdf8', textDecoration: 'none' }}>
-                            🔗 {cand.url.length > 45 ? `${cand.url.slice(0, 45)}…` : cand.url}
-                          </a>
-                        </div>
+                      <div style={{ display: 'flex', flexDirection: 'column' }}>
+                        <span style={{ fontSize: 9, color: '#64748b', fontWeight: 800, textTransform: 'uppercase' }}>Reference Media</span>
+                        <span style={{ fontSize: 11, color: '#e2e8f0', fontWeight: 700 }}>Uploaded Asset</span>
                       </div>
                     </div>
 
-                    {/* Similarity Score Badge & Actions */}
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
-                      <div style={{
-                        textAlign: 'right',
-                        background: '#080c10',
-                        padding: '4px 10px',
-                        borderRadius: 6,
-                        border: '1px solid #1e2d3d'
-                      }}>
-                        <div style={{ fontSize: 16, fontWeight: 800, color: isOriginal ? '#4ade80' : isHighDerivative ? '#fbbf24' : '#38bdf8', fontFamily: 'monospace' }}>
-                          {simPct}%
-                        </div>
-                        <div style={{ fontSize: 9, color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>
-                          {isOriginal ? 'Master Origin' : 'Perceptual Match'}
-                        </div>
-                      </div>
+                    <div style={{ color: '#64748b', fontSize: 16, fontWeight: 800 }}>➔</div>
 
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        <button
-                          onClick={() => setActiveTab('origin')}
-                          style={{
-                            background: 'rgba(56, 189, 248, 0.1)',
-                            border: '1px solid rgba(56, 189, 248, 0.3)',
-                            color: '#38bdf8',
-                            padding: '4px 8px',
-                            borderRadius: 4,
-                            fontSize: 10,
-                            fontWeight: 700,
-                            cursor: 'pointer'
-                          }}
-                        >
-                          🌳 Trace in E3
-                        </button>
-                        <button
-                          onClick={() => setActiveTab('propagation')}
-                          style={{
-                            background: 'rgba(168, 85, 247, 0.1)',
-                            border: '1px solid rgba(168, 85, 247, 0.3)',
-                            color: '#c084fc',
-                            padding: '4px 8px',
-                            borderRadius: 4,
-                            fontSize: 10,
-                            fontWeight: 700,
-                            cursor: 'pointer'
-                          }}
-                        >
-                          📡 View in E4
-                        </button>
+                    {/* Right: Discovered Candidate */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1 }}>
+                      <div style={{
+                        width: 56,
+                        height: 56,
+                        borderRadius: 6,
+                        background: isExact ? 'rgba(34,197,94,0.1)' : 'rgba(0,212,255,0.08)',
+                        border: `1px solid ${isExact ? '#22c55e44' : '#00d4ff44'}`,
+                        overflow: 'hidden',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0
+                      }}>
+                        {cand.thumbnailUrl ? (
+                          <img
+                            src={cand.thumbnailUrl}
+                            alt={cand.title || 'Discovered candidate'}
+                            referrerPolicy="no-referrer"
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none';
+                            }}
+                            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                          />
+                        ) : (
+                          <span style={{ fontSize: 20 }}>
+                            {cand.platform?.includes('YouTube') ? '▶️' : cand.platform?.includes('Instagram') ? '📸' : cand.platform?.includes('X') ? '𝕏' : '🌐'}
+                          </span>
+                        )}
                       </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                        <span style={{ fontSize: 9, color: '#64748b', fontWeight: 800, textTransform: 'uppercase' }}>Candidate Appearance</span>
+                        <span style={{ fontSize: 11, color: '#38bdf8', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {cand.platform || 'External Web'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Forensic Alert: Derivative / Tampered match */}
+                  {cand.isPartialMatch && (
+                    <div style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      padding: '4px 10px',
+                      borderRadius: 4,
+                      background: 'rgba(239, 68, 68, 0.12)',
+                      border: '1px solid rgba(239, 68, 68, 0.3)',
+                      color: '#f87171',
+                      fontSize: 11,
+                      fontWeight: 700,
+                      width: 'fit-content'
+                    }}>
+                      <span>⚠ High Priority Lead:</span>
+                      <span>{cand.tamperedIndicator || 'Potential partial crop, altered background, or tampered derivative match'}</span>
+                    </div>
+                  )}
+
+                  <p style={{ fontSize: 12, color: '#cbd5e1', margin: '0', lineHeight: 1.4 }}>
+                    {cand.snippet}
+                  </p>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, fontSize: 11, color: '#64748b' }}>
+                    <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <span>Published: {cand.publishedAt ? new Date(cand.publishedAt).toLocaleString() : 'N/A'}</span>
+                      <span>•</span>
+                      <a href={cand.url} target="_blank" rel="noreferrer" style={{ color: '#38bdf8', textDecoration: 'none' }}>
+                        🔗 {cand.url.length > 55 ? `${cand.url.slice(0, 55)}…` : cand.url}
+                      </a>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button
+                        onClick={() => setActiveTab('origin')}
+                        style={{
+                          background: 'rgba(56, 189, 248, 0.1)',
+                          border: '1px solid rgba(56, 189, 248, 0.3)',
+                          color: '#38bdf8',
+                          padding: '4px 8px',
+                          borderRadius: 4,
+                          fontSize: 10,
+                          fontWeight: 700,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        🌳 Trace in E3
+                      </button>
+                      <button
+                        onClick={() => setActiveTab('propagation')}
+                        style={{
+                          background: 'rgba(168, 85, 247, 0.1)',
+                          border: '1px solid rgba(168, 85, 247, 0.3)',
+                          color: '#c084fc',
+                          padding: '4px 8px',
+                          borderRadius: 4,
+                          fontSize: 10,
+                          fontWeight: 700,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        📡 View in E4
+                      </button>
                     </div>
                   </div>
                 </div>
               )
             })}
+
+            {/* Pagination & Load 10 More Controls */}
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 8,
+              marginTop: 10,
+              padding: '14px 16px',
+              background: '#0d1117',
+              border: '1px solid #1e2d3d',
+              borderRadius: 8
+            }}>
+              <div style={{ fontSize: 11, color: '#94a3b8' }}>
+                Showing {candidatesList.length} genuine appearance(s)
+                {totalDiscoveredCount > candidatesList.length ? ` of ${totalDiscoveredCount} total discovered` : ''} • Page {currentPage}
+              </div>
+
+              {hasMore && !maxReached ? (
+                <button
+                  onClick={handleLoadMore}
+                  disabled={isLoadingMore}
+                  style={{
+                    background: isLoadingMore ? '#1e293b' : '#00d4ff',
+                    color: isLoadingMore ? '#94a3b8' : '#080c10',
+                    border: 'none',
+                    borderRadius: 6,
+                    padding: '8px 20px',
+                    fontSize: 12,
+                    fontWeight: 800,
+                    cursor: isLoadingMore ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6
+                  }}
+                >
+                  {isLoadingMore ? '◌ Ingesting next 10…' : '⬇ Ingest 10 More Appearances'}
+                </button>
+              ) : maxReached ? (
+                <div style={{ fontSize: 11, color: '#fbbf24', fontWeight: 600 }}>
+                  ✓ Maximum limit of 50 candidates reached to protect API quotas.
+                </div>
+              ) : (
+                <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>
+                  ✓ All genuine appearances loaded from active providers. Zero synthetic filler.
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>

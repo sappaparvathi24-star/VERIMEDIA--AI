@@ -29,6 +29,18 @@ export class InstagramDiscoveryProvider {
   }
 
   async search(signals, opts = {}) {
+    // Instagram Graph API does not support reverse-image or visual-similarity searching.
+    // For visual/image-driven discovery, honestly return UNSUPPORTED_BY_PLATFORM with zero candidates.
+    if (opts.isVisualSearch || !opts.isManualTextSearch) {
+      return {
+        providerId: this.id,
+        status: 'UNSUPPORTED_BY_PLATFORM',
+        reason: 'Instagram Graph API does not provide a reverse-image or visual similarity search endpoint',
+        matchType: 'unsupported_by_platform',
+        candidates: []
+      };
+    }
+
     const query = typeof signals === 'string' ? signals : signals?.query || signals?.[0]?.term;
     if (!this.isConfigured()) {
       return {

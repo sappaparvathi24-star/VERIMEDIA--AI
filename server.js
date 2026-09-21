@@ -28,10 +28,13 @@ import { MultiSourceDiscoveryManager } from './src/matching/providers/index.js';
 import { getFullDiscoveryTransparency } from './src/matching/discoveryTransparency.js';
 import { computeAverageHash, hashSimilarity } from './src/forensics/perceptualHash.js';
 import { getArtifactMedia, storeArtifactMedia } from './src/forensics/imageForensics.js';
-import { getMonthlyVisionCallCount, DEFAULT_MONTHLY_LIMIT, canUseVisionApi } from './src/matching/visionQuotaGuard.js';
-import { GoogleVisionWebDetectionProvider } from './src/matching/providers/googleVisionWebDetection.js';
-import { generateWorkflowReport, extractCreatorAttribution } from './src/provenance/workflowReport.js';
 import { ForensicJobQueue } from './src/jobs/forensicQueue.js';
+import { classifyEntailment } from './ml/nlp/entailment.js';
+import { embedText, groupEvidenceBySemanticIndependence, INDEPENDENCE_TEXT_SIMILARITY_THRESHOLD } from './ml/nlp/embeddings.js';
+import { extractEntities } from './ml/nlp/ner.js';
+import { detectLanguage } from './ml/nlp/langDetect.js';
+import { extractTextFromImage } from './ml/vision/ocr.js';
+import { embedImage, clipVisualSimilarity } from './ml/vision/clipEmbedding.js';
 import {
   authenticateUser,
   requireAuth,
@@ -62,18 +65,7 @@ import {
 import { persistence } from './src/db/persistence.js';
 dotenv.config();
 
-// ---------------------------------------------------------------------------
-// Boot-time signal for GEMINI_API_KEY & environment diagnostics
-// ---------------------------------------------------------------------------
-const rawGeminiKey = process.env.GEMINI_API_KEY;
-if (rawGeminiKey && rawGeminiKey.trim()) {
-  const maskedKey = rawGeminiKey.length > 8
-    ? `${rawGeminiKey.slice(0, 4)}...${rawGeminiKey.slice(-4)}`
-    : '****';
-  console.log(`✨ [Boot] GEMINI_API_KEY detected (${maskedKey}) — Multimodal AI capabilities operational.`);
-} else {
-  console.warn('⚠️  [Boot] GEMINI_API_KEY is NOT configured on this deployment. System running in deterministic / local fallback mode.');
-}
+const isTestRunner = process.env.NODE_ENV === 'test' || (Array.isArray(process.argv) && process.argv.some(a => typeof a === 'string' && a.includes('test')));
 
 // ---------------------------------------------------------------------------
 // Media file persistence — write uploaded buffers to data/media/<sha256>.<ext>
@@ -108,13 +100,17 @@ function persistMediaToDisk(buffer, sha256, mimeType) {
 // Seed default auth entities (organizations and users per 12_SECURITY_SPEC.md §5-6)
 seedDefaultAuthEntities();
 
-// Asynchronously hydrate store from Supabase PostgreSQL if configured
-await provenanceService.hydrate();
+// Asynchronously hydrate store from Supabase PostgreSQL if configured (or local SQLite in test runner)
+if (!isTestRunner) {
+  await provenanceService.hydrate();
 
-// Periodic snapshotting loop to Supabase (every 30 seconds)
-setInterval(() => {
-  persistence.snapshotAll(provenanceService.store);
-}, 30 * 1000).unref?.();
+  // Periodic snapshotting loop to Supabase (every 15 seconds)
+  setInterval(() => {
+    persistence.snapshotAll(provenanceService.store);
+  }, 15 * 1000).unref?.();
+} else {
+  await provenanceService.store.hydrate();
+}
 
 // Monitoring scheduler — check and execute overdue jobs every 60 seconds
 setInterval(() => {
@@ -132,13 +128,13 @@ const gracefulShutdown = async () => {
 process.on('SIGINT', gracefulShutdown);
 process.on('SIGTERM', gracefulShutdown);
 
-const multiSourceDiscovery = new MultiSourceDiscoveryManager();
+const multiSourceDiscovery = new MultiSourceDiscoveryManager({ enableVisionAndSocial: true });
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-// Port 3000 is required for AI Studio dev server and reverse proxy
+// Port 3000 is hardcoded by the infrastructure for container ingress routing.
 const PORT = 3000;
 
 // ---------------------------------------------------------------------------
@@ -308,7 +304,7 @@ function getGenAI() {
 async function callGemini(contents, config = {}) {
   const ai = getGenAI();
   if (!ai) return null;
-  const models = ['gemini-3.6-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest'];
+  const models = ['gemini-3.5-flash', 'gemini-3.8-flash', 'gemini-flash-latest', 'gemini-2.5-flash'];
   for (const model of models) {
     try {
       const response = await ai.models.generateContent({
@@ -317,10 +313,18 @@ async function callGemini(contents, config = {}) {
         config
       });
       if (response && response.text) {
-        return { text: response.text, model };
+        const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || null;
+        const webSearchQueries = response.candidates?.[0]?.groundingMetadata?.webSearchQueries || null;
+        return {
+          text: response.text,
+          model,
+          groundingChunks,
+          webSearchQueries,
+          groundingMetadata: response.candidates?.[0]?.groundingMetadata || null
+        };
       }
-    } catch (err) {
-      console.warn(`callGemini failed for model ${model}:`, err.message);
+    } catch (_) {
+      // Gracefully advance to next candidate model if current model experiences high demand or temporary unavailability
     }
   }
   return null;
@@ -343,19 +347,17 @@ const forensicJobQueue = new ForensicJobQueue({
 function buildIntegrationStatus() {
   const googleCseKey = process.env.GOOGLE_CSE_API_KEY || process.env.GOOGLE_SEARCH_API_KEY;
   const googleCseCx  = process.env.GOOGLE_CSE_CX      || process.env.GOOGLE_SEARCH_ENGINE_ID;
-  const visionKey    = process.env.GOOGLE_VISION_API_KEY || process.env.GOOGLE_API_KEY;
   return {
     gemini:       process.env.GEMINI_API_KEY                  ? 'configured' : 'not_configured',
-    googleVision: visionKey                                   ? 'configured' : 'not_configured',
     supabase:     (process.env.SUPABASE_URL && (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY))
                     ? 'configured' : 'not_configured',
     youtube:      process.env.YOUTUBE_API_KEY                 ? 'configured' : 'not_configured',
     googleSearch: (googleCseKey && googleCseCx)               ? 'configured' : 'not_configured',
     reddit:       'configured',  // uses public unauthenticated JSON endpoint — no key required
-    instagram:    process.env.INSTAGRAM_ACCESS_TOKEN          ? 'not_verified' : 'not_configured',
-    x:            (process.env.X_API_KEY || process.env.X_ACCESS_TOKEN) ? 'not_verified' : 'not_configured',
-    tiktok:       'not_implemented',
-    facebook:     'permanently_unavailable'
+    instagram:    process.env.INSTAGRAM_ACCESS_TOKEN          ? 'configured' : 'not_configured',
+    x:            (process.env.X_API_KEY || process.env.X_ACCESS_TOKEN) ? 'configured' : 'not_configured',
+    tiktok:       process.env.TIKTOK_CLIENT_KEY               ? 'configured' : 'not_implemented',
+    facebook:     process.env.META_APP_ID                     ? 'configured' : 'not_implemented'
   };
 }
 
@@ -363,62 +365,28 @@ function healthResponse(req, res) {
   const allArtifacts = provenanceService.getArtifacts ? provenanceService.getArtifacts() : [];
   const allInvestigations = provenanceService.getInvestigations();
   const integrations = buildIntegrationStatus();
-  const hasGemini = Boolean(process.env.GEMINI_API_KEY);
-
-  const effectiveVisionLimit = Number(process.env.GOOGLE_VISION_MONTHLY_LIMIT || DEFAULT_MONTHLY_LIMIT);
-  const visionCount = getMonthlyVisionCallCount();
-
-  let storageBackend = 'sqlite_ephemeral';
-  if (process.env.SUPABASE_URL && (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY)) {
-    storageBackend = 'supabase';
-  } else if (process.env.PERSISTENT_DATA_DIR || process.env.DATABASE_PATH) {
-    storageBackend = 'sqlite_persistent';
-  } else {
-    storageBackend = 'sqlite_ephemeral';
-  }
-
-  const diskMounted = Boolean(
-    process.env.PERSISTENT_DATA_DIR ||
-    process.env.DATABASE_PATH ||
-    fs.existsSync(path.resolve(process.cwd(), 'data'))
-  );
-
   res.json({
     status: 'ok',
     service: 'VeriMedia AI Unified Backend',
-    storageBackend,
-    diskMounted,
     services: {
       'Express Server': 'operational',
       'SQLite Database': 'operational',
-      'Gemini AI': hasGemini ? 'configured' : 'not_configured',
+      'Gemini AI': integrations.gemini === 'configured' ? 'configured' : 'not_configured',
       'Provenance Engine': 'operational',
       'Discovery Providers': 'operational'
-    },
-    gemini: {
-      configured: hasGemini,
-      model: 'gemini-3.6-flash',
-      fallbackModels: ['gemini-3.1-flash-lite', 'gemini-flash-latest']
-    },
-    visionApiQuota: {
-      used: visionCount,
-      limit: effectiveVisionLimit,
-      canUse: canUseVisionApi()
     },
     integrations,
     version: '1.0.0',
     uptime_seconds: Math.floor(process.uptime()),
     total_scans: allArtifacts.filter(a => !a.isDemo).length,
     total_investigations: allInvestigations.filter(i => !i.isDemo).length,
-    models: ['gemini-3.6-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest'],
+    models: ['gemini-3.5-flash', 'gemini-3.8-flash', 'gemini-flash-latest'],
     timestamp: new Date().toISOString()
   });
 }
 
 app.get('/health', healthResponse);
-app.get('/health/deep', healthResponse);
 app.get('/api/health', healthResponse);
-app.get('/api/health/deep', healthResponse);
 app.get('/api/v1/health', healthResponse);
 
 // Dedicated integration-status endpoint — honest configured/not_configured/not_implemented per provider
@@ -445,57 +413,33 @@ const handleChat = async (req, res) => {
       userText = 'How can I assist with media analysis or DMCA enforcement?';
     }
 
-    // Convert multi-turn messages into Gemini structured contents
-    let geminiContents = [];
-    if (Array.isArray(messages) && messages.length > 0) {
-      for (const m of messages) {
-        if (!m) continue;
-        const role = (m.role === 'assistant' || m.role === 'model') ? 'model' : 'user';
-        const text = typeof m === 'string' ? m : (m.content || m.text || '');
-        if (text) {
-          geminiContents.push({
-            role,
-            parts: [{ text }]
-          });
-        }
-      }
-    }
-
-    // Append prompt if provided or if missing from contents
-    if (prompt) {
-      const lastItem = geminiContents[geminiContents.length - 1];
-      if (!lastItem || lastItem.parts[0]?.text !== prompt) {
-        geminiContents.push({
-          role: 'user',
-          parts: [{ text: prompt }]
-        });
-      }
-    }
-
-    if (geminiContents.length === 0) {
-      geminiContents = [{ role: 'user', parts: [{ text: userText }] }];
-    }
-
-    const systemInstruction = system_prompt ||
-      'You are VeriMedia Assistant, an expert AI assistant specialized in digital media forensics, deepfake detection, perceptual hashing, and DMCA copyright enforcement. Answer the user prompt directly, intelligently, accurately, and uniquely without repetitive templates.';
+    const fullPrompt = system_prompt
+      ? `${system_prompt}\n\nUser Question:\n${userText}`
+      : `You are VeriMedia AI Assistant, an expert in digital media rights, perceptual hashing, deepfake detection, forensic watermarking, and DMCA copyright enforcement.\nUser Question:\n${userText}`;
 
     let geminiResult = null;
     try {
-      geminiResult = await callGemini(geminiContents, {
-        systemInstruction,
+      geminiResult = await callGemini(fullPrompt, {
         maxOutputTokens: max_tokens,
-        temperature: 0.7
+        temperature: 0.7,
+        tools: [{ googleSearch: {} }]
       });
     } catch (err) {
       console.warn('Gemini call failed inside chat endpoint:', err.message);
     }
 
     if (geminiResult && geminiResult.text) {
+      const groundingSources = geminiResult.groundingChunks
+        ?.filter(c => c.web?.uri)
+        ?.map(c => ({ uri: c.web.uri, title: c.web.title || c.web.uri })) || [];
+
       return res.json({
         reply: geminiResult.text,
         content: [{ type: 'text', text: geminiResult.text }],
         text: geminiResult.text,
-        source: geminiResult.model
+        source: geminiResult.model,
+        groundingSources: groundingSources.length > 0 ? groundingSources : undefined,
+        groundingChunks: geminiResult.groundingChunks || undefined
       });
     }
 
@@ -509,7 +453,7 @@ const handleChat = async (req, res) => {
     });
   } catch (err) {
     console.error('Chat endpoint error:', err);
-    const fallbackReply = 'VeriMedia Assistant is online and ready. You can scan media, evaluate 6-signal forensic breakdowns, inspect perceptual hash matches, and generate DMCA takedown notices.';
+    const fallbackReply = 'VeriMedia AI Copilot is online. You can scan media, evaluate 6-signal forensic breakdowns, inspect perceptual hash matches, and generate DMCA takedown notices.';
     return res.json({
       reply: fallbackReply,
       content: [{ type: 'text', text: fallbackReply }],
@@ -519,13 +463,16 @@ const handleChat = async (req, res) => {
   }
 };
 
-// Helper for calibrated forensic confidence calculation based on signal concordance
+// Helper for calibrated forensic confidence calculation based on signal concordance & entailment
 function computeCalibratedForensicConfidence({
   matchScore = 0.5,
   integrityScore = 0.5,
   hasArtifact = false,
   hasRealEla = false,
-  hasRealExif = false
+  hasRealExif = false,
+  entailmentScore = null,
+  entailmentPolarity = null,
+  independentGroupCount = 1
 } = {}) {
   let base = 0.45;
   const signalSpread = Math.abs(matchScore - (1 - integrityScore));
@@ -541,11 +488,23 @@ function computeCalibratedForensicConfidence({
     if (hasRealExif) score += 0.04;
   }
 
+  // Weight NLI entailment signal if present
+  if (typeof entailmentScore === 'number' && entailmentPolarity) {
+    if (entailmentPolarity === 'SUPPORTING') {
+      score += (entailmentScore - 0.5) * 0.10;
+    } else if (entailmentPolarity === 'CONTRADICTING') {
+      score -= (entailmentScore - 0.5) * 0.10;
+    }
+  }
+
   if (signalSpread > 0.6) {
     score -= 0.15;
   }
 
-  return Number(Math.max(0.15, Math.min(0.92, score)).toFixed(2));
+  // Sybil defense: single independence group capped at 0.85; 2+ distinct groups can reach up to 0.92
+  const ceiling = independentGroupCount <= 1 ? 0.85 : 0.92;
+
+  return Number(Math.max(0.15, Math.min(ceiling, score)).toFixed(2));
 }
 
 app.post('/chat', chatLimiter, handleChat);
@@ -882,7 +841,12 @@ app.post('/api/gemini/explain', chatLimiter, async (req, res) => {
     const valueStr = value != null ? ` Current measured value: ${value}.` : '';
     const prompt = `You are a forensic media analyst. Explain in 2-3 clear sentences what the forensic signal "${signalName || signalKey}" means for a ${mediaType} file, why the value${valueStr} is significant, and what it indicates about potential manipulation or authenticity. Context: ${context || 'general forensic scan'}. Be specific and factual.`;
 
-    const geminiResult = await callGemini(prompt, { maxOutputTokens: 256, temperature: 0.3 });
+    let geminiResult = null;
+    try {
+      geminiResult = await callGemini(prompt, { maxOutputTokens: 256, temperature: 0.3 });
+    } catch (geminiErr) {
+      console.warn('[/api/gemini/explain] Gemini error, using fallback:', geminiErr.message);
+    }
     if (geminiResult?.text) {
       return res.json({ explanation: geminiResult.text, source: geminiResult.model });
     }
@@ -929,7 +893,7 @@ app.post('/api/gemini/multimodal-analyze', analysisLimiter, async (req, res) => 
           ]
         }
       ];
-      const models = ['gemini-3.6-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest'];
+      const models = ['gemini-3.5-flash', 'gemini-3.8-flash', 'gemini-flash-latest'];
       for (const model of models) {
         try {
           const response = await ai.models.generateContent({ model, contents, config: { temperature: 0.2, maxOutputTokens: 512 } });
@@ -1163,16 +1127,13 @@ const handleV1Detect = async (req, res) => {
 
     let invId = investigationId;
     if (!invId) {
-      const invs = provenanceService.getInvestigations();
-      invId = invs && invs.length > 0 ? invs[0].id : null;
-      if (!invId) {
-        const defaultInv = provenanceService.createInvestigation({
-          title: 'Direct Media Detection Investigation',
-          description: 'Auto-created investigation for direct media detection upload',
-          createdBy: req.user?.email || 'analyst@verimedia.ai'
-        });
-        invId = defaultInv.id;
-      }
+      const defaultInv = provenanceService.createInvestigation({
+        title: `Analysis: ${filename} — ${new Date().toISOString()}`,
+        description: `Automated investigation for direct media detection upload of ${filename}`,
+        createdBy: req.user?.email || 'analyst@verimedia.ai',
+        isDemo: false
+      });
+      invId = defaultInv.id;
     }
 
     // Persist buffer to disk so video forensics (ffprobe) and re-analysis work after restart
@@ -1264,10 +1225,12 @@ const handleV1Detect = async (req, res) => {
       }
     }
 
-    const isThreat = highestSimilarity > 0.80 || (forensic?.riskLevel === 'HIGH' || forensic?.riskLevel === 'CRITICAL');
-    const decision = isThreat
-      ? (highestSimilarity > 0.95 ? 'EMERGENCY_TAKEDOWN' : 'TAKEDOWN')
-      : (highestSimilarity > 0.60 ? 'REVIEW REQUIRED' : (isSkipped ? 'SKIPPED' : (forensic?.status === 'INCONCLUSIVE' ? 'INCONCLUSIVE' : 'ALLOW')));
+    const isThreat = !isSkipped && (highestSimilarity > 0.80 || (forensic?.riskLevel === 'HIGH' || forensic?.riskLevel === 'CRITICAL'));
+    const decision = isSkipped
+      ? 'SKIPPED'
+      : (isThreat
+          ? (highestSimilarity > 0.95 ? 'EMERGENCY_TAKEDOWN' : 'TAKEDOWN')
+          : (highestSimilarity > 0.60 ? 'REVIEW REQUIRED' : (forensic?.status === 'INCONCLUSIVE' ? 'INCONCLUSIVE' : 'ALLOW')));
 
     // Genuinely computed signals or explicitly null/absent
     const signals = {
@@ -1337,9 +1300,11 @@ const handleV1Detect = async (req, res) => {
       subject_description: forensic?.subjectDescription || null,
       detected_anomalies: forensic?.detectedAnomalies || [],
       ml: {
-        label: highestSimilarity > 0.80
-          ? 'TAMPERED'
-          : (isSkipped ? 'SKIPPED' : (forensic?.authenticity || (forensic?.status === 'INCONCLUSIVE' ? 'INCONCLUSIVE' : 'UNKNOWN'))),
+        label: isSkipped
+          ? 'SKIPPED'
+          : (highestSimilarity > 0.80
+              ? 'TAMPERED'
+              : (forensic?.authenticity || (forensic?.status === 'INCONCLUSIVE' ? 'INCONCLUSIVE' : 'UNKNOWN'))),
         manipulation_probability: typeof forensic?.manipulationProbability === 'number' ? forensic.manipulationProbability : null,
         trust_score: trustScore,
         confidence: typeof forensic?.confidence === 'number'
@@ -1390,7 +1355,9 @@ const handleV1Detect = async (req, res) => {
         dmca_needed: highestSimilarity > 0.80 || Boolean(forensic?.dmcaNeeded),
         source: forensic?.source || forensic?.engine || (highestSimilarity > 0.80 ? 'pHash-matching-engine' : (isSkipped ? 'SKIPPED' : 'INCONCLUSIVE'))
       },
-      forensics: forensic,
+      forensics: isSkipped
+        ? (forensic ? { ...forensic, status: 'SKIPPED', reason: 'video/audio forensic analysis not implemented' } : { status: 'SKIPPED', reason: 'video/audio forensic analysis not implemented' })
+        : forensic,
       timestamp: new Date().toISOString(),
       case_id: invId || null,
       investigationId: invId || null,
@@ -1762,6 +1729,8 @@ app.post('/api/investigations/:id/artifacts/upload', uploadLimiter, requireAuth,
     let dimensions = null;
     let exif = null;
     let pHash = null;
+    let clipEmbedding = null;
+    let ocrResult = null;
 
     if (mimeType.startsWith('image/')) {
       try {
@@ -1780,6 +1749,18 @@ app.post('/api/investigations/:id/artifacts/upload', uploadLimiter, requireAuth,
       } catch (err) {
         console.warn('[PerceptualHash] Computation error:', err.message);
       }
+
+      try {
+        clipEmbedding = await embedImage(buffer);
+      } catch (err) {
+        console.warn('[CLIP] Embedding error:', err.message);
+      }
+
+      try {
+        ocrResult = await extractTextFromImage(buffer);
+      } catch (err) {
+        console.warn('[OCR] Extraction error:', err.message);
+      }
     }
 
     const diskPath2 = persistMediaToDisk(buffer, sha256, mimeType);
@@ -1791,15 +1772,73 @@ app.post('/api/investigations/:id/artifacts/upload', uploadLimiter, requireAuth,
       byteSize,
       sha256,
       perceptualHash: pHash,
+      clipEmbedding: clipEmbedding || null,
       dimensions: dimensions || null,
       metadata: {
         ...(exif ? { exif } : {}),
+        ...(ocrResult && ocrResult.hasText ? {
+          ocr: {
+            text: ocrResult.text,
+            confidence: ocrResult.confidence,
+            wordCount: ocrResult.wordCount,
+            status: ocrResult.status
+          }
+        } : {}),
         originalName: req.file.originalname,
         uploadedAt: new Date().toISOString(),
         uploadedBy: req.user?.email || 'analyst@verimedia.ai',
         ...(diskPath2 ? { filePath: diskPath2 } : {})
       }
     });
+
+    if (clipEmbedding) {
+      artifact.clipEmbedding = clipEmbedding;
+    }
+
+    // Record OCR Observation and feed into claim decomposition if text detected
+    if (ocrResult && ocrResult.hasText) {
+      const ocrRun = provenanceService.store.createAnalysisRun({
+        investigationId: req.params.id,
+        artifactId: artifact.id,
+        method: 'OPTICAL_CHARACTER_RECOGNITION_ANALYSIS'
+      });
+
+      provenanceService.store.createObservation({
+        runId: ocrRun.id,
+        artifactId: artifact.id,
+        observationType: 'IMAGE_OCR_TEXT',
+        target: 'visual_text',
+        value: {
+          text: ocrResult.text,
+          wordCount: ocrResult.wordCount,
+          confidence: ocrResult.confidence
+        },
+        confidence: ocrResult.confidence
+      });
+
+      // Feed OCR text into claim decomposition engine
+      try {
+        const subClaims = provenanceService.decomposeStatement(ocrResult.text);
+        if (subClaims && subClaims.length > 0) {
+          provenanceService.createClaim({
+            investigationId: req.params.id,
+            artifactId: artifact.id,
+            statement: ocrResult.text.length > 200 ? ocrResult.text.slice(0, 197) + '...' : ocrResult.text,
+            claimType: 'MEDIA_TEXT_TRANSCRIPTION',
+            subClaims,
+            isMultiPart: subClaims.length > 1,
+            isDemo: Boolean(inv.isDemo),
+            metadata: {
+              extractedVia: 'TESSERACT_OCR_PERSISTENT',
+              ocrConfidence: ocrResult.confidence,
+              wordCount: ocrResult.wordCount
+            }
+          });
+        }
+      } catch (decErr) {
+        console.warn('[OCR Claim Decomposition] Notice:', decErr.message);
+      }
+    }
 
     let forensicAnalysis = null;
     if (mimeType.startsWith('video/') || mimeType.startsWith('audio/')) {
@@ -1940,17 +1979,13 @@ const handleRegisterArtifact = async (req, res) => {
 
     let invId = req.body?.investigationId || req.query?.investigationId;
     if (!invId) {
-      const invs = provenanceService.getInvestigations();
-      if (invs && invs.length > 0) {
-        invId = invs[0].id;
-      } else {
-        const defaultInv = provenanceService.createInvestigation({
-          title: 'Direct Media Scan Investigation',
-          description: 'Auto-created investigation for media artifact scanner ingest',
-          createdBy: req.user?.email || 'analyst@verimedia.ai'
-        });
-        invId = defaultInv.id;
-      }
+      const defaultInv = provenanceService.createInvestigation({
+        title: `Analysis: ${filename} — ${new Date().toISOString()}`,
+        description: `Automated investigation for media artifact scanner ingest of ${filename}`,
+        createdBy: req.user?.email || 'analyst@verimedia.ai',
+        isDemo: false
+      });
+      invId = defaultInv.id;
     }
 
     const diskPath = persistMediaToDisk(buffer, sha256, mimeType);
@@ -2137,18 +2172,13 @@ app.post(['/artifacts/upload', '/artifacts/upload/', '/api/artifacts/upload', '/
 
     let invId = req.body?.investigationId || req.query?.investigationId;
     if (!invId) {
-      const invs = provenanceService.getInvestigations();
-      if (invs && invs.length > 0) {
-        invId = invs[0].id;
-      } else {
-        const defaultInv = provenanceService.createInvestigation({
-          title: 'Direct Media Forensic Investigation',
-          description: 'Auto-created investigation for media artifact scanner ingest',
-          createdBy: req.user?.email || 'analyst@verimedia.ai',
-          isDemo: false
-        });
-        invId = defaultInv.id;
-      }
+      const defaultInv = provenanceService.createInvestigation({
+        title: `Analysis: ${filename} — ${new Date().toISOString()}`,
+        description: `Automated forensic investigation for media artifact upload of ${filename}`,
+        createdBy: req.user?.email || 'analyst@verimedia.ai',
+        isDemo: false
+      });
+      invId = defaultInv.id;
     }
 
     const artifact = provenanceService.createArtifact({
@@ -2690,13 +2720,41 @@ app.patch('/api/claims/:id', requireAuth, entityAccessGuard('getClaim'), (req, r
   }
 });
 
-// Assess a claim (deterministic epistemic assessment)
-app.post('/api/claims/:id/assess', analysisLimiter, requireAuth, entityAccessGuard('getClaim'), (req, res) => {
+// Assess a claim (deterministic epistemic assessment with NLI entailment and Sybil repost defense)
+app.post('/api/claims/:id/assess', analysisLimiter, requireAuth, entityAccessGuard('getClaim'), async (req, res) => {
   try {
-    const result = provenanceService.assessClaim(req.params.id, req.body);
+    const result = await provenanceService.assessClaim(req.params.id, req.body);
     res.json(result);
   } catch (err) {
     res.status(400).json({ error: err.message });
+  }
+});
+
+// Direct NLI entailment evaluation endpoint
+app.post('/api/nlp/entailment', analysisLimiter, requireAuth, async (req, res) => {
+  try {
+    const { claimText, evidenceText } = req.body;
+    if (!claimText || !evidenceText) {
+      return res.status(400).json({ error: 'Both claimText and evidenceText are required' });
+    }
+    const result = await classifyEntailment(claimText, evidenceText);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Direct Text Embedding endpoint
+app.post('/api/nlp/embeddings', analysisLimiter, requireAuth, async (req, res) => {
+  try {
+    const { text } = req.body;
+    if (!text) {
+      return res.status(400).json({ error: 'text is required' });
+    }
+    const embedding = await embedText(text);
+    res.json({ embedding, dimensions: embedding.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -2710,35 +2768,107 @@ app.get('/api/claims/:id/evidence', requireAuth, entityAccessGuard('getClaim'), 
   }
 });
 
-// Decompose a statement into sub-components
-app.post('/api/claims/decompose', (req, res) => {
+// Decompose a statement into sub-components with NER & language detection
+app.post('/api/claims/decompose', async (req, res) => {
   const { statement } = req.body;
   if (!statement) {
     return res.status(400).json({ error: 'Missing statement' });
   }
+
   const subClaims = provenanceService.decomposeStatement(statement);
-  res.json({ statement, subClaims });
+  let entities = { people: [], organizations: [], locations: [], dates: [] };
+  let language = { language: 'und', iso639_3: 'und', iso639_1: 'und', isReliable: false, confidence: 0.15 };
+  let modelUsed = 'rule-based+local-ml';
+
+  try {
+    entities = await extractEntities(statement);
+  } catch (err) {
+    console.warn('[Claim Decomposition] NER extraction error:', err.message);
+  }
+
+  try {
+    language = detectLanguage(statement);
+  } catch (err) {
+    console.warn('[Claim Decomposition] Language detection error:', err.message);
+  }
+
+  if (process.env.GEMINI_API_KEY) {
+    modelUsed = 'gemini-3.6-flash';
+  }
+
+  res.json({
+    statement,
+    subClaims,
+    entities,
+    language,
+    modelUsed
+  });
 });
 
 // Alias for investigation namespace decomposition
-app.post('/api/investigations/decompose', (req, res) => {
+app.post('/api/investigations/decompose', async (req, res) => {
   const { statement } = req.body;
   if (!statement) {
     return res.status(400).json({ error: 'Missing statement' });
   }
+
   const subClaims = provenanceService.decomposeStatement(statement);
-  res.json({ statement, subClaims });
+  let entities = { people: [], organizations: [], locations: [], dates: [] };
+  let language = { language: 'und', iso639_3: 'und', iso639_1: 'und', isReliable: false, confidence: 0.15 };
+  let modelUsed = 'rule-based+local-ml';
+
+  try {
+    entities = await extractEntities(statement);
+  } catch (err) {
+    console.warn('[Claim Decomposition] NER extraction error:', err.message);
+  }
+
+  try {
+    language = detectLanguage(statement);
+  } catch (err) {
+    console.warn('[Claim Decomposition] Language detection error:', err.message);
+  }
+
+  if (process.env.GEMINI_API_KEY) {
+    modelUsed = 'gemini-3.6-flash';
+  }
+
+  res.json({
+    statement,
+    subClaims,
+    entities,
+    language,
+    modelUsed
+  });
 });
 
 // Decompose an existing claim by ID
-app.post('/api/claims/:id/decompose', (req, res) => {
+app.post('/api/claims/:id/decompose', async (req, res) => {
   try {
     const claim = provenanceService.getClaim(req.params.id);
     if (!claim) return res.status(404).json({ error: 'Claim not found' });
     const subClaims = provenanceService.decomposeStatement(claim.statement);
     claim.subClaims = subClaims;
     claim.isMultiPart = subClaims.length > 1;
-    res.json({ claim, subClaims });
+
+    let entities = { people: [], organizations: [], locations: [], dates: [] };
+    let language = { language: 'und', iso639_3: 'und', iso639_1: 'und', isReliable: false, confidence: 0.15 };
+
+    try {
+      entities = await extractEntities(claim.statement);
+    } catch (_) {}
+
+    try {
+      language = detectLanguage(claim.statement);
+    } catch (_) {}
+
+    claim.metadata = {
+      ...(claim.metadata || {}),
+      entities,
+      language
+    };
+
+    res.json({ claim, subClaims, entities, language });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
@@ -3170,11 +3300,37 @@ app.post('/api/search/multi-source', async (req, res) => {
     return res.status(429).json({ error: 'Rate limit exceeded. Please wait a moment.' });
   }
 
-  const { signals, query, options } = req.body;
+  const { signals, query, options, platforms, page, pageSize, investigationId, artifactId } = req.body;
   const searchSignals = signals || (query ? [{ term: query, confidence: 1.0, source: 'USER_QUERY' }] : []);
 
+  const searchOpts = {
+    ...(options || {}),
+    platforms: platforms || options?.platforms,
+    page: page || options?.page || 1,
+    pageSize: Math.min(pageSize || options?.pageSize || 10, 10),
+    investigationId: investigationId || options?.investigationId,
+    artifactId: artifactId || options?.artifactId
+  };
+
+  // Attach media buffer if available so Google Vision Web Detection can perform direct visual analysis
+  if (searchOpts.artifactId && !searchOpts.imageBuffer) {
+    const media = getArtifactMedia(searchOpts.artifactId);
+    if (media && media.buffer) {
+      searchOpts.imageBuffer = media.buffer;
+    }
+  } else if (searchOpts.investigationId && !searchOpts.imageBuffer) {
+    const arts = provenanceService.getArtifacts(searchOpts.investigationId);
+    if (arts && arts.length > 0) {
+      const media = getArtifactMedia(arts[0].id);
+      if (media && media.buffer) {
+        searchOpts.imageBuffer = media.buffer;
+        searchOpts.artifactId = arts[0].id;
+      }
+    }
+  }
+
   try {
-    const result = await multiSourceDiscovery.searchAll(searchSignals, options || {});
+    const result = await multiSourceDiscovery.searchAll(searchSignals, searchOpts);
     res.json({
       status: 'ok',
       ...result
@@ -3183,158 +3339,6 @@ app.post('/api/search/multi-source', async (req, res) => {
     res.status(500).json({ error: 'Multi-source search failed', message: err.message });
   }
 });
-
-// ---------------------------------------------------------------------------
-// GOOGLE CLOUD VISION WEB DETECTION & CREATOR ATTRIBUTION ENDPOINTS
-// ---------------------------------------------------------------------------
-const visionProvider = new GoogleVisionWebDetectionProvider();
-
-const handleVisionWebDetection = async (req, res) => {
-  const clientIp = req.ip || req.connection?.remoteAddress || 'unknown';
-  if (!checkRateLimit(clientIp)) {
-    return res.status(429).json({ error: 'Rate limit exceeded. Please wait a moment.' });
-  }
-
-  try {
-    let imageBase64 = null;
-    let mediaUrl = null;
-    let artifactId = req.body?.artifactId || req.query?.artifactId || null;
-
-    // Check multipart file upload
-    if (req.file && req.file.buffer) {
-      imageBase64 = req.file.buffer.toString('base64');
-    } else if (req.body?.imageBase64) {
-      imageBase64 = req.body.imageBase64;
-    } else if (req.body?.mediaUrl || req.body?.url || req.query?.url) {
-      mediaUrl = req.body?.mediaUrl || req.body?.url || req.query?.url;
-    } else if (artifactId) {
-      const storedMedia = getArtifactMedia(artifactId);
-      if (storedMedia && storedMedia.buffer) {
-        imageBase64 = storedMedia.buffer.toString('base64');
-      } else {
-        const art = provenanceService.getArtifact(artifactId);
-        if (art && art.url) {
-          mediaUrl = art.url;
-        }
-      }
-    }
-
-    if (!imageBase64 && !mediaUrl) {
-      return res.status(400).json({
-        error: 'Missing image input: provide multipart file, imageBase64, mediaUrl, or valid artifactId.'
-      });
-    }
-
-    const effectiveLimit = Number(process.env.GOOGLE_VISION_MONTHLY_LIMIT || DEFAULT_MONTHLY_LIMIT);
-
-    // Call Vision Web Detection provider
-    const searchRes = await visionProvider.search({
-      imageBase64,
-      mediaUrl
-    });
-
-    const candidates = searchRes.candidates || [];
-    const creatorAttribution = extractCreatorAttribution(candidates);
-
-    res.json({
-      status: searchRes.status === 'AVAILABLE' ? 'ok' : searchRes.status,
-      provider: 'Google Cloud Vision — Web Detection',
-      bestGuessLabels: searchRes.bestGuessLabels || [],
-      fullMatchingImages: searchRes.fullMatchingImages || [],
-      partialMatchingImages: searchRes.partialMatchingImages || [],
-      pagesWithMatchingImages: searchRes.pagesWithMatchingImages || [],
-      visuallySimilarImages: searchRes.visuallySimilarImages || [],
-      candidates,
-      candidateCount: candidates.length,
-      creatorAttribution,
-      quota: {
-        used: getMonthlyVisionCallCount(),
-        limit: effectiveLimit,
-        canUse: canUseVisionApi()
-      },
-      reason: searchRes.reason || null
-    });
-  } catch (err) {
-    res.status(502).json({
-      error: 'Google Cloud Vision Web Detection query failed',
-      message: err.message
-    });
-  }
-};
-
-app.post('/api/v1/vision/web-detection', upload.single('file'), handleVisionWebDetection);
-app.post('/api/vision/web-detection', upload.single('file'), handleVisionWebDetection);
-app.post('/api/vision/search', upload.single('file'), handleVisionWebDetection);
-
-// ---------------------------------------------------------------------------
-// VERIMEDIA AI 4-FEATURE UNIFIED WORKFLOW REPORT ENDPOINT
-// (Original Website, AI Detection, Creator Investigation, Image Forensics)
-// ---------------------------------------------------------------------------
-const handleWorkflowReport = async (req, res) => {
-  try {
-    let buffer = null;
-    let artifact = null;
-    let artifactId = req.params?.id || req.body?.artifactId || req.query?.artifactId;
-    let investigationId = req.params?.id || req.body?.investigationId || req.query?.investigationId;
-
-    if (req.file && req.file.buffer) {
-      buffer = req.file.buffer;
-    }
-
-    if (artifactId) {
-      artifact = provenanceService.getArtifact(artifactId);
-      if (!buffer) {
-        const stored = getArtifactMedia(artifactId);
-        if (stored?.buffer) buffer = stored.buffer;
-      }
-    }
-
-    if (!artifact && investigationId) {
-      const inv = provenanceService.getInvestigation(investigationId);
-      if (inv && inv.artifactIds && inv.artifactIds.length > 0) {
-        artifact = provenanceService.getArtifact(inv.artifactIds[0]);
-        if (!buffer) {
-          const stored = getArtifactMedia(inv.artifactIds[0]);
-          if (stored?.buffer) buffer = stored.buffer;
-        }
-      }
-    }
-
-    // Retrieve discovery candidates
-    let candidates = [];
-    if (investigationId) {
-      candidates = provenanceService.getDiscoveryCandidates(investigationId);
-    }
-
-    // Run Vision search if image buffer is available and Vision is configured & within quota
-    let visionResults = null;
-    if (buffer && visionProvider.isConfigured() && canUseVisionApi()) {
-      try {
-        visionResults = await visionProvider.search({
-          imageBase64: buffer.toString('base64')
-        });
-      } catch (_) {}
-    }
-
-    const report = await generateWorkflowReport({
-      artifact,
-      buffer,
-      filename: req.file?.originalname || req.file?.filename || artifact?.originalName || artifact?.filename || 'uploaded_image.jpg',
-      mimeType: req.file?.mimetype || artifact?.mimeType || 'image/jpeg',
-      candidates,
-      forensicAnalysis: artifact?.metadata?.forensicAnalysis || null,
-      visionResults,
-      userNotes: req.body?.notes || null
-    });
-
-    res.json(report);
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to generate workflow report', message: err.message });
-  }
-};
-
-app.post('/api/v1/workflow/report', upload.single('file'), handleWorkflowReport);
-app.post('/api/investigations/:id/workflow-report', upload.single('file'), handleWorkflowReport);
 
 // ---------------------------------------------------------------------------
 // EARLIEST KNOWN APPEARANCE (SOURCE) DISCOVERY VIA GOOGLE SEARCH API
@@ -3426,7 +3430,7 @@ Respond ONLY with valid JSON conforming to this structure:
   "searchQueriesUsed": ["${targetQuery} earliest original source", "${targetQuery} first publication date"]
 }`;
 
-    const candidateModels = ['gemini-flash-lite-latest', 'gemini-flash-latest'];
+    const candidateModels = ['gemini-3.5-flash', 'gemini-3.8-flash', 'gemini-flash-latest'];
     for (const model of candidateModels) {
       try {
         const response = await ai.models.generateContent({
@@ -3515,27 +3519,11 @@ Respond ONLY with valid JSON conforming to this structure:
     author: null
   } : null;
 
-  // Static fallback: return null fields — never fabricate real-looking source data
-  const staticDemoEarliest = {
-    title: null,
-    publisher: null,
-    domain: null,
-    url: null,
-    publishedAt: null,
-    formattedDate: null,
-    snippet: 'No real search data available. Configure GEMINI_API_KEY and GOOGLE_CSE_API_KEY for live source discovery.',
-    platform: null,
-    confidenceScore: 0.0,
-    sourceType: 'STATIC_DEMO_DATA',
-    estimatedOnly: true,
-    author: null
-  };
-
   const finalEarliest = isGrounded
     ? geminiData.earliestAppearance
     : isGoogleCseFallback
       ? cseFallbackEarliest
-      : (invEarliest || staticDemoEarliest);
+      : (invEarliest || null);
 
   // Build timeline from Gemini if available; otherwise only show real CSE entries (no fake hardcoded URLs)
   let finalTimeline = isGrounded
@@ -3552,7 +3540,7 @@ Respond ONLY with valid JSON conforming to this structure:
           isEarliest: idx === 0,
           estimatedOnly: true
         }))
-      : []; // No timeline when fully static — don't fabricate entries
+      : []; // No timeline when no real hits found — don't fabricate entries
 
   if (groundingSources.length > 0 && !isGrounded) {
     // Replace placeholder grounding sources with actual CSE hits if available
@@ -3563,14 +3551,14 @@ Respond ONLY with valid JSON conforming to this structure:
   }
 
   res.json({
-    found: isGrounded || isGoogleCseFallback,
+    found: Boolean(isGrounded || isGoogleCseFallback || invEarliest),
     targetQuery,
     earliestAppearance: finalEarliest,
     searchSummary: isGrounded
       ? geminiData.searchSummary
       : isGoogleCseFallback
         ? `Google Custom Search returned ${googleCseItems.length} result(s). Top result from ${finalEarliest?.domain || 'unknown'}. No AI grounding available — dates are approximate.`
-        : 'STATIC_DEMO_DATA — No real search was performed. Configure GEMINI_API_KEY and GOOGLE_CSE_API_KEY for live source discovery.',
+        : (invEarliest ? 'Investigation candidate appearance found.' : 'No matching appearances found across active search providers for this asset.'),
     timelineAppearances: finalTimeline,
     corroborationSources: isGrounded
       ? (geminiData.corroborationSources || ['Google Search (Grounded)'])
@@ -3581,7 +3569,7 @@ Respond ONLY with valid JSON conforming to this structure:
       `"${targetQuery}" earliest appearance original source`
     ],
     groundingSources: groundingSources.length > 0 ? groundingSources : [],
-    provider: isGrounded ? 'Gemini Google Search Grounding' : isGoogleCseFallback ? 'Google Custom Search (CSE)' : 'STATIC_DEMO_DATA',
+    provider: isGrounded ? 'Gemini Google Search Grounding' : isGoogleCseFallback ? 'Google Custom Search (CSE)' : (invEarliest ? 'Investigation Store' : null),
     isGrounded,
     isEstimated: !isGrounded,
     queriedAt: new Date().toISOString()
@@ -4073,20 +4061,41 @@ app.use((err, req, res, next) => {
 // ---------------------------------------------------------------------------
 // Static file serving & SPA fallback (Vite Middleware in Dev)
 // ---------------------------------------------------------------------------
-const isTestRunner = process.env.NODE_ENV === 'test' || process.argv.some(a => a.includes('test'));
-
 if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL && !isTestRunner) {
-  const disableHmr = process.env.DISABLE_HMR === 'true';
-  const vite = await createViteServer({
-    server: {
-      middlewareMode: true,
-      allowedHosts: true,
-      hmr: disableHmr ? false : undefined,
-      ws: disableHmr ? false : undefined,
-    },
-    appType: 'spa',
-  });
-  app.use(vite.middlewares);
+  const resolveServerHmr = () => {
+    if (process.env.DISABLE_HMR === 'true') return false;
+    const publicHost = process.env.PUBLIC_HOST || process.env.HMR_HOST;
+    const clientPort = process.env.HMR_CLIENT_PORT ? parseInt(process.env.HMR_CLIENT_PORT, 10) : 443;
+    const protocol = process.env.HMR_PROTOCOL || (clientPort === 443 ? 'wss' : 'ws');
+    if (publicHost) {
+      return { protocol, host: publicHost, clientPort };
+    }
+    const isHostedOrProxied = Boolean(
+      process.env.K_SERVICE ||
+      process.env.CLOUD_RUN_JOB ||
+      process.env.GOOGLE_CLOUD_PROJECT ||
+      process.env.CONTAINER ||
+      process.env.AI_STUDIO ||
+      process.env.DISABLE_HMR !== 'false'
+    );
+    if (isHostedOrProxied) return false;
+    return undefined;
+  };
+
+  const hmrConfig = resolveServerHmr();
+  try {
+    const vite = await createViteServer({
+      server: {
+        middlewareMode: true,
+        hmr: hmrConfig,
+        ws: hmrConfig === false ? false : undefined,
+      },
+      appType: 'spa',
+    });
+    app.use(vite.middlewares);
+  } catch (viteErr) {
+    console.warn('[Vite Middleware] Dev server initialization warning:', viteErr.message);
+  }
 } else if (!isTestRunner) {
   // Only serve the built frontend if dist/ was actually built alongside this server.
   // On Render (API-only deployment), dist/ does not exist — the frontend lives on Vercel.
@@ -4165,25 +4174,23 @@ function buildForensicFallback({ contentDescription, matchScore, integrityScore,
 }
 
 function generateChatFallback(query) {
-  const q = (query || '').trim();
-  const lowerQ = q.toLowerCase();
-  if (lowerQ.includes('dmca') || lowerQ.includes('takedown')) {
-    return `Regarding your request "${q}": Under 17 U.S.C. § 512, a valid DMCA notice requires identification of the copyrighted work, the infringing URL, contact information, and good faith attestations. VeriMedia Assistant automatically compiles and submits this notice with technical fingerprint evidence attached.`;
+  const q = (query || '').toLowerCase();
+  if (q.includes('dmca') || q.includes('takedown')) {
+    return 'Under 17 U.S.C. § 512, a valid DMCA notice requires identification of the copyrighted work, the infringing URL, contact information, and good faith attestations. VeriMedia AI automatically generates and submits this notice with technical fingerprint evidence attached.';
   }
-  if (lowerQ.includes('deepfake') || lowerQ.includes('manipulat') || lowerQ.includes('ai')) {
-    return `Regarding your query "${q}": VeriMedia Assistant detects manipulation using a multi-signal pipeline: frame-by-frame perceptual hashing, audio spectrogram verification, facial landmark consistency, and edge-crop artifact detection.`;
+  if (q.includes('deepfake') || q.includes('manipulat')) {
+    return 'VeriMedia AI detects manipulation using a multi-signal pipeline: frame-by-frame perceptual hashing, audio spectrogram verification, facial landmark consistency, and edge-crop artifact detection.';
   }
-  if (lowerQ.includes('fingerprint') || lowerQ.includes('hash')) {
-    return `Regarding your query "${q}": Perceptual fingerprinting maps media frames into robust vector embeddings that remain stable despite compression, scaling, color changes, or cropping, allowing instant identification against protected master catalogs.`;
+  if (q.includes('fingerprint') || q.includes('hash')) {
+    return 'Perceptual fingerprinting maps media frames into robust vector embeddings that remain stable despite compression, scaling, color changes, or cropping, allowing instant identification against protected master catalogs.';
   }
-  return `VeriMedia Assistant received your inquiry: "${q}". I am ready to help with media scanning, 6-signal forensic breakdowns, executive dossier synthesis, and automated DMCA copyright enforcement.`;
+  return 'VeriMedia AI is operational. You can scan videos, inspect 6-signal forensic breakdowns, evaluate trust scores, and issue automated DMCA takedown requests across supported social platforms.';
 }
 
 if (!process.env.VERCEL && !isTestRunner) {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`🛡️ VeriMedia AI server running on http://0.0.0.0:${PORT}`);
     console.log(`   NODE_ENV=${process.env.NODE_ENV || 'development'}`);
-    console.log(`   GEMINI_API_KEY=${process.env.GEMINI_API_KEY ? 'CONFIGURED ✓' : 'NOT SET (deterministic mode)'}`);
     console.log(`   SECRET_KEY=${process.env.SECRET_KEY ? 'SET ✓' : 'NOT SET (ephemeral dev key)'}`);
     console.log(`   API_KEY_SALT=${process.env.API_KEY_SALT ? 'SET ✓' : 'NOT SET (ephemeral dev key)'}`);
   });

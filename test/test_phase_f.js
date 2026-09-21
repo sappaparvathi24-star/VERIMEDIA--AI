@@ -369,6 +369,9 @@ runTest('Verify unknown provenance remains UNKNOWN/INCONCLUSIVE', () => {
 // TEST 12: Verify demo provenance remains isolated
 // ---------------------------------------------------------------------------
 runTest('Verify demo provenance remains isolated', () => {
+  if (!provenanceService.getInvestigations().some(c => c.isDemo)) {
+    provenanceService.seedDemoData();
+  }
   const cases = provenanceService.getInvestigations();
   const demoCase = cases.find(c => c.isDemo);
   let realCase = cases.find(c => !c.isDemo);
