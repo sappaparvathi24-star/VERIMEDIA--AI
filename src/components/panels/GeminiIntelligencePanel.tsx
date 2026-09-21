@@ -57,7 +57,7 @@ const SIGNALS_CATALOG = [
 export function GeminiIntelligencePanel() {
   const { currentResult, selectedCaseId } = useStore()
 
-  // Mode: Copilot Chat | Investigation Dossier | Multimodal Vision | Signal Reasoner
+  // Mode: Assistant Chat | Investigation Dossier | Multimodal Vision | Signal Reasoner
   const [activeSubMode, setActiveSubMode] = useState<'copilot' | 'dossier' | 'multimodal' | 'signals'>('copilot')
 
   // Chat State
@@ -65,7 +65,7 @@ export function GeminiIntelligencePanel() {
     {
       id: 'welcome',
       role: 'assistant',
-      content: `### 👋 VeriMedia Gemini Intelligence Copilot Ready
+      content: `### 👋 VeriMedia Assistant Ready
 I am connected to the **Gemini 3.8 Flash Reasoning Engine** with **live Google Search Grounding**. I have real-time context on your active media scans, perceptual fingerprints, web sources, and the SQLite provenance graph.
 
 **How can I assist your forensic investigation today?**
@@ -283,7 +283,7 @@ I am connected to the **Gemini 3.8 Flash Reasoning Engine** with **live Google S
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <h2 style={{ fontSize: 16, fontWeight: 800, margin: 0, color: '#f8fafc' }}>
-                Gemini AI Intelligence & Multimodal Copilot
+                VeriMedia AI Assistant
               </h2>
               <span style={{
                 fontSize: 10,
@@ -294,7 +294,7 @@ I am connected to the **Gemini 3.8 Flash Reasoning Engine** with **live Google S
                 fontWeight: 700,
                 fontFamily: 'monospace',
               }}>
-                GEMINI 3.5 FLASH • SEARCH GROUNDED
+                GEMINI 3.8 FLASH • SEARCH GROUNDED
               </span>
               <span style={{
                 fontSize: 10,
@@ -332,7 +332,7 @@ I am connected to the **Gemini 3.8 Flash Reasoning Engine** with **live Google S
             }}
           >
             <Brain size={13} />
-            <span>Gemini Assistant</span>
+            <span>VeriMedia Assistant</span>
           </button>
 
           <button
@@ -421,7 +421,7 @@ I am connected to the **Gemini 3.8 Flash Reasoning Engine** with **live Google S
                     alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
                   }}>
                     <span style={{ fontSize: 10, color: '#64748b', fontWeight: 700 }}>
-                      {m.role === 'user' ? 'ANALYST' : `GEMINI AI (${m.model || 'gemini-2.5-flash'})`}
+                      {m.role === 'user' ? 'ANALYST' : `VERIMEDIA ASSISTANT (${m.model || 'gemini-3.8-flash'})`}
                     </span>
                     <span style={{ fontSize: 10, color: '#475569' }}>{m.timestamp}</span>
                   </div>
@@ -496,7 +496,7 @@ I am connected to the **Gemini 3.8 Flash Reasoning Engine** with **live Google S
               {isSending && (
                 <div style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: 8, color: '#a855f7', fontSize: 12, padding: '8px 12px' }}>
                   <RefreshCw size={14} className="animate-spin" />
-                  <span>Gemini is analyzing multi-modal evidence...</span>
+                  <span>VeriMedia Assistant is analyzing evidence...</span>
                 </div>
               )}
               <div ref={chatEndRef} />
@@ -533,7 +533,7 @@ I am connected to the **Gemini 3.8 Flash Reasoning Engine** with **live Google S
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
-                placeholder="Ask Gemini to investigate perceptual hashes, verify C2PA credentials, or draft enforcement briefs..."
+                placeholder="Ask VeriMedia Assistant to investigate perceptual hashes, verify C2PA credentials, or draft enforcement briefs..."
                 style={{
                   flex: 1,
                   background: '#080c10',
@@ -593,7 +593,7 @@ I am connected to the **Gemini 3.8 Flash Reasoning Engine** with **live Google S
 
             <div>
               <div style={{ fontSize: 11, fontWeight: 800, color: '#8899aa', textTransform: 'uppercase', marginBottom: 8 }}>
-                Gemini Capabilities
+                Assistant Capabilities
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 11, color: '#94a3b8' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>

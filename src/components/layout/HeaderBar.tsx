@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useStore } from '../../store'
 import { Tooltip } from '../ui/Tooltip'
 import { runBackendConnectivityDiagnostic, type DiagnosticResult } from '../../services/api'
+import { useAuth } from '../auth/AuthGate'
 import type { TabId } from '../../types'
 
 const PAGE_TITLES: Record<TabId, { title: string; subtitle: string; icon: string }> = {
@@ -76,6 +77,7 @@ const STAT_DESCRIPTIONS: Record<string, string> = {
 
 export function HeaderBar() {
   const { activeTab, stats, health, currentResult, setCurrentResult, setActiveTab, setShowHeroOverlay, setShowMonitoringModal, setShowCommandPalette, setShowEvidenceModal, setHealth } = useStore()
+  const { session, signOut } = useAuth()
   const [isDiagnosing, setIsDiagnosing] = useState(false)
   const [diagResult, setDiagResult] = useState<DiagnosticResult | null>(null)
   const [showDiagModal, setShowDiagModal] = useState(false)
@@ -225,7 +227,7 @@ export function HeaderBar() {
         </Tooltip>
 
         {/* VeriMedia AI Assistant Button */}
-        <Tooltip content="VeriMedia AI Assistant: Multimodal Analysis, Executive Dossiers & Technical Explainer" position="bottom">
+        <Tooltip content="VeriMedia Assistant: Multimodal Analysis, Executive Dossiers & Technical Explainer" position="bottom">
           <button
             onClick={() => useStore.getState().setActiveTab('intelligence')}
             style={{
@@ -246,7 +248,7 @@ export function HeaderBar() {
             className="hover:scale-105"
           >
             <span>✨</span>
-            <span>Gemini AI</span>
+            <span>VeriMedia Assistant</span>
           </button>
         </Tooltip>
 
@@ -298,7 +300,7 @@ export function HeaderBar() {
             className="hover:border-cyan-400 hover:text-white"
           >
             <span>{isDiagnosing ? '⏳' : '🩺'}</span>
-            <span>{isDiagnosing ? 'Checking...' : 'Check System Status'}</span>
+            <span>{isDiagnosing ? 'Checking...' : 'Status'}</span>
           </button>
         </Tooltip>
 
@@ -325,6 +327,55 @@ export function HeaderBar() {
             </span>
           </div>
         </Tooltip>
+
+        {/* Authenticated User Profile & Sign Out Bar (Integrated in Header) */}
+        {session?.profile && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            background: 'rgba(15, 23, 42, 0.85)',
+            border: '1px solid rgba(51, 65, 85, 0.8)',
+            padding: '4px 8px 4px 10px',
+            borderRadius: 20,
+            fontSize: 11,
+          }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#4ade80' }} />
+            <span style={{ color: '#cbd5e1', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'monospace' }}>
+              {session.profile.email}
+            </span>
+            <span style={{
+              fontSize: 9,
+              padding: '1px 5px',
+              borderRadius: 4,
+              background: 'rgba(16, 185, 129, 0.15)',
+              color: '#34d399',
+              border: '1px solid rgba(16, 185, 129, 0.3)',
+              fontWeight: 700,
+              textTransform: 'uppercase'
+            }}>
+              {session.profile.role}
+            </span>
+            <button
+              onClick={() => signOut()}
+              title="Sign Out"
+              style={{
+                background: 'rgba(30, 41, 59, 0.8)',
+                border: '1px solid rgba(71, 85, 105, 0.6)',
+                borderRadius: 12,
+                color: '#94a3b8',
+                cursor: 'pointer',
+                padding: '2px 8px',
+                fontSize: 10,
+                fontWeight: 600,
+                transition: 'all 0.15s'
+              }}
+              className="hover:text-red-400 hover:border-red-500/50"
+            >
+              Sign Out
+            </button>
+          </div>
+        )}
 
         {/* System Architecture Overview trigger */}
         <Tooltip content="VeriMedia 5-Engine Architecture & Specs" position="bottom">

@@ -39,7 +39,7 @@ export function Dashboard() {
         <GlobalProgressBar />
 
         {/* Content View Routing */}
-        <main style={{ flex: 1, overflowX: 'hidden', overflowY: 'visible', padding: 0, scrollBehavior: 'smooth' }}>
+        <main style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', padding: 0, minHeight: 0 }}>
           {/* Workspaces */}
           {activeTab === 'scanner' && (
             <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -48,7 +48,7 @@ export function Dashboard() {
           )}
 
           {activeTab === 'intelligence' && (
-            <div style={{ minHeight: '100%', width: '100%', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <GeminiIntelligencePanel />
             </div>
           )}

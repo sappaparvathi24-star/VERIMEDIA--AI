@@ -63,18 +63,18 @@ export class MultiSourceDiscoveryManager {
   constructor(config = {}) {
     this.providers = new Map();
     
-    // Register the 6 primary open discovery platforms by default
+    // Register the discovery platforms
     this.registerProvider(new RedditDiscoveryProvider(config.reddit));
     this.registerProvider(new YouTubeDiscoveryProvider(config.youtube));
     this.registerProvider(new MastodonDiscoveryProvider(config.mastodon));
     this.registerProvider(new ArchiveOrgDiscoveryProvider(config.archiveOrg));
     this.registerProvider(new GoogleImagesDiscoveryProvider(config.googleImages));
     this.registerProvider(new GoogleVisionWebDetectionProvider(config.googleVision || config.googleVisionWebDetection));
+    this.registerProvider(new InstagramDiscoveryProvider(config.instagram));
+    this.registerProvider(new XDiscoveryProvider(config.x));
 
     if (config.includeAll || config.enableVisionAndSocial) {
       this.registerProvider(new GoogleVisionDiscoveryProvider(config.googleVision));
-      this.registerProvider(new InstagramDiscoveryProvider(config.instagram));
-      this.registerProvider(new XDiscoveryProvider(config.x));
     }
   }
 
@@ -145,15 +145,17 @@ export class MultiSourceDiscoveryManager {
 
     // 2. Primary Provider Execution: If Google Vision is active and media is present,
     // execute it first to extract native visual web detection matches and entity/best-guess labels
-    const visionProvider = targetProviders.find(p => p.id === 'google_vision');
-    const otherProviders = targetProviders.filter(p => p.id !== 'google_vision');
+    const visionProvider = targetProviders.find(p => p.id === 'googleVisionWebDetection' || p.id === 'google_vision');
+    const otherProviders = targetProviders.filter(p => p.id !== 'googleVisionWebDetection' && p.id !== 'google_vision');
 
     if (visionProvider && isVisualSearch) {
       const vStart = Date.now();
       try {
+        const imageBase64 = imageBuffer ? imageBuffer.toString('base64') : (opts.imageBase64 || null);
         const vRes = await visionProvider.search(signals, {
           ...opts,
           imageBuffer,
+          imageBase64,
           uploadedHash,
           isVisualSearch: true
         });
@@ -175,7 +177,7 @@ export class MultiSourceDiscoveryManager {
         if (vRes.candidates && vRes.candidates.length > 0) {
           const normalized = vRes.candidates.map(cand => ({
             ...cand,
-            source: 'google_vision',
+            source: visionProvider.id,
             sourceType: 'EXTERNAL_API_VERIFIED',
             matchType: 'visual_match',
             platform: cand.platform || visionProvider.name
@@ -202,15 +204,17 @@ export class MultiSourceDiscoveryManager {
     // 3. Execute remaining providers concurrently with propagated visual labels
     const searchPromises = otherProviders.map(async (provider) => {
       const pStart = Date.now();
-      const isVisualCapability = provider.id === 'google_vision';
+      const isVisualCapability = provider.id === 'google_vision' || provider.id === 'googleVisionWebDetection';
       const providerQueryType = isVisualCapability 
         ? 'REAL_VISUAL_QUERY' 
         : (isVisualSearch ? 'TEXT_FALLBACK' : 'MANUAL_TEXT_QUERY');
 
       try {
+        const imageBase64 = imageBuffer ? imageBuffer.toString('base64') : (opts.imageBase64 || null);
         const providerOpts = {
           ...opts,
           imageBuffer,
+          imageBase64,
           uploadedHash,
           isVisualSearch,
           bestGuessLabels: extractedBestGuessLabels

@@ -24,7 +24,7 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             prompt,
-            system_prompt: systemPrompt || 'You are VeriMedia Gemini Copilot, an expert digital media forensics and copyright intelligence analyst. Provide concise, evidentiary, and fact-grounded assessments.',
+            system_prompt: systemPrompt || 'You are VeriMedia Assistant, an expert digital media forensics and copyright intelligence analyst. Provide concise, evidentiary, and fact-grounded assessments.',
             messages: this.history
           })
         });
@@ -46,12 +46,12 @@
         }
 
         return {
-          reply: 'VeriMedia AI Copilot: Operating in offline heuristic mode. The system is ready to compute perceptual hashes, extract EXIF data, and process DMCA takedown requests.',
-          source: 'local-copilot-fallback'
+          reply: 'VeriMedia Assistant: Operating in offline heuristic mode. The system is ready to compute perceptual hashes, extract EXIF data, and process DMCA takedown requests.',
+          source: 'local-assistant-fallback'
         };
       } catch (err) {
         return {
-          reply: 'VeriMedia AI Copilot: Connected via local forensic reasoning engine.',
+          reply: 'VeriMedia Assistant: Connected via local forensic reasoning engine.',
           source: 'error-fallback'
         };
       }
@@ -245,7 +245,7 @@
       trigger.innerHTML = `
         <div style="display:flex;align-items:center;gap:8px">
           <span style="font-size:16px">✨</span>
-          <span style="font-size:12px;font-weight:700;font-family:monospace;letter-spacing:0.5px">GEMINI COPILOT</span>
+          <span style="font-size:12px;font-weight:700;font-family:monospace;letter-spacing:0.5px">VERIMEDIA ASSISTANT</span>
         </div>
       `;
       trigger.style.cssText = `
@@ -295,7 +295,7 @@
           <div style="display:flex;align-items:center;gap:10px">
             <div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#0284C7,#7C3AED);display:flex;align-items:center;justify-content:center;font-size:14px;color:#FFF">✨</div>
             <div>
-              <div style="font-size:13px;font-weight:700;color:#F1F5F9">VeriMedia Gemini Copilot</div>
+              <div style="font-size:13px;font-weight:700;color:#F1F5F9">VeriMedia Assistant</div>
               <div style="font-size:10px;color:#38BDF8;font-family:monospace">Media Forensics &amp; Provenance AI</div>
             </div>
           </div>
@@ -316,14 +316,14 @@
         <div id="vmGeminiChatBody" style="flex:1;padding:16px;overflow-y:auto;display:flex;flex-direction:column">
           <div style="text-align:center;margin:auto 0;color:#64748B;font-size:11.5px;padding:20px 10px">
             <div style="font-size:24px;margin-bottom:8px">🛡️</div>
-            <div style="color:#CBD5E1;font-weight:600;margin-bottom:4px">VeriMedia Forensics Copilot Ready</div>
+            <div style="color:#CBD5E1;font-weight:600;margin-bottom:4px">VeriMedia Assistant Ready</div>
             <div>Ask any question about perceptual hashing, deepfake artifacts, provenance timelines, or claim decomposition.</div>
           </div>
         </div>
 
         <!-- Input Area -->
         <div style="padding:12px;background:#0A0F1D;border-top:1px solid #1E293B;display:flex;gap:8px;align-items:center">
-          <input id="vmGeminiInput" type="text" placeholder="Ask Gemini about forensics, claims, or artifacts..." style="flex:1;padding:9px 12px;background:#131C30;border:1px solid #1E293B;border-radius:8px;color:#F1F5F9;font-size:12px;outline:none" />
+          <input id="vmGeminiInput" type="text" placeholder="Ask VeriMedia Assistant about forensics, claims, or artifacts..." style="flex:1;padding:9px 12px;background:#131C30;border:1px solid #1E293B;border-radius:8px;color:#F1F5F9;font-size:12px;outline:none" />
           <button id="vmGeminiSendBtn" style="padding:9px 14px;background:linear-gradient(135deg,#0284C7 0%,#2563EB 100%);border:none;border-radius:8px;color:#FFF;font-weight:700;font-size:12px;cursor:pointer">Send</button>
         </div>
       `;

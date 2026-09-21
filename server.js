@@ -285,17 +285,24 @@ const upload = multer({
 // Lazy Google Gen AI initialization
 let aiClient = null;
 function getGenAI() {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return null;
+  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENAI_API_KEY || process.env.GOOGLE_API_KEY;
+  if (!apiKey) {
+    return null;
+  }
   if (!aiClient) {
-    aiClient = new GoogleGenAI({
-      apiKey,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build'
+    try {
+      aiClient = new GoogleGenAI({
+        apiKey,
+        httpOptions: {
+          headers: {
+            'User-Agent': 'aistudio-build'
+          }
         }
-      }
-    });
+      });
+    } catch (err) {
+      console.warn('[Gemini] Client instantiation error:', err.message);
+      return null;
+    }
   }
   return aiClient;
 }
@@ -303,8 +310,13 @@ function getGenAI() {
 // Helper to call Gemini with graceful fallback between models
 async function callGemini(contents, config = {}) {
   const ai = getGenAI();
-  if (!ai) return null;
-  const models = ['gemini-3.8-flash', 'gemini-3.1-pro-preview', 'gemini-3.1-flash-lite', 'gemini-flash-latest'];
+  if (!ai) {
+    console.warn('[Gemini] GEMINI_API_KEY not configured or unavailable');
+    return null;
+  }
+  const models = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite', 'gemini-3.1-pro-preview'];
+  let lastError = null;
+
   for (const model of models) {
     try {
       const response = await ai.models.generateContent({
@@ -324,6 +336,7 @@ async function callGemini(contents, config = {}) {
         };
       }
     } catch (err) {
+      lastError = err;
       if (config && config.tools) {
         try {
           const { tools, ...configNoTools } = config;
@@ -344,6 +357,10 @@ async function callGemini(contents, config = {}) {
         } catch (_) {}
       }
     }
+  }
+
+  if (lastError) {
+    console.warn('[Gemini] All candidate models failed:', lastError.message);
   }
   return null;
 }
@@ -399,7 +416,7 @@ function healthResponse(req, res) {
     uptime_seconds: Math.floor(process.uptime()),
     total_scans: allArtifacts.filter(a => !a.isDemo).length,
     total_investigations: allInvestigations.filter(i => !i.isDemo).length,
-    models: ['gemini-3.5-flash', 'gemini-3.8-flash', 'gemini-flash-latest'],
+    models: ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite', 'gemini-3.1-pro-preview'],
     timestamp: new Date().toISOString()
   });
 }
@@ -418,7 +435,7 @@ app.get('/api/integration-status', (req, res) => {
 // ---------------------------------------------------------------------------
 const handleChat = async (req, res) => {
   try {
-    const { messages = [], prompt, system_prompt = '', max_tokens = 1024 } = req.body || {};
+    const { messages = [], prompt, system_prompt = '', max_tokens = 1024, imageBase64, image, media, mimeType = 'image/jpeg', artifactId } = req.body || {};
 
     let userText = '';
     if (prompt) {
@@ -434,7 +451,7 @@ const handleChat = async (req, res) => {
 
     const fullPrompt = system_prompt
       ? `${system_prompt}\n\nUser Question:\n${userText}`
-      : `You are VeriMedia AI Intelligence Copilot, an elite digital media forensic analyst and copyright verification assistant.
+      : `You are VeriMedia Assistant, an elite digital media forensic analyst and copyright verification assistant.
 You possess deep expertise in:
 - Multimodal forensic analysis (ELA Error Level Analysis, PRNU sensor noise, DCT frequency spectrum, optical flow, FFmpeg video & audio waveform metrics, NLP claim verification, and PDF document metadata).
 - C2PA Cryptographic Provenance manifests, X.509 certificate validation, and tamper-evident hash chains.
@@ -447,12 +464,46 @@ Provide direct, structured, objective, and evidence-grounded responses. If answe
 User Question:
 ${userText}`;
 
+    // Check for multimodal image payload
+    let inlineImage = imageBase64 || image || media || null;
+    let resolvedMime = mimeType;
+    if (!inlineImage && artifactId) {
+      try {
+        const stored = getArtifactMedia(artifactId);
+        if (stored && stored.buffer) {
+          inlineImage = stored.buffer.toString('base64');
+          resolvedMime = stored.mimeType || 'image/jpeg';
+        }
+      } catch (_) {}
+    }
+
+    let contents = fullPrompt;
+    if (inlineImage && typeof inlineImage === 'string') {
+      const rawBase64 = inlineImage.replace(/^data:[^;]+;base64,/, '');
+      contents = [
+        {
+          role: 'user',
+          parts: [
+            {
+              inlineData: {
+                mimeType: resolvedMime,
+                data: rawBase64
+              }
+            },
+            {
+              text: fullPrompt
+            }
+          ]
+        }
+      ];
+    }
+
     let geminiResult = null;
     try {
-      geminiResult = await callGemini(fullPrompt, {
+      geminiResult = await callGemini(contents, {
         maxOutputTokens: max_tokens,
         temperature: 0.7,
-        tools: [{ googleSearch: {} }]
+        tools: inlineImage ? undefined : [{ googleSearch: {} }]
       });
     } catch (err) {
       console.warn('Gemini call failed inside chat endpoint:', err.message);
@@ -483,7 +534,7 @@ ${userText}`;
     });
   } catch (err) {
     console.error('Chat endpoint error:', err);
-    const fallbackReply = 'VeriMedia AI Copilot is online. You can scan media, evaluate 6-signal forensic breakdowns, inspect perceptual hash matches, and generate DMCA takedown notices.';
+    const fallbackReply = 'VeriMedia Assistant is online. You can scan media, evaluate 6-signal forensic breakdowns, inspect perceptual hash matches, and generate DMCA takedown notices.';
     return res.json({
       reply: fallbackReply,
       content: [{ type: 'text', text: fallbackReply }],
@@ -3055,7 +3106,7 @@ app.post('/api/claims/decompose', async (req, res) => {
   }
 
   if (process.env.GEMINI_API_KEY) {
-    modelUsed = 'gemini-3.6-flash';
+    modelUsed = 'gemini-3.8-flash';
   }
 
   res.json({
@@ -3092,7 +3143,7 @@ app.post('/api/investigations/decompose', async (req, res) => {
   }
 
   if (process.env.GEMINI_API_KEY) {
-    modelUsed = 'gemini-3.6-flash';
+    modelUsed = 'gemini-3.8-flash';
   }
 
   res.json({
@@ -3692,7 +3743,7 @@ Respond ONLY with valid JSON conforming to this structure:
   "searchQueriesUsed": ["${targetQuery} earliest original source", "${targetQuery} first publication date"]
 }`;
 
-    const candidateModels = ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.8-flash', 'gemini-flash-latest'];
+    const candidateModels = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite', 'gemini-3.1-pro-preview'];
     for (const model of candidateModels) {
       try {
         const response = await ai.models.generateContent({
@@ -3891,7 +3942,7 @@ Respond ONLY with valid JSON conforming to this structure:
 }`;
 
   try {
-    const candidateModels = ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.8-flash', 'gemini-flash-latest'];
+    const candidateModels = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite', 'gemini-3.1-pro-preview'];
     for (const model of candidateModels) {
       try {
         const response = await ai.models.generateContent({

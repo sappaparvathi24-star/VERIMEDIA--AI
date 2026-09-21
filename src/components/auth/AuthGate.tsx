@@ -14,6 +14,18 @@ interface AuthGateProps {
   children: React.ReactNode;
 }
 
+export interface AuthContextType {
+  session: { profile: AuthProfile | null; token: string | null } | null;
+  signOut: () => Promise<void>;
+}
+
+export const AuthContext = React.createContext<AuthContextType>({
+  session: null,
+  signOut: async () => {},
+});
+
+export const useAuth = () => React.useContext(AuthContext);
+
 export function AuthGate({ children }: AuthGateProps) {
   const [session, setSession] = useState<{ profile: AuthProfile | null; token: string | null } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -256,29 +268,12 @@ export function AuthGate({ children }: AuthGateProps) {
     );
   }
 
-  // When authenticated, render app children + small top status bar or profile pill
+  // When authenticated, render app children wrapped in AuthContext.Provider
   return (
-    <div className="relative h-full w-full">
-      {/* Floating Identity & Sign-Out Bar */}
-      <div className="fixed top-3 right-4 z-50 flex items-center gap-2 bg-slate-900/95 backdrop-blur border border-slate-700/80 px-3 py-1.5 rounded-full shadow-xl text-xs font-mono text-slate-200">
-        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-        <span className="text-slate-300 truncate max-w-[130px]">{session.profile.email}</span>
-        <span className="text-[10px] px-1.5 py-0.5 bg-emerald-950 text-emerald-400 border border-emerald-800/50 rounded font-semibold">
-          {session.profile.role}
-        </span>
-        <button
-          onClick={handleSignOut}
-          title="Sign out of VeriMedia AI"
-          className="ml-1 flex items-center gap-1.5 text-slate-300 hover:text-red-400 bg-slate-800/80 hover:bg-red-950/60 px-2.5 py-1 rounded-full border border-slate-700/80 hover:border-red-800/80 transition text-[11px] font-sans font-semibold cursor-pointer"
-        >
-          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-          </svg>
-          <span>Sign Out</span>
-        </button>
+    <AuthContext.Provider value={{ session, signOut: handleSignOut }}>
+      <div className="relative h-full w-full">
+        {children}
       </div>
-
-      {children}
-    </div>
+    </AuthContext.Provider>
   );
 }
