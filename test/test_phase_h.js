@@ -359,6 +359,9 @@ async function runTests() {
   pass('Absence of matches produces completed job with 0 candidates and zero fabrication');
 
   // ── TEST 20: Pre-seeded investigation contains verified candidates ──
+  if (!provenanceService.getInvestigation('INV-VM-2026-CHAMP')) {
+    provenanceService.seedDemoData();
+  }
   const preseededInv = provenanceService.getInvestigation('INV-VM-2026-CHAMP');
   assert(preseededInv, 'INV-VM-2026-CHAMP must exist');
   const champCandidates = provenanceService.getDiscoveryCandidates('INV-VM-2026-CHAMP');

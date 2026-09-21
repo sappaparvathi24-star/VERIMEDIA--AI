@@ -1,6 +1,7 @@
 // VeriMedia AI — Asynchronous Forensic In-Process Job Queue
 // Provides durable SQLite + in-memory task scheduling for non-blocking media analysis
 import crypto from 'crypto';
+import { EventEmitter } from 'events';
 import { getDatabase } from '../db/database.js';
 
 export const JobStatus = {
@@ -15,8 +16,18 @@ export const JobType = {
   FORENSIC_ANALYSIS: 'FORENSIC_ANALYSIS'
 };
 
-export class ForensicJobQueue {
+export const DEFAULT_PIPELINE_STAGES = [
+  { id: 1, key: 'ingest', label: 'Stage 1: Ingest & Cryptographic Fingerprinting', status: 'PENDING', progress: 15 },
+  { id: 2, key: 'ela', label: 'Stage 2: Error Level Analysis (ELA)', status: 'PENDING', progress: 35 },
+  { id: 3, key: 'exif_c2pa', label: 'Stage 3: EXIF Metadata & C2PA Credentials', status: 'PENDING', progress: 55 },
+  { id: 4, key: 'stats_ocr', label: 'Stage 4: Pixel Statistics & OCR Extraction', status: 'PENDING', progress: 75 },
+  { id: 5, key: 'vision_ai', label: 'Stage 5: Multimodal AI Vision Inspection', status: 'PENDING', progress: 90 },
+  { id: 6, key: 'fusion', label: 'Stage 6: Epistemic Signal Fusion & Verdict', status: 'PENDING', progress: 100 }
+];
+
+export class ForensicJobQueue extends EventEmitter {
   constructor({ provenanceService, callGeminiFn = null } = {}) {
+    super();
     this.provenanceService = provenanceService;
     this.callGeminiFn = callGeminiFn;
     this.jobs = new Map();
@@ -42,11 +53,13 @@ export class ForensicJobQueue {
             type TEXT NOT NULL,
             status TEXT NOT NULL,
             progress INTEGER DEFAULT 0,
+            stage TEXT,
             investigation_id TEXT,
             artifact_id TEXT,
             filename TEXT,
             mime_type TEXT,
             result TEXT,
+            logs TEXT,
             error TEXT,
             created_at TEXT NOT NULL,
             started_at TEXT,
@@ -56,12 +69,43 @@ export class ForensicJobQueue {
           CREATE INDEX IF NOT EXISTS idx_forensic_jobs_status ON forensic_jobs(status);
         `);
 
+        // Check if any required columns are missing from existing forensic_jobs table and add them dynamically
+        try {
+          const columns = this.db.prepare('PRAGMA table_info(forensic_jobs)').all();
+          const colSet = new Set(columns.map(c => c.name));
+          const expectedCols = [
+            { name: 'progress', type: 'INTEGER DEFAULT 0' },
+            { name: 'stage', type: 'TEXT' },
+            { name: 'investigation_id', type: 'TEXT' },
+            { name: 'artifact_id', type: 'TEXT' },
+            { name: 'filename', type: 'TEXT' },
+            { name: 'mime_type', type: 'TEXT' },
+            { name: 'result', type: 'TEXT' },
+            { name: 'logs', type: 'TEXT' },
+            { name: 'error', type: 'TEXT' },
+            { name: 'started_at', type: 'TEXT' },
+            { name: 'completed_at', type: 'TEXT' }
+          ];
+
+          for (const col of expectedCols) {
+            if (!colSet.has(col.name)) {
+              this.db.exec(`ALTER TABLE forensic_jobs ADD COLUMN ${col.name} ${col.type}`);
+            }
+          }
+        } catch (colErr) {
+          console.warn('[ForensicQueue] Notice while verifying columns:', colErr.message);
+        }
+
         // Load existing active or recent jobs into memory
         const rows = this.db.prepare('SELECT * FROM forensic_jobs ORDER BY created_at DESC LIMIT 100').all();
         for (const row of rows) {
           let parsedResult = null;
+          let parsedLogs = [];
           try {
             if (row.result) parsedResult = JSON.parse(row.result);
+          } catch (_) {}
+          try {
+            if (row.logs) parsedLogs = JSON.parse(row.logs);
           } catch (_) {}
 
           this.jobs.set(row.id, {
@@ -69,11 +113,17 @@ export class ForensicJobQueue {
             type: row.type,
             status: row.status,
             progress: row.progress || 0,
+            stage: row.stage || 'fusion',
+            stageIndex: 5,
+            stageTitle: 'Analysis Complete',
+            stageDetail: 'Finished',
+            stages: DEFAULT_PIPELINE_STAGES.map(s => ({ ...s, status: row.status === 'COMPLETED' ? 'COMPLETED' : 'PENDING' })),
             investigationId: row.investigation_id,
             artifactId: row.artifact_id,
             filename: row.filename,
             mimeType: row.mime_type,
             result: parsedResult,
+            logs: parsedLogs,
             error: row.error,
             createdAt: row.created_at,
             startedAt: row.started_at,
@@ -97,13 +147,15 @@ export class ForensicJobQueue {
       try {
         const stmt = this.db.prepare(`
           INSERT INTO forensic_jobs (
-            id, type, status, progress, investigation_id, artifact_id,
-            filename, mime_type, result, error, created_at, started_at, completed_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            id, type, status, progress, stage, investigation_id, artifact_id,
+            filename, mime_type, result, logs, error, created_at, started_at, completed_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(id) DO UPDATE SET
             status = excluded.status,
             progress = excluded.progress,
+            stage = excluded.stage,
             result = excluded.result,
+            logs = excluded.logs,
             error = excluded.error,
             started_at = excluded.started_at,
             completed_at = excluded.completed_at
@@ -114,20 +166,94 @@ export class ForensicJobQueue {
           job.type,
           job.status,
           job.progress || 0,
+          job.stage || null,
           job.investigationId || null,
           job.artifactId || null,
           job.filename || null,
           job.mimeType || null,
           job.result ? JSON.stringify(job.result) : null,
+          job.logs ? JSON.stringify(job.logs) : null,
           job.error || null,
           job.createdAt,
           job.startedAt || null,
           job.completedAt || null
         );
       } catch (err) {
+        if (err.message && err.message.includes('has no column named')) {
+          try {
+            const columns = this.db.prepare('PRAGMA table_info(forensic_jobs)').all();
+            const colSet = new Set(columns.map(c => c.name));
+            const expectedCols = [
+              { name: 'progress', type: 'INTEGER DEFAULT 0' },
+              { name: 'stage', type: 'TEXT' },
+              { name: 'investigation_id', type: 'TEXT' },
+              { name: 'artifact_id', type: 'TEXT' },
+              { name: 'filename', type: 'TEXT' },
+              { name: 'mime_type', type: 'TEXT' },
+              { name: 'result', type: 'TEXT' },
+              { name: 'logs', type: 'TEXT' },
+              { name: 'error', type: 'TEXT' },
+              { name: 'started_at', type: 'TEXT' },
+              { name: 'completed_at', type: 'TEXT' }
+            ];
+            for (const col of expectedCols) {
+              if (!colSet.has(col.name)) {
+                this.db.exec(`ALTER TABLE forensic_jobs ADD COLUMN ${col.name} ${col.type}`);
+              }
+            }
+            const retryStmt = this.db.prepare(`
+              INSERT INTO forensic_jobs (
+                id, type, status, progress, stage, investigation_id, artifact_id,
+                filename, mime_type, result, logs, error, created_at, started_at, completed_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              ON CONFLICT(id) DO UPDATE SET
+                status = excluded.status,
+                progress = excluded.progress,
+                stage = excluded.stage,
+                result = excluded.result,
+                logs = excluded.logs,
+                error = excluded.error,
+                started_at = excluded.started_at,
+                completed_at = excluded.completed_at
+            `);
+            retryStmt.run(
+              job.id, job.type, job.status, job.progress || 0, job.stage || null,
+              job.investigationId || null, job.artifactId || null, job.filename || null,
+              job.mimeType || null, job.result ? JSON.stringify(job.result) : null,
+              job.logs ? JSON.stringify(job.logs) : null, job.error || null,
+              job.createdAt, job.startedAt || null, job.completedAt || null
+            );
+            return;
+          } catch (retryErr) {
+            console.warn('[ForensicQueue] Retry persist failed:', retryErr.message);
+          }
+        }
         console.warn('[ForensicQueue] Failed to persist job to SQLite:', err.message);
       }
     }
+  }
+
+  emitJobEvent(job, eventType = 'stage', extra = {}) {
+    const eventPayload = {
+      event: eventType,
+      jobId: job.id,
+      id: job.id,
+      status: job.status,
+      progress: job.progress || 0,
+      stage: job.stage || 'ingest',
+      stageIndex: job.stageIndex || 0,
+      stageTitle: job.stageTitle || 'Processing',
+      stageDetail: job.stageDetail || '',
+      stages: job.stages,
+      logs: job.logs || [],
+      result: job.result,
+      error: job.error,
+      timestamp: new Date().toISOString(),
+      ...extra
+    };
+
+    this.emit('progress', eventPayload);
+    this.emit(`job:${job.id}`, eventPayload);
   }
 
   enqueueJob({
@@ -141,11 +267,30 @@ export class ForensicJobQueue {
     const id = `JOB-FOR-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
     const now = new Date().toISOString();
 
+    const stages = DEFAULT_PIPELINE_STAGES.map((s, idx) => ({
+      ...s,
+      status: idx === 0 ? 'RUNNING' : 'PENDING'
+    }));
+
+    const initialLog = {
+      id: `log-${Date.now()}-0`,
+      timestamp: new Date().toLocaleTimeString(),
+      level: 'info',
+      stage: 'ingest',
+      message: `Media queued for multi-spectral analysis: ${filename} (${mimeType})`
+    };
+
     const job = {
       id,
       type: JobType.FORENSIC_ANALYSIS,
       status: JobStatus.QUEUED,
-      progress: 0,
+      progress: 5,
+      stage: 'ingest',
+      stageIndex: 0,
+      stageTitle: 'Stage 1: Media Ingest & Fingerprinting',
+      stageDetail: 'Extracting SHA-256 bitstream and perceptual hash...',
+      stages,
+      logs: [initialLog],
       investigationId,
       artifactId,
       filename,
@@ -160,6 +305,7 @@ export class ForensicJobQueue {
     // Store in-memory and in SQLite
     this.jobs.set(id, job);
     this.persistJob(job);
+    this.emitJobEvent(job, 'queued');
 
     // Add to work queue with attached payload for worker
     this.queue.push({
@@ -180,10 +326,15 @@ export class ForensicJobQueue {
       id,
       status: job.status,
       type: job.type,
+      progress: job.progress,
+      stage: job.stage,
+      stageIndex: job.stageIndex,
+      stages: job.stages,
       artifactId,
       investigationId,
       createdAt: job.createdAt,
-      pollUrl: `/api/jobs/${id}`
+      pollUrl: `/api/jobs/${id}`,
+      streamUrl: `/api/jobs/${id}/stream`
     };
   }
 
@@ -195,19 +346,29 @@ export class ForensicJobQueue {
         const row = this.db.prepare('SELECT * FROM forensic_jobs WHERE id = ?').get(jobId);
         if (row) {
           let parsedResult = null;
+          let parsedLogs = [];
           try {
             if (row.result) parsedResult = JSON.parse(row.result);
+          } catch (_) {}
+          try {
+            if (row.logs) parsedLogs = JSON.parse(row.logs);
           } catch (_) {}
           job = {
             id: row.id,
             type: row.type,
             status: row.status,
             progress: row.progress || 0,
+            stage: row.stage || 'fusion',
+            stageIndex: 5,
+            stageTitle: 'Analysis Complete',
+            stageDetail: 'Finished',
+            stages: DEFAULT_PIPELINE_STAGES.map(s => ({ ...s, status: row.status === 'COMPLETED' ? 'COMPLETED' : 'PENDING' })),
             investigationId: row.investigation_id,
             artifactId: row.artifact_id,
             filename: row.filename,
             mimeType: row.mime_type,
             result: parsedResult,
+            logs: parsedLogs,
             error: row.error,
             createdAt: row.created_at,
             startedAt: row.started_at,
@@ -257,15 +418,17 @@ export class ForensicJobQueue {
 
     job.status = JobStatus.PROCESSING;
     job.progress = 15;
+    job.stage = 'ingest';
+    job.stageIndex = 0;
     job.startedAt = new Date().toISOString();
     this.persistJob(job);
+    this.emitJobEvent(job, 'started');
 
     try {
       const mimeType = task.mimeType || 'application/octet-stream';
       const isVideoOrAudio = mimeType.startsWith('video/') || mimeType.startsWith('audio/');
 
       if (isVideoOrAudio) {
-        // Prompt 5: Explicitly return status: 'SKIPPED', reason: 'video/audio forensic analysis not implemented'
         const skippedResult = {
           status: 'SKIPPED',
           reason: 'video/audio forensic analysis not implemented',
@@ -295,13 +458,14 @@ export class ForensicJobQueue {
 
         job.status = JobStatus.SKIPPED;
         job.progress = 100;
+        job.stage = 'fusion';
+        job.stageIndex = 5;
+        job.stages = job.stages.map(s => ({ ...s, status: 'SKIPPED' }));
         job.result = skippedResult;
         job.completedAt = new Date().toISOString();
         this.persistJob(job);
+        this.emitJobEvent(job, 'completed');
       } else if (mimeType.startsWith('image/')) {
-        job.progress = 40;
-        this.persistJob(job);
-
         if (this.provenanceService && task.buffer) {
           const forensicOutcome = await this.provenanceService.runImageForensicAnalysis({
             investigationId: task.investigationId,
@@ -309,11 +473,45 @@ export class ForensicJobQueue {
             buffer: task.buffer,
             mimeType: task.mimeType,
             exif: task.exif,
-            callGeminiFn: this.callGeminiFn
+            callGeminiFn: this.callGeminiFn,
+            onStageChange: (stageData) => {
+              job.stage = stageData.stage?.toLowerCase() || 'processing';
+              job.stageIndex = stageData.stageIndex ?? job.stageIndex;
+              job.stageTitle = stageData.stageTitle || job.stageTitle;
+              job.stageDetail = stageData.stageDetail || job.stageDetail;
+              job.progress = stageData.progress ?? job.progress;
+
+              job.stages = job.stages.map((st, idx) => {
+                if (idx < job.stageIndex) return { ...st, status: 'COMPLETED' };
+                if (idx === job.stageIndex) return { ...st, status: 'RUNNING', detail: stageData.stageDetail };
+                return { ...st, status: 'PENDING' };
+              });
+
+              if (stageData.log) {
+                job.logs = [
+                  ...(job.logs || []).slice(-99),
+                  {
+                    id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                    timestamp: new Date().toLocaleTimeString(),
+                    level: 'info',
+                    stage: job.stage,
+                    message: stageData.log
+                  }
+                ];
+              }
+
+              this.persistJob(job);
+              this.emitJobEvent(job, 'stage');
+            }
           });
 
           job.status = JobStatus.COMPLETED;
           job.progress = 100;
+          job.stage = 'fusion';
+          job.stageIndex = 5;
+          job.stageTitle = 'Pipeline Complete';
+          job.stageDetail = 'All forensic signals calibrated and evidence record compiled.';
+          job.stages = job.stages.map(s => ({ ...s, status: 'COMPLETED' }));
           job.result = forensicOutcome.forensicAnalysis || {
             status: 'COMPLETED',
             evidenceId: forensicOutcome.evidence?.id,
@@ -321,35 +519,46 @@ export class ForensicJobQueue {
           };
           job.completedAt = new Date().toISOString();
           this.persistJob(job);
+          this.emitJobEvent(job, 'completed');
         } else {
           // No buffer available for physical analysis
           job.status = JobStatus.COMPLETED;
           job.progress = 100;
+          job.stage = 'fusion';
+          job.stageIndex = 5;
+          job.stages = job.stages.map(s => ({ ...s, status: 'COMPLETED' }));
           job.result = {
             status: 'INCONCLUSIVE',
             reason: 'Media binary buffer was not provided for pixel-level forensic evaluation.'
           };
           job.completedAt = new Date().toISOString();
           this.persistJob(job);
+          this.emitJobEvent(job, 'completed');
         }
       } else {
         // Unsupported format
         job.status = JobStatus.SKIPPED;
         job.progress = 100;
+        job.stage = 'fusion';
+        job.stageIndex = 5;
+        job.stages = job.stages.map(s => ({ ...s, status: 'SKIPPED' }));
         job.result = {
           status: 'SKIPPED',
           reason: `Forensic pipeline does not support mime-type '${mimeType}'`
         };
         job.completedAt = new Date().toISOString();
         this.persistJob(job);
+        this.emitJobEvent(job, 'completed');
       }
     } catch (err) {
       console.error(`[ForensicQueue] Error executing job ${task.jobId}:`, err);
       job.status = JobStatus.FAILED;
       job.progress = 100;
       job.error = err.message || 'Forensic analysis encountered an unhandled execution failure';
+      job.stages = job.stages.map(s => (s.status === 'RUNNING' ? { ...s, status: 'FAILED' } : s));
       job.completedAt = new Date().toISOString();
       this.persistJob(job);
+      this.emitJobEvent(job, 'failed', { error: job.error });
     } finally {
       this.isProcessing = false;
       if (this.queue.length > 0) {
@@ -358,3 +567,4 @@ export class ForensicJobQueue {
     }
   }
 }
+

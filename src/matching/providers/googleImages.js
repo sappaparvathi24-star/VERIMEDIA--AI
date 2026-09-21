@@ -12,8 +12,15 @@ export class GoogleImagesDiscoveryProvider {
     this.authRequired = true;
   }
 
+  getCredentials() {
+    const apiKey = this.apiKey || process.env.GOOGLE_CSE_API_KEY || process.env.GOOGLE_SEARCH_API_KEY || null;
+    const cx = this.cx || process.env.GOOGLE_CSE_CX || process.env.GOOGLE_SEARCH_ENGINE_ID || null;
+    return { apiKey, cx };
+  }
+
   isConfigured() {
-    return Boolean(this.apiKey && this.cx);
+    const { apiKey, cx } = this.getCredentials();
+    return Boolean(apiKey && cx);
   }
 
   status() {
@@ -30,8 +37,15 @@ export class GoogleImagesDiscoveryProvider {
   }
 
   async search(signals, opts = {}) {
-    const query = typeof signals === 'string' ? signals : signals?.query || signals?.[0]?.term;
-    if (!this.isConfigured()) {
+    let query = typeof signals === 'string' ? signals : signals?.query || signals?.[0]?.term;
+    if (!query && opts.bestGuessLabels && opts.bestGuessLabels.length > 0) {
+      query = opts.bestGuessLabels[0];
+    } else if (!query && opts.caption) {
+      query = opts.caption;
+    }
+
+    const { apiKey, cx } = this.getCredentials();
+    if (!apiKey || !cx) {
       return {
         providerId: this.id,
         status: 'UNAVAILABLE',
@@ -44,13 +58,13 @@ export class GoogleImagesDiscoveryProvider {
       return {
         providerId: this.id,
         status: 'SKIPPED',
-        reason: 'No search query or signal provided',
+        reason: 'No search query or visual signal provided',
         candidates: []
       };
     }
 
     try {
-      const response = await searchGoogleImages(query, this.apiKey, this.cx);
+      const response = await searchGoogleImages(query, apiKey, cx);
       if (!response.available) {
         return {
           providerId: this.id,
@@ -67,7 +81,9 @@ export class GoogleImagesDiscoveryProvider {
         title: item.title,
         platform: `Web (${item.displayLink})`,
         author: item.displayLink,
+        source: 'googleImages',
         sourceType: 'EXTERNAL_API_VERIFIED',
+        matchType: opts.imageUri ? 'visual_match' : 'text_inferred',
         publishedAt: null, // Google CSE images does not guarantee exact publication date
         timestampType: 'UNKNOWN',
         timestampQuality: 'MODERATE',

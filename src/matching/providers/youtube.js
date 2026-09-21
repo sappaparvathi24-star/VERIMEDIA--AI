@@ -10,8 +10,12 @@ export class YouTubeDiscoveryProvider {
     this.authRequired = true;
   }
 
+  getApiKey() {
+    return this.apiKey || process.env.YOUTUBE_API_KEY || null;
+  }
+
   isConfigured() {
-    return Boolean(this.apiKey);
+    return Boolean(this.getApiKey());
   }
 
   status() {
@@ -28,8 +32,21 @@ export class YouTubeDiscoveryProvider {
   }
 
   async search(signals, opts = {}) {
-    const query = typeof signals === 'string' ? signals : signals?.query || signals?.[0]?.term;
-    if (!this.isConfigured()) {
+    let query = typeof signals === 'string' ? signals : signals?.query || signals?.[0]?.term;
+
+    // Fall back to extracted visual signals: Vision API best-guess labels, OCR text, or caption
+    if (!query || opts.isVisualSearch) {
+      if (Array.isArray(opts.bestGuessLabels) && opts.bestGuessLabels.length > 0) {
+        query = opts.bestGuessLabels[0];
+      } else if (opts.ocrText) {
+        query = opts.ocrText.slice(0, 100);
+      } else if (opts.caption) {
+        query = opts.caption;
+      }
+    }
+
+    const apiKey = this.getApiKey();
+    if (!apiKey) {
       return {
         providerId: this.id,
         status: 'UNAVAILABLE',
@@ -42,13 +59,13 @@ export class YouTubeDiscoveryProvider {
       return {
         providerId: this.id,
         status: 'SKIPPED',
-        reason: 'No search query or signal provided',
+        reason: 'No search query or extracted visual signal provided',
         candidates: []
       };
     }
 
     try {
-      const response = await searchYouTube(query, this.apiKey);
+      const response = await searchYouTube(query, apiKey);
       if (!response.available) {
         return {
           providerId: this.id,
@@ -63,7 +80,11 @@ export class YouTubeDiscoveryProvider {
         title: item.title,
         platform: 'YouTube',
         author: item.channelTitle,
+        source: 'youtube',
         sourceType: 'EXTERNAL_API_VERIFIED',
+        matchType: 'text_inferred',
+        matchTypeDetail: 'YouTube Data API lacks reverse-image search; searched via extracted visual signal / label fallback',
+        inferredQueryUsed: query,
         publishedAt: item.publishedAt,
         timestampType: 'PUBLICATION_OBSERVED',
         timestampQuality: 'HIGH',

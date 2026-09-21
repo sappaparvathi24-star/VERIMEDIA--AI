@@ -167,6 +167,7 @@ async function runTests() {
   }
 
   console.log('\n--- All Video/Audio & Job Queue Tests Completed! ---\n');
+  process.exit(0);
 }
 
 runTests().catch(err => {

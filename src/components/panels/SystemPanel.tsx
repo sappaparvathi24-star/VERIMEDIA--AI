@@ -75,14 +75,23 @@ export function SystemPanel() {
             Real-time status of forensic engines, discovery adapters, Supabase persistence & rate limits
           </div>
         </div>
-        <button
-          className="vm-btn vm-btn-ghost"
-          style={{ padding: '6px 14px', fontSize: 11, display: 'flex', alignItems: 'center', gap: 6 }}
-          onClick={refresh}
-          disabled={loading}
-        >
-          {loading ? '◌ Checking...' : '↻ Refresh Status'}
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            className="vm-btn"
+            style={{ padding: '6px 14px', fontSize: 11, display: 'flex', alignItems: 'center', gap: 6, background: '#0e1d30', border: '1px solid #00d4ff50', color: '#38bdf8' }}
+            onClick={() => useStore.getState().setActiveTab('debug')}
+          >
+            🪲 Live Network Debugger ↗
+          </button>
+          <button
+            className="vm-btn vm-btn-ghost"
+            style={{ padding: '6px 14px', fontSize: 11, display: 'flex', alignItems: 'center', gap: 6 }}
+            onClick={refresh}
+            disabled={loading}
+          >
+            {loading ? '◌ Checking...' : '↻ Refresh Status'}
+          </button>
+        </div>
       </div>
 
       {testResult && (

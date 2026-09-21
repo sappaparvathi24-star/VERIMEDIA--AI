@@ -1,4 +1,67 @@
-import type { DetectionResult, CaseRecord } from '../types'
+import type { DetectionResult, CaseRecord, ForensicStageItem } from '../types'
+
+export const DEFAULT_FORENSIC_STAGES: ForensicStageItem[] = [
+  {
+    id: 1,
+    key: 'ingest',
+    label: 'Stage 1: Ingest & Fingerprinting',
+    shortTitle: 'Fingerprint (E1)',
+    icon: '🔐',
+    description: 'Cryptographic SHA-256 bitstream verification & 64-bit perceptual hashing',
+    color: '#00d4ff',
+    status: 'PENDING',
+  },
+  {
+    id: 2,
+    key: 'ela',
+    label: 'Stage 2: Error Level Analysis',
+    shortTitle: 'ELA Physics (E2)',
+    icon: '🔬',
+    description: 'Multi-pass DCT quantization grid analysis & compression delta inspection',
+    color: '#38bdf8',
+    status: 'PENDING',
+  },
+  {
+    id: 3,
+    key: 'exif_c2pa',
+    label: 'Stage 3: EXIF & C2PA Credentials',
+    shortTitle: 'Hardware / C2PA (E3)',
+    icon: '📷',
+    description: 'Sensor PRNU noise verification, camera device tags & C2PA manifest audit',
+    color: '#a855f7',
+    status: 'PENDING',
+  },
+  {
+    id: 4,
+    key: 'stats_ocr',
+    label: 'Stage 4: Pixel Entropy & OCR',
+    shortTitle: 'Entropy & Text (E4)',
+    icon: '📊',
+    description: 'Luminance variance, RGB channel entropy distribution & OCR optical text extraction',
+    color: '#f59e0b',
+    status: 'PENDING',
+  },
+  {
+    id: 5,
+    key: 'vision_ai',
+    label: 'Stage 5: Multimodal AI Vision',
+    shortTitle: 'Gemini Vision (E5)',
+    icon: '👁️',
+    description: 'Neural forensic audit for synthetic synthesis, facial seams & diffusion artifacts',
+    color: '#f97316',
+    status: 'PENDING',
+  },
+  {
+    id: 6,
+    key: 'fusion',
+    label: 'Stage 6: Epistemic Fusion & Verdict',
+    shortTitle: 'Verdict (E6)',
+    icon: '⚖️',
+    description: 'Independent signal concordance, calibrated trust score & DMCA enforcement dossier',
+    color: '#22c55e',
+    status: 'PENDING',
+  },
+]
 
 export const DEFAULT_SHOWCASE_RESULT: DetectionResult = {
   job_id: 'VM-2026-9841',

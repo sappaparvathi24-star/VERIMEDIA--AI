@@ -5,7 +5,7 @@ import { Tooltip } from '../ui/Tooltip'
 import { uploadArtifactAsync, pollForensicJob } from '../../services/api'
 import { ForensicViewer } from './ForensicViewer'
 import type { Scenario } from '../../types'
-import { Columns2, Activity, ShieldCheck, Sparkles } from 'lucide-react'
+import { Columns2, Activity, ShieldCheck, Sparkles, RefreshCw } from 'lucide-react'
 
 const PRESETS: { key: Scenario; label: string; icon: string }[] = [
   { key: 'deepfake', label: 'AI Deepfake', icon: '🤖' },
@@ -89,57 +89,44 @@ export function ForensicPanel() {
 
   if (!currentResult) {
     return (
-      <div style={{ padding: '24px 20px', overflowY: 'auto', height: '100%', background: '#080c10', color: '#f8fafc', display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ padding: '24px 20px', overflowY: 'auto', height: '100%', background: '#080c10', color: '#f8fafc', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
         <div style={{
-          padding: '24px',
-          borderRadius: 12,
-          background: 'linear-gradient(135deg, rgba(13,17,23,0.95) 0%, rgba(15,23,42,0.85) 100%)',
-          border: '1px solid #1e2d3d',
+          padding: '36px 32px',
+          borderRadius: 14,
+          background: 'linear-gradient(180deg, rgba(14,23,38,0.7) 0%, rgba(10,16,26,0.9) 100%)',
+          border: '1px solid rgba(0, 212, 255, 0.25)',
           textAlign: 'center',
-          maxWidth: 680,
-          margin: '20px auto',
+          maxWidth: 600,
+          width: '100%',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          gap: 16
+          gap: 18,
+          boxShadow: '0 12px 36px rgba(0,0,0,0.4)'
         }}>
-          <div style={{ fontSize: 42 }}>🔬</div>
+          <div style={{
+            width: 64,
+            height: 64,
+            borderRadius: '50%',
+            background: 'rgba(0, 212, 255, 0.1)',
+            border: '1px solid rgba(0, 212, 255, 0.3)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 30
+          }}>
+            🔬
+          </div>
           <div>
-            <h3 style={{ fontSize: 18, fontWeight: 800, color: '#f8fafc', margin: '0 0 6px 0' }}>
+            <h3 style={{ fontSize: 20, fontWeight: 800, color: '#f8fafc', margin: '0 0 8px 0' }}>
               Engine 1 — Multi-Signal Media Forensics
             </h3>
-            <p style={{ fontSize: 13, color: '#94a3b8', margin: 0 }}>
-              Select a benchmark scenario or upload a media file to inspect ELA compression, PRNU sensor noise, EXIF headers, and facial synthesis markers.
+            <p style={{ fontSize: 14, color: '#94a3b8', margin: 0, lineHeight: 1.6 }}>
+              No active investigation loaded. Upload an image, video, or audio file to run Error Level Analysis (ELA), camera EXIF validation, and SHA-256 fingerprinting.
             </p>
           </div>
 
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
-            {PRESETS.map(p => (
-              <button
-                key={p.key}
-                onClick={() => handleRunPreset(p.key)}
-                disabled={isScanning}
-                style={{
-                  background: '#0d1117',
-                  border: '1px solid #334155',
-                  color: '#38bdf8',
-                  padding: '8px 14px',
-                  borderRadius: 8,
-                  fontSize: 12,
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6
-                }}
-              >
-                <span>{p.icon}</span>
-                <span>{p.label}</span>
-              </button>
-            ))}
-          </div>
-
-          <div style={{ width: '100%', borderTop: '1px solid #1e2d3d', paddingTop: 16 }}>
+          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center' }}>
             <input
               ref={fileInputRef}
               type="file"
@@ -151,17 +138,36 @@ export function ForensicPanel() {
               onClick={() => fileInputRef.current?.click()}
               disabled={isUploading || isScanning}
               style={{
-                background: '#00d4ff',
-                color: '#080c10',
+                background: 'linear-gradient(135deg, #00d4ff 0%, #0077ff 100%)',
+                color: '#040d1a',
                 border: 'none',
-                padding: '10px 20px',
+                padding: '12px 28px',
                 borderRadius: 8,
-                fontSize: 12,
+                fontSize: 14,
                 fontWeight: 800,
-                cursor: 'pointer'
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                boxShadow: '0 4px 18px rgba(0, 212, 255, 0.4)'
               }}
             >
-              {isUploading ? 'Uploading & Analyzing...' : '📁 Upload Local Media for Instant Forensic Audit'}
+              <Sparkles size={16} /> {isUploading ? 'Uploading & Analyzing...' : 'Upload Media for Forensic Inspection'}
+            </button>
+
+            <button
+              onClick={() => useStore.getState().setActiveTab('scanner')}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#64748b',
+                fontSize: 12,
+                cursor: 'pointer',
+                textDecoration: 'underline',
+                marginTop: 4
+              }}
+            >
+              Open Central Scanner Hub ➔
             </button>
           </div>
         </div>
@@ -252,6 +258,28 @@ export function ForensicPanel() {
           }}>
             {currentResult.ml?.label === 'SAFE' ? 'AUTHENTIC' : (currentResult.ml?.label || 'SUSPECT')}
           </div>
+
+          <button
+            onClick={() => {
+              useStore.getState().setCurrentResult(null)
+              useStore.getState().setActiveTab('scanner')
+            }}
+            style={{
+              padding: '6px 14px',
+              borderRadius: 6,
+              background: 'linear-gradient(135deg, #00d4ff 0%, #0077ff 100%)',
+              color: '#040d1a',
+              border: 'none',
+              fontSize: 11,
+              fontWeight: 800,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6
+            }}
+          >
+            <RefreshCw size={13} /> Check Another Image
+          </button>
         </div>
       </div>
 

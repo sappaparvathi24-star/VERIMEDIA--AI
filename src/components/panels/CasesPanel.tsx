@@ -62,11 +62,11 @@ export function CasesPanel() {
     setInvLoading(true)
     try {
       const res = await listInvestigations()
-      if (res && res.investigations) {
-        setInvestigations(res.investigations)
-        if (!selectedInvId && res.investigations.length > 0) {
-          selectInvestigation(res.investigations[0].id)
-        }
+      const list = Array.isArray(res) ? res : (res?.investigations || [])
+      setInvestigations(list)
+      if (list.length > 0) {
+        const idToSelect = selectedInvId && list.some((i: any) => i.id === selectedInvId) ? selectedInvId : list[0].id
+        selectInvestigation(idToSelect)
       }
     } catch (e) {
       console.error('Failed to load investigations', e)
@@ -83,9 +83,11 @@ export function CasesPanel() {
         getInvestigationCandidates(id).catch(() => ({ candidates: [] })),
         getInvestigationReports(id).catch(() => ({ reports: [] }))
       ])
-      setInvDetails(details?.investigation || null)
-      setInvCandidates(candidatesRes?.candidates || [])
-      setInvReports(reportsRes?.reports || [])
+      setInvDetails(details?.investigation || details || null)
+      const candList = Array.isArray(candidatesRes) ? candidatesRes : (candidatesRes?.candidates || candidatesRes?.results || [])
+      const repList = Array.isArray(reportsRes) ? reportsRes : (reportsRes?.reports || [])
+      setInvCandidates(candList)
+      setInvReports(repList)
     } catch (err) {
       console.error('Error fetching investigation details', err)
     }
@@ -98,7 +100,8 @@ export function CasesPanel() {
       await generateInvestigationReport(id)
       setActionNotice('Forensic investigation report compiled and archived successfully.')
       const reportsRes = await getInvestigationReports(id)
-      setInvReports(reportsRes?.reports || [])
+      const repList = Array.isArray(reportsRes) ? reportsRes : (reportsRes?.reports || [])
+      setInvReports(repList)
     } catch (e: any) {
       setActionNotice(`Report generation failed: ${e.message || 'Unknown error'}`)
     } finally {

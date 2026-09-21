@@ -24,6 +24,8 @@ import {
   Eye,
   Terminal,
   Activity,
+  Globe,
+  ExternalLink,
 } from 'lucide-react'
 
 interface Message {
@@ -32,6 +34,7 @@ interface Message {
   content: string
   timestamp: string
   model?: string
+  groundingSources?: Array<{ uri: string; title: string }>
 }
 
 const FORENSIC_PROMPTS = [
@@ -63,15 +66,16 @@ export function GeminiIntelligencePanel() {
       id: 'welcome',
       role: 'assistant',
       content: `### 👋 VeriMedia Gemini Intelligence Copilot Ready
-I am connected to the **Gemini Multimodal Reasoning Engine**. I have live context on your active media scans, perceptual fingerprints, and the SQLite provenance graph.
+I am connected to the **Gemini 3.5 Flash Reasoning Engine** with **live Google Search Grounding**. I have real-time context on your active media scans, perceptual fingerprints, web sources, and the SQLite provenance graph.
 
 **How can I assist your forensic investigation today?**
+- Search & ground live facts, breaking claims, and earliest media appearances
 - Perform deep multimodal visual tampering audits
 - Synthesize executive intelligence dossiers for active investigations
 - Draft legally grounded DMCA takedown briefs with cryptographic citations
 - Explain the physical and mathematical mechanics behind any forensic signal`,
       timestamp: new Date().toLocaleTimeString(),
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.5-flash',
     },
   ])
   const [inputText, setInputText] = useState('')
@@ -143,6 +147,7 @@ I am connected to the **Gemini Multimodal Reasoning Engine**. I have live contex
 
       const response = await askGeminiCopilot(contextPrefix + textToSend, history)
       const assistantText = response?.reply || response?.text || 'Analysis completed.'
+      const groundingSources = response?.groundingSources || []
 
       setMessages(prev => [
         ...prev,
@@ -151,7 +156,8 @@ I am connected to the **Gemini Multimodal Reasoning Engine**. I have live contex
           role: 'assistant',
           content: assistantText,
           timestamp: new Date().toLocaleTimeString(),
-          model: response?.source || 'gemini-2.5-flash',
+          model: response?.source || 'gemini-3.5-flash',
+          groundingSources: groundingSources.length > 0 ? groundingSources : undefined,
         },
       ])
     } catch (err: any) {
@@ -288,7 +294,7 @@ I am connected to the **Gemini Multimodal Reasoning Engine**. I have live contex
                 fontWeight: 700,
                 fontFamily: 'monospace',
               }}>
-                GEMINI 2.5 / 3.8 FLASH
+                GEMINI 3.5 FLASH • SEARCH GROUNDED
               </span>
               <span style={{
                 fontSize: 10,
@@ -302,7 +308,7 @@ I am connected to the **Gemini Multimodal Reasoning Engine**. I have live contex
               </span>
             </div>
             <p style={{ fontSize: 11, color: '#94a3b8', margin: '2px 0 0 0' }}>
-              Multimodal reasoning, automated forensic dossiers, claim grounding, and legal enforcement synthesis.
+              Multimodal reasoning, Google Search Grounded fact verification, automated forensic dossiers, and legal enforcement synthesis.
             </p>
           </div>
         </div>
@@ -432,6 +438,41 @@ I am connected to the **Gemini Multimodal Reasoning Engine**. I have live contex
                     position: 'relative',
                   }}>
                     {m.content}
+                    {m.groundingSources && m.groundingSources.length > 0 && (
+                      <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #1e293b', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 700, color: '#38bdf8' }}>
+                          <Globe size={12} />
+                          <span>Google Search Grounded Sources:</span>
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                          {m.groundingSources.map((source, sIdx) => (
+                            <a
+                              key={sIdx}
+                              href={source.uri}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 4,
+                                fontSize: 11,
+                                color: '#7dd3fc',
+                                background: 'rgba(56, 189, 248, 0.1)',
+                                border: '1px solid rgba(56, 189, 248, 0.25)',
+                                padding: '3px 8px',
+                                borderRadius: 4,
+                                textDecoration: 'none',
+                              }}
+                            >
+                              <ExternalLink size={10} />
+                              <span style={{ maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {source.title || source.uri}
+                              </span>
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     {m.role === 'assistant' && (
                       <button
                         onClick={() => handleCopy(m.content, m.id)}

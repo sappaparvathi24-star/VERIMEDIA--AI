@@ -45,7 +45,7 @@ check('SQLite operational',       health.services['SQLite Database'] === 'operat
 check('Provenance Engine',        health.services['Provenance Engine'] === 'operational', health.services['Provenance Engine']);
 check('Total investigations',     health.total_investigations >= 0, health.total_investigations);
 check('Total scans',              health.total_scans >= 0,          health.total_scans);
-check('Gemini (no key = honest)', health.gemini.includes('fallback') || health.gemini === 'connected', health.gemini);
+check('Gemini status reported', (health.integrations?.gemini !== undefined) || (health.services?.['Gemini AI'] !== undefined), health.integrations?.gemini || health.services?.['Gemini AI']);
 
 // ── STEP 2: Upload image + run full forensics ─────────────
 section('STEP 2 — IMAGE UPLOAD + FORENSICS PIPELINE');

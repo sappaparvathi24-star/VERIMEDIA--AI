@@ -50,7 +50,7 @@ export function OriginPanel() {
 
   if (!currentResult) {
     return (
-      <div style={{ padding: '24px 20px', overflowY: 'auto', height: '100%', background: '#080c10', color: '#f8fafc', display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ padding: '24px 20px', width: '100%', minHeight: '100%', background: '#080c10', color: '#f8fafc', display: 'flex', flexDirection: 'column', gap: 16 }}>
         <div style={{
           padding: '24px',
           borderRadius: 12,
@@ -105,10 +105,60 @@ export function OriginPanel() {
   }
 
   const { authorship, fingerprint_hash, similarity, ai_analysis, artifact } = currentResult
-  const traced = ai_analysis.origin_traced
+  const traced = Boolean(ai_analysis?.origin_traced)
+
+  const nodes = ((genealogyData?.nodes || []) as any[])
+  const edges = ((genealogyData?.links || (genealogyData as any)?.edges || []) as any[])
+  const hasLineageData = Boolean(genealogyData && nodes.length >= 2)
+
+  const sortedNodes = hasLineageData
+    ? [...nodes].sort((a, b) => {
+        const tA = a.createdAt ? new Date(a.createdAt).getTime() : (a.timestamp ? new Date(a.timestamp).getTime() : 0)
+        const tB = b.createdAt ? new Date(b.createdAt).getTime() : (b.timestamp ? new Date(b.timestamp).getTime() : 0)
+        return tA - tB
+      })
+    : []
+
+  const earliestNode = sortedNodes[0]
+  const earliestSourceLabel = earliestNode ? (earliestNode.label || earliestNode.source || earliestNode.id) : null
+  const earliestConfidence = earliestNode?.confidence ?? earliestNode?.provenanceConfidence ?? null
+
+  const formatNodeDate = (dVal: any) => {
+    if (!dVal) return null
+    const d = new Date(dVal)
+    if (isNaN(d.getTime())) return String(dVal)
+    return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+  }
+
+  const subsequentParts: string[] = []
+  if (hasLineageData) {
+    for (const node of sortedNodes.slice(1)) {
+      const edge = edges.find((e: any) =>
+        e.to === node.id || e.target === node.id || e.targetArtifactId === node.id ||
+        (typeof e.target === 'object' && e.target?.id === node.id)
+      )
+      const dateStr = formatNodeDate(node.createdAt || node.timestamp)
+      const trType = edge?.type || edge?.transformationType || edge?.relationshipType
+      const label = node.label || node.source || node.id
+      if (dateStr && trType) {
+        subsequentParts.push(`${dateStr} (${trType})`)
+      } else if (dateStr) {
+        subsequentParts.push(`${dateStr} (${label})`)
+      } else if (trType) {
+        subsequentParts.push(`${label} (${trType})`)
+      } else {
+        subsequentParts.push(label)
+      }
+    }
+  }
+
+  const earliestDateStr = earliestNode ? formatNodeDate(earliestNode.createdAt || earliestNode.timestamp) : null
+  const lineageDetailText = hasLineageData
+    ? `${earliestDateStr ? `First observed ${earliestDateStr}. ` : ''}${subsequentParts.length > 0 ? `Subsequent appearances on ${subsequentParts.join(', ')} confirm derived lineage.` : 'Subsequent derived appearances confirm lineage.'}`
+    : 'Not enough appearances found yet to establish likely origin. Run Discovery first to find related appearances.'
 
   return (
-    <div style={{ padding: 20, overflowY: 'auto', height: '100%', background: '#080c10', color: '#f8fafc', display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div style={{ padding: '20px 24px', width: '100%', minHeight: '100%', background: '#080c10', color: '#f8fafc', display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* Origin status header banner */}
       <div style={{
         padding: '16px 20px',
@@ -230,17 +280,27 @@ export function OriginPanel() {
           <div style={{ fontSize: 11, color: '#8899aa', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 700 }}>
             Forensic Origin Determination
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
-            <span style={{ fontSize: 16, fontWeight: 800, color: '#22c55e' }}>
-              Likely Earliest Observed Source: Source A
-            </span>
-            <span style={{ fontSize: 11, background: 'rgba(34,197,94,0.15)', color: '#4ade80', padding: '2px 8px', borderRadius: 4, fontFamily: 'monospace', fontWeight: 700 }}>
-              Confidence: 84%
-            </span>
-          </div>
-          <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 6, lineHeight: 1.4 }}>
-            First observed 10 Jan 2026. Subsequent appearances on 11 Jan (Re-encoded), 12 Jan (Cropped), and 13 Jan (Text overlay added) confirm derived lineage.
-          </p>
+          {hasLineageData ? (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
+                <span style={{ fontSize: 16, fontWeight: 800, color: '#22c55e' }}>
+                  Likely Earliest Observed Source: {earliestSourceLabel}
+                </span>
+                {earliestConfidence !== null && earliestConfidence !== undefined && (
+                  <span style={{ fontSize: 11, background: 'rgba(34,197,94,0.15)', color: '#4ade80', padding: '2px 8px', borderRadius: 4, fontFamily: 'monospace', fontWeight: 700 }}>
+                    Confidence: {typeof earliestConfidence === 'number' ? `${Math.round(earliestConfidence <= 1 ? earliestConfidence * 100 : earliestConfidence)}%` : earliestConfidence}
+                  </span>
+                )}
+              </div>
+              <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 6, lineHeight: 1.4 }}>
+                {lineageDetailText}
+              </p>
+            </>
+          ) : (
+            <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 6, lineHeight: 1.4 }}>
+              Not enough appearances found yet to establish likely origin. Run Discovery first to find related appearances.
+            </p>
+          )}
         </div>
 
         {/* Epistemic demarcation callout */}
@@ -298,94 +358,84 @@ export function OriginPanel() {
             </p>
           </div>
 
-          {/* Interactive ASCII & Graphic Lineage Flow */}
-          <div style={{
-            background: '#080c10',
-            border: '1px solid #1e293b',
-            borderRadius: 8,
-            padding: 20,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: 16
-          }}>
-            {/* Source A Root */}
+          {/* Interactive Graphic Lineage Flow */}
+          {!hasLineageData ? (
             <div style={{
-              background: 'rgba(34, 197, 94, 0.15)',
-              border: '2px solid #22c55e',
+              background: '#080c10',
+              border: '1px solid #1e293b',
               borderRadius: 8,
-              padding: '12px 24px',
+              padding: 32,
               textAlign: 'center',
-              width: 260
+              color: '#8899aa',
+              fontSize: 12
             }}>
-              <div style={{ fontSize: 10, color: '#4ade80', fontWeight: 800 }}>SOURCE A (10 JAN)</div>
-              <div style={{ fontSize: 14, fontWeight: 800, color: '#f8fafc' }}>Original / Master</div>
-              <div style={{ fontSize: 10, color: '#8899aa', marginTop: 2 }}>Full 1920x1080 · Raw Color</div>
+              Not enough appearances found yet to establish likely origin. Run Discovery first to find related appearances.
             </div>
-
-            {/* Split connectors */}
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
-              <div style={{ width: 2, height: 14, background: '#22c55e' }} />
-              <div style={{ width: '50%', height: 2, background: '#334155' }} />
-              <div style={{ display: 'flex', justifyContent: 'space-between', width: '50%' }}>
-                <div style={{ width: 2, height: 14, background: '#334155' }} />
-                <div style={{ width: 2, height: 14, background: '#334155' }} />
-              </div>
-            </div>
-
-            {/* Middle Row: Source B and Source C */}
-            <div style={{ display: 'flex', justifyContent: 'space-around', width: '70%', gap: 20 }}>
-              <div style={{
-                background: '#0d1117',
-                border: '1px solid #38bdf8',
-                borderRadius: 8,
-                padding: '10px 18px',
-                textAlign: 'center',
-                flex: 1
-              }}>
-                <div style={{ fontSize: 10, color: '#38bdf8', fontWeight: 800 }}>SOURCE B (11 JAN)</div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: '#f8fafc' }}>Re-encoded</div>
-                <div style={{ fontSize: 10, color: '#8899aa', marginTop: 2 }}>Bitrate -45% · H.264 CR 28</div>
-              </div>
-
-              <div style={{
-                background: '#0d1117',
-                border: '1px solid #f59e0b',
-                borderRadius: 8,
-                padding: '10px 18px',
-                textAlign: 'center',
-                flex: 1
-              }}>
-                <div style={{ fontSize: 10, color: '#f59e0b', fontWeight: 800 }}>SOURCE C (12 JAN)</div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: '#f8fafc' }}>Cropped 1:1</div>
-                <div style={{ fontSize: 10, color: '#8899aa', marginTop: 2 }}>Aspect Ratio Reduction</div>
-              </div>
-            </div>
-
-            {/* Merge connectors */}
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', width: '50%' }}>
-                <div style={{ width: 2, height: 14, background: '#334155' }} />
-                <div style={{ width: 2, height: 14, background: '#334155' }} />
-              </div>
-              <div style={{ width: '50%', height: 2, background: '#334155' }} />
-              <div style={{ width: 2, height: 14, background: '#a855f7' }} />
-            </div>
-
-            {/* Bottom Row: Source D */}
+          ) : (
             <div style={{
-              background: 'rgba(168, 85, 247, 0.15)',
-              border: '2px solid #a855f7',
+              background: '#080c10',
+              border: '1px solid #1e293b',
               borderRadius: 8,
-              padding: '12px 24px',
-              textAlign: 'center',
-              width: 260
+              padding: 20,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 16
             }}>
-              <div style={{ fontSize: 10, color: '#d8b4fe', fontWeight: 800 }}>SOURCE D (13 JAN)</div>
-              <div style={{ fontSize: 14, fontWeight: 800, color: '#f8fafc' }}>Caption & Text Added</div>
-              <div style={{ fontSize: 10, color: '#8899aa', marginTop: 2 }}>Derived from C Crop + B Re-encode</div>
+              {/* Root / Earliest Observed */}
+              <div style={{
+                background: 'rgba(34, 197, 94, 0.15)',
+                border: '2px solid #22c55e',
+                borderRadius: 8,
+                padding: '12px 24px',
+                textAlign: 'center',
+                width: 280
+              }}>
+                <div style={{ fontSize: 10, color: '#4ade80', fontWeight: 800 }}>
+                  {earliestDateStr ? `EARLIEST OBSERVED (${earliestDateStr.toUpperCase()})` : 'EARLIEST OBSERVED NODE'}
+                </div>
+                <div style={{ fontSize: 14, fontWeight: 800, color: '#f8fafc' }}>
+                  {earliestNode?.label || earliestNode?.id || 'Root Appearance'}
+                </div>
+                <div style={{ fontSize: 10, color: '#8899aa', marginTop: 2 }}>
+                  {earliestNode?.dimensions ? `${earliestNode.dimensions.width}x${earliestNode.dimensions.height}` : 'Root Master Record'}
+                </div>
+              </div>
+
+              {sortedNodes.slice(1).map((node: any, idx: number) => {
+                const edge = edges.find((e: any) =>
+                  e.to === node.id || e.target === node.id || e.targetArtifactId === node.id ||
+                  (typeof e.target === 'object' && e.target?.id === node.id)
+                )
+                const trType = edge?.type || edge?.transformationType || edge?.relationshipType || 'DERIVED'
+                const nodeDate = formatNodeDate(node.createdAt || node.timestamp)
+                return (
+                  <div key={node.id || idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', gap: 8 }}>
+                    <div style={{ width: 2, height: 16, background: '#38bdf8' }} />
+                    <div style={{
+                      background: '#0d1117',
+                      border: '1px solid #38bdf8',
+                      borderRadius: 8,
+                      padding: '10px 18px',
+                      textAlign: 'center',
+                      maxWidth: 360,
+                      width: '100%'
+                    }}>
+                      <div style={{ fontSize: 10, color: '#38bdf8', fontWeight: 800 }}>
+                        {nodeDate ? `APPEARANCE #${idx + 2} (${nodeDate.toUpperCase()})` : `APPEARANCE #${idx + 2}`}
+                      </div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: '#f8fafc' }}>
+                        {node.label || node.id}
+                      </div>
+                      <div style={{ fontSize: 10, color: '#8899aa', marginTop: 2 }}>
+                        Transformation: {trType}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
-          </div>
+          )}
         </div>
       )}
 
@@ -425,11 +475,11 @@ export function OriginPanel() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontFamily: 'monospace', fontSize: 11 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: '#0d1117', borderRadius: 4 }}>
                 <span style={{ color: '#8899aa' }}>SHA-256 (Bitstream):</span>
-                <span style={{ color: '#38bdf8' }}>{artifact?.sha256 || '6f5e8d9c0b1a23456789abcdef0123456789abcdef0123456789abcdef012345'}</span>
+                <span style={{ color: '#38bdf8' }}>{artifact?.sha256 || 'Not available'}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: '#0d1117', borderRadius: 4 }}>
                 <span style={{ color: '#8899aa' }}>pHash (DCT-64):</span>
-                <span style={{ color: '#a855f7' }}>{(fingerprint_hash || artifact?.perceptualHash || 'a4f8c12b9d0e3f5a').toUpperCase()}</span>
+                <span style={{ color: '#a855f7' }}>{(fingerprint_hash || artifact?.perceptualHash || '').toUpperCase() || 'Not available'}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: '#0d1117', borderRadius: 4 }}>
                 <span style={{ color: '#8899aa' }}>C2PA Manifest Status:</span>

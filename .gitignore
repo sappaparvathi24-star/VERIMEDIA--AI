@@ -28,9 +28,10 @@ frontend/.vite/
 # Docker
 *.log
 
-# Database
+# Database & Media Cache
 data/*.db*
 data/*.sqlite*
+data/media/*
 *.db
 *.db-wal
 *.db-shm

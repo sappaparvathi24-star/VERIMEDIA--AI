@@ -10,14 +10,14 @@ import { checkRateLimit } from '../src/proxy/searchProxy.js';
 console.log('── Running VeriMedia AI Phase 17 Tests: Independence Group Deduplication & Sybil Defense ──');
 let passed = 0;
 
-function run(name, fn) {
-  fn();
+async function run(name, fn) {
+  await fn();
   passed++;
   console.log(`✔ [PASS] Test ${passed}: ${name}`);
 }
 
 // 1. Sybil / Repost Collapsing (100 Reposts = 1 Independent Group)
-run('Sybil Defense: 100 syndicated reposts collapse to 1 independent evidence channel', () => {
+await run('Sybil Defense: 100 syndicated reposts collapse to 1 independent evidence channel', async () => {
   const store = new ProvenanceStore();
   const inv = store.createInvestigation({ title: 'Sybil Amplification Test' });
   const art = store.createArtifact({
@@ -66,7 +66,7 @@ run('Sybil Defense: 100 syndicated reposts collapse to 1 independent evidence ch
     evidenceIds: evidenceIds
   });
 
-  const assessment = assessClaim(store, claim.id);
+  const assessment = await assessClaim(store, claim.id);
   assert.strictEqual(assessment.claim.status, 'SUPPORTED');
   // Since only 1 independent group exists, confidence must NOT exceed single-source threshold (0.85)
   assert.strictEqual(assessment.claim.confidence, 0.85);
@@ -79,7 +79,7 @@ run('Sybil Defense: 100 syndicated reposts collapse to 1 independent evidence ch
   assert.strictEqual(hasDeduplicationNotice, true, 'Must include explicit limitation regarding syndicated sources');
 });
 
-run('Sybil Defense: Multi-source corroboration (3 distinct independent groups) reaches multi-group confidence', () => {
+await run('Sybil Defense: Multi-source corroboration (3 distinct independent groups) reaches multi-group confidence', async () => {
   const store = new ProvenanceStore();
   const inv = store.createInvestigation({ title: 'Multi-Source Independence Test' });
   const art = store.createArtifact({
@@ -121,21 +121,22 @@ run('Sybil Defense: Multi-source corroboration (3 distinct independent groups) r
     evidenceIds: [ev1.id, ev2.id, ev3.id]
   });
 
-  const assessment = assessClaim(store, claim.id);
+  const assessment = await assessClaim(store, claim.id);
   assert.strictEqual(assessment.claim.status, 'SUPPORTED');
   assert.strictEqual(assessment.claim.confidence, 0.94, 'Multi-group independent corroboration reaches 0.94 confidence');
 });
 
 // 2. Mocked Connector Registration & Discovery Rate Limiting
-run('Discovery: MultiSourceDiscoveryManager registers all 5 honest discovery providers', () => {
+await run('Discovery: MultiSourceDiscoveryManager registers all 6 honest discovery providers', () => {
   const manager = new MultiSourceDiscoveryManager();
   const providers = manager.getAllProviders();
-  assert.strictEqual(providers.length, 5);
+  assert.strictEqual(providers.length, 6);
   assert.ok(manager.getProvider('reddit'));
   assert.ok(manager.getProvider('youtube'));
   assert.ok(manager.getProvider('mastodon'));
   assert.ok(manager.getProvider('archiveOrg'));
   assert.ok(manager.getProvider('googleImages'));
+  assert.ok(manager.getProvider('googleVisionWebDetection'));
 });
 
 run('Discovery: Search proxy rate limiter enforces sliding-window thresholds', () => {

@@ -59,9 +59,9 @@ const FIVE_ENGINES: NavItem[] = [
 const WORKSPACE_TOOLS: NavItem[] = [
   {
     id: 'intelligence',
-    label: 'Gemini AI Copilot',
+    label: 'VeriMedia Assistant',
     icon: '✨',
-    description: 'Multimodal AI reasoning, executive dossiers, visual forensics & copilot',
+    description: 'Multimodal AI reasoning, executive dossiers, visual forensics & assistant',
     badge: 'AI',
   },
   {
@@ -93,6 +93,13 @@ const WORKSPACE_TOOLS: NavItem[] = [
     label: 'System & Jobs',
     icon: '⚙️',
     description: 'Unified engine health, DB sync, monitoring jobs and provider status',
+  },
+  {
+    id: 'debug',
+    label: 'API Network Logs',
+    icon: '🪲',
+    description: 'Real-time HTTP traffic debugger, forensic data fidelity auditor & cURL inspector',
+    badge: 'LIVE',
   },
 ]
 

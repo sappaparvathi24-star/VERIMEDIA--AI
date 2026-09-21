@@ -2,16 +2,29 @@
 import { create } from 'zustand'
 import type {
   DetectionResult, CaseRecord, HealthStatus,
-  ScanStats, TabId,
+  ScanStats, TabId, ForensicStageItem, ForensicStageStatus, ScanLogEntry
 } from '../types'
-import { DEFAULT_SHOWCASE_RESULT, SAMPLE_CASES } from './initialData'
+import { DEFAULT_SHOWCASE_RESULT, SAMPLE_CASES, DEFAULT_FORENSIC_STAGES } from './initialData'
 
 interface AppState {
-  // Detection
+  // Detection & Forensic Scan
   results: DetectionResult[]
   currentResult: DetectionResult | null
   isScanning: boolean
   scanError: string | null
+
+  // Real-time Forensic Module Progress & Telemetry
+  scanProgress: number
+  scanStageIndex: number
+  scanStageKey: string
+  scanStageTitle: string
+  scanStageDetail: string
+  scanStages: ForensicStageItem[]
+  scanLogs: ScanLogEntry[]
+  scanStartTime: number | null
+  scanElapsedSeconds: number
+  activeJobId: string | null
+  showGlobalProgressDrawer: boolean
 
   // Cases
   cases: CaseRecord[]
@@ -33,10 +46,16 @@ interface AppState {
   stats: ScanStats
 
   // Actions
-  setCurrentResult: (r: DetectionResult) => void
+  setCurrentResult: (r: DetectionResult | null) => void
   addResult: (r: DetectionResult) => void
   setScanning: (v: boolean) => void
   setScanError: (e: string | null) => void
+  setScanProgress: (progress: number, stageIndex?: number, title?: string, detail?: string) => void
+  setScanStageStatus: (stageKey: string, status: ForensicStageStatus, detail?: string, metrics?: Record<string, any>) => void
+  addScanLog: (message: string, stage?: string, level?: 'info' | 'success' | 'warn' | 'error') => void
+  resetScanProgress: () => void
+  setActiveJobId: (id: string | null) => void
+  setShowGlobalProgressDrawer: (v: boolean) => void
   setCases: (c: CaseRecord[]) => void
   setCasesLoading: (v: boolean) => void
   setHealth: (h: HealthStatus) => void
@@ -52,10 +71,24 @@ interface AppState {
 }
 
 export const useStore = create<AppState>((set, get) => ({
-  results: [DEFAULT_SHOWCASE_RESULT],
-  currentResult: DEFAULT_SHOWCASE_RESULT,
+  results: [],
+  currentResult: null,
   isScanning: false,
   scanError: null,
+
+  // Forensic progress defaults
+  scanProgress: 0,
+  scanStageIndex: 0,
+  scanStageKey: 'ingest',
+  scanStageTitle: 'Initializing Analysis Pipeline',
+  scanStageDetail: 'Ready for media submission',
+  scanStages: DEFAULT_FORENSIC_STAGES.map(s => ({ ...s, status: 'PENDING' })),
+  scanLogs: [],
+  scanStartTime: null,
+  scanElapsedSeconds: 0,
+  activeJobId: null,
+  showGlobalProgressDrawer: false,
+
   cases: SAMPLE_CASES,
   casesLoading: false,
   health: null,
@@ -66,12 +99,112 @@ export const useStore = create<AppState>((set, get) => ({
   showHeroOverlay: false,
   showCommandPalette: false,
   selectedCaseId: null,
-  stats: { total: 1, threats: 1, dmca: 1, clean: 0 },
+  stats: { total: 0, threats: 0, dmca: 0, clean: 0 },
 
   setCurrentResult: (r) => set({ currentResult: r }),
   addResult: (r) => set(s => ({ results: [r, ...s.results].slice(0, 200) })),
-  setScanning: (v) => set({ isScanning: v }),
+  setScanning: (v) => set(s => {
+    if (v) {
+      return {
+        isScanning: true,
+        scanStartTime: Date.now(),
+        scanElapsedSeconds: 0,
+        scanProgress: 5,
+        scanStageIndex: 0,
+        scanStageKey: 'ingest',
+        scanStageTitle: 'Stage 1: Ingest & Fingerprinting',
+        scanStageDetail: 'Extracting SHA-256 bitstream and computing 64-bit perceptual hash...',
+        scanStages: DEFAULT_FORENSIC_STAGES.map((st, idx) => ({
+          ...st,
+          status: idx === 0 ? 'RUNNING' : 'PENDING',
+          detail: undefined,
+          durationMs: undefined,
+          metrics: undefined
+        })),
+        scanLogs: [{
+          id: `log-${Date.now()}-0`,
+          timestamp: new Date().toLocaleTimeString(),
+          level: 'info',
+          stage: 'ingest',
+          message: 'Forensic scan pipeline initiated. Ingesting media bitstream...'
+        }]
+      }
+    }
+    return { isScanning: false }
+  }),
   setScanError: (e) => set({ scanError: e }),
+
+  setScanProgress: (progress, stageIndex, title, detail) => set(s => {
+    const updatedStages = [...s.scanStages]
+    const resolvedIndex = stageIndex !== undefined ? stageIndex : s.scanStageIndex
+
+    updatedStages.forEach((st, idx) => {
+      if (idx < resolvedIndex) {
+        st.status = 'COMPLETED'
+      } else if (idx === resolvedIndex) {
+        st.status = progress >= 100 ? 'COMPLETED' : 'RUNNING'
+        if (detail) st.detail = detail
+      } else {
+        if (st.status === 'RUNNING') st.status = 'PENDING'
+      }
+    })
+
+    const activeStage = updatedStages[resolvedIndex] || updatedStages[0]
+
+    return {
+      scanProgress: Math.min(100, Math.max(0, progress)),
+      scanStageIndex: resolvedIndex,
+      scanStageKey: activeStage?.key || s.scanStageKey,
+      scanStageTitle: title || activeStage?.label || s.scanStageTitle,
+      scanStageDetail: detail || activeStage?.description || s.scanStageDetail,
+      scanStages: updatedStages
+    }
+  }),
+
+  setScanStageStatus: (stageKey, status, detail, metrics) => set(s => {
+    const updatedStages = s.scanStages.map(st => {
+      if (st.key === stageKey) {
+        return {
+          ...st,
+          status,
+          detail: detail !== undefined ? detail : st.detail,
+          metrics: metrics !== undefined ? { ...(st.metrics || {}), ...metrics } : st.metrics
+        }
+      }
+      return st
+    })
+    return { scanStages: updatedStages }
+  }),
+
+  addScanLog: (message, stage = 'pipeline', level = 'info') => set(s => ({
+    scanLogs: [
+      ...s.scanLogs.slice(-150),
+      {
+        id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        timestamp: new Date().toLocaleTimeString(),
+        level,
+        stage,
+        message
+      }
+    ]
+  })),
+
+  resetScanProgress: () => set({
+    scanProgress: 0,
+    scanStageIndex: 0,
+    scanStageKey: 'ingest',
+    scanStageTitle: 'Initializing Analysis Pipeline',
+    scanStageDetail: 'Ready for media submission',
+    scanStages: DEFAULT_FORENSIC_STAGES.map(s => ({ ...s, status: 'PENDING' })),
+    scanLogs: [],
+    scanStartTime: null,
+    scanElapsedSeconds: 0,
+    activeJobId: null
+  }),
+
+  setActiveJobId: (id) => set({ activeJobId: id }),
+  setShowGlobalProgressDrawer: (v) => set({ showGlobalProgressDrawer: v }),
+
   setCases: (c) => set({ cases: c }),
   setCasesLoading: (v) => set({ casesLoading: v }),
   setHealth: (h) => set({ health: h }),
@@ -95,3 +228,4 @@ export const useStore = create<AppState>((set, get) => ({
   }),
   clearResults: () => set({ results: [], currentResult: null }),
 }))
+

@@ -466,11 +466,16 @@ export function authenticateUser(req, res, next) {
     return next();
   }
 
+let hasLoggedDevAuthNotice = false;
+
   // --- No credentials at all ---
   // In non-production environments only, allow a dev bypass so local development
   // can run without configuring credentials. This is never active in production.
   if (process.env.NODE_ENV !== 'production') {
-    console.warn('[AUTH] DEV MODE: No credentials provided — granting default analyst context. This bypass is disabled in production.');
+    if (!hasLoggedDevAuthNotice) {
+      console.info('[AUTH] DEV MODE: Default analyst context active for development session.');
+      hasLoggedDevAuthNotice = true;
+    }
     req.user = {
       id: 'usr_analyst_01',
       email: 'analyst@verimedia.ai',

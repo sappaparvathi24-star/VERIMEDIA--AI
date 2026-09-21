@@ -281,6 +281,7 @@ async function runNonFabricationTests() {
   console.log('========================================');
   console.log('Non-Fabrication Test Suite: ALL PASSED');
   console.log('========================================');
+  process.exit(0);
 }
 
 runNonFabricationTests().catch(err => {

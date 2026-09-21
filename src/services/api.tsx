@@ -1,6 +1,7 @@
 // VeriMedia AI — Typed API Client for Provenance & Media Investigations
 import axios from 'axios'
 import { getToken } from '../lib/supabaseClient'
+import { networkLogger } from './networkLogger'
 import type {
   DetectionRequest, DetectionResult,
   DMCARequest, DMCANotice,
@@ -8,28 +9,24 @@ import type {
   HealthStatus,
 } from '../types'
 
+export { networkLogger }
+
 // Canonical Render backend URL — update this single constant when the backend URL changes
 const RENDER_BACKEND = 'https://verimedia-ai-2.onrender.com'
 
 export const getApiBaseUrl = (): string => {
   const envUrl = import.meta.env.VITE_API_BASE_URL?.trim()
-  if (envUrl) {
-    // If the env var still points to the old backend, silently upgrade it
-    if (envUrl.includes('verimedia-ai-1.onrender.com')) {
-      return RENDER_BACKEND
-    }
+  if (envUrl && envUrl !== 'https://verimedia-ai-2.onrender.com' && envUrl !== 'https://verimedia-ai-1.onrender.com') {
     return envUrl.replace(/\/$/, '')
   }
   if (typeof window !== 'undefined') {
     const host = window.location.hostname
-    // Route any Vercel deployment or custom domain to the Render backend
-    if (
-      host.includes('vercel.app') ||
-      host.includes('verimedia') ||
-      host !== 'localhost'
-    ) {
+    // Only route to external Render backend if hosted purely on static Vercel domain
+    if (host.includes('vercel.app')) {
       return RENDER_BACKEND
     }
+    // In local dev, Cloud Run preview container (*.run.app), and same-origin deployments, use relative base
+    return ''
   }
   return ''
 }
@@ -43,6 +40,10 @@ const api = axios.create({
   timeout: 60_000,
   headers: { 'Content-Type': 'application/json' },
 })
+
+// Attach network logger interceptors for real-time traffic audit & backend verification
+networkLogger.attachAxios(api)
+networkLogger.attachAxios(axios)
 
 // Attach Bearer token automatically to every API request
 api.interceptors.request.use(async (config) => {
@@ -170,8 +171,16 @@ export const testProvider = (provider: string) =>
 export const getSearchTransparency = () =>
   api.get('/search/transparency').then(r => r.data)
 
-export const searchMultiSource = (query: string, platforms?: string[]) =>
-  api.post('/search/multi-source', { query, platforms }).then(r => r.data)
+export const searchMultiSource = (
+  query: string,
+  platforms?: string[],
+  page: number = 1,
+  pageSize: number = 10,
+  investigationId?: string,
+  artifactId?: string,
+  isManualTextSearch: boolean = false
+) =>
+  api.post('/search/multi-source', { query, platforms, page, pageSize, investigationId, artifactId, isManualTextSearch }).then(r => r.data)
 
 export const getInvestigationCandidates = (id: string) =>
   api.get(`/investigations/${id}/discovery/candidates`).then(r => r.data)
@@ -190,6 +199,13 @@ export const getInvestigationReports = (id: string) =>
 
 export const generateInvestigationReport = (id: string) =>
   api.post(`/investigations/${id}/report`).then(r => r.data)
+
+export const get4FeatureWorkflowReport = async (investigationId: string) => {
+  const token = await getToken()
+  return axios.get(`${BASE}/api/investigations/${investigationId}/report`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {}
+  }).then(r => r.data)
+}
 
 export const getDetectionTrends = (timeRange: string = '24h', platform: string = 'ALL') =>
   api.get('/analytics/detection-trends', { params: { timeRange, platform } }).then(r => r.data)
@@ -281,6 +297,36 @@ export const generateDMCANoticeGemini = async (payload: any) => {
   return axios.post(`${BASE}/dmca/generate`, payload, {
     headers: token ? { Authorization: `Bearer ${token}` } : {}
   }).then(r => r.data)
+}
+
+// ── Google Search API: Direct Service Layer Integration ─────────────────────
+export interface GoogleSearchResultItem {
+  title: string
+  link: string
+  displayLink?: string
+  snippet?: string
+  imageUrl?: string
+  thumbnailUrl?: string
+  contextLink?: string
+  byteSize?: number | null
+  width?: number | null
+  height?: number | null
+}
+
+export interface GoogleSearchApiResponse {
+  status: string
+  provider: string
+  count: number
+  results: GoogleSearchResultItem[]
+  reason?: string | null
+}
+
+export const searchGoogleApi = async (query: string, searchType?: 'image' | 'web'): Promise<GoogleSearchApiResponse> => {
+  return api.get('/search/google', { params: { q: query, searchType } }).then(r => r.data)
+}
+
+export const searchGoogleImages = async (query: string): Promise<GoogleSearchApiResponse> => {
+  return api.get('/search/google-images', { params: { q: query } }).then(r => r.data)
 }
 
 // ── Google Search API: Earliest Known Appearance (Source) ───────────────────

@@ -1,5 +1,6 @@
 // VeriMedia AI — Investigation Reporting & Forensic Export Engine (Phases L & M)
 import { buildMediaTimeline } from './timeline.js';
+import { extractCreatorAttribution } from './workflowReport.js';
 
 export function generateInvestigationReport(store, investigationId, options = {}) {
   const inv = store.getInvestigation(investigationId);
@@ -20,6 +21,46 @@ export function generateInvestigationReport(store, investigationId, options = {}
 
   const reportId = `RPT-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
   const now = new Date().toISOString();
+
+  // 4-Feature Workflow Extraction
+  const primaryArtifact = artifacts[0] || null;
+  const originalWebsiteMatch = candidates.length > 0 ? candidates[0] : null;
+  const creatorAttribution = extractCreatorAttribution(candidates, primaryArtifact?.metadata || {});
+
+  const workflow = {
+    originalWebsite: {
+      feature: 'Original Website Search',
+      status: candidates.length > 0 ? 'MATCHES_FOUND' : 'NO_MATCHES_FOUND',
+      candidateCount: candidates.length,
+      originalWebsite: originalWebsiteMatch ? {
+        url: originalWebsiteMatch.url,
+        domain: originalWebsiteMatch.domain || originalWebsiteMatch.source || 'Web Source',
+        title: originalWebsiteMatch.title || 'Indexed Match',
+        relationship: originalWebsiteMatch.relationship || 'LIKELY_RELATED'
+      } : 'No prior web publications discovered',
+      summary: candidates.length > 0
+        ? `Identified ${candidates.length} web occurrence(s). Primary source: ${originalWebsiteMatch?.domain || 'web'}.`
+        : 'No matching online appearances found.'
+    },
+    aiDetection: {
+      feature: 'AI Generation Detection',
+      status: findings.length > 0 ? 'ANALYZED' : 'INCONCLUSIVE',
+      verdict: inv.status === 'SYNTHETIC' ? 'LIKELY_SYNTHETIC' : (inv.status === 'AUTHENTIC' ? 'LIKELY_AUTHENTIC' : 'INCONCLUSIVE'),
+      findingsCount: findings.length
+    },
+    creatorInvestigation: {
+      feature: 'Creator Investigation',
+      ...creatorAttribution
+    },
+    imageForensics: {
+      feature: 'Image Forensics',
+      status: primaryArtifact ? 'COMPLETED' : 'INCOMPLETE',
+      sha256: primaryArtifact?.sha256 || 'Not available',
+      perceptualHash: primaryArtifact?.perceptualHash || 'Not computed',
+      mimeType: primaryArtifact?.mimeType || 'Not available',
+      byteSize: primaryArtifact?.byteSize !== undefined ? primaryArtifact.byteSize : 'Not available'
+    }
+  };
 
   const report = {
     id: reportId,
@@ -45,6 +86,7 @@ export function generateInvestigationReport(store, investigationId, options = {}
       claimCount: claims.length,
       earliestObservedAppearance: timeline.earliestAppearance
     },
+    workflow,
     artifacts,
     findings,
     timeline: timeline.events,
