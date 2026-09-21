@@ -102,8 +102,10 @@ export async function assessClaim(store, claimId, options = {}) {
     const ev = store.getEvidence(eid);
     if (!ev) continue;
 
+    const hasExplicitPolarity = ev.polarity === EvidencePolarity.SUPPORTING || ev.polarity === EvidencePolarity.REFUTING;
     const evText = ev.description || ev.metadata?.sourceText || ev.metadata?.caption || ev.title || '';
-    if (evText && claim.statement) {
+
+    if (!hasExplicitPolarity && options.useEntailment !== false && evText && claim.statement) {
       const nliResult = await classifyEntailment(claim.statement, evText);
       entailmentAssessments.push({
         evidenceId: eid,
@@ -166,7 +168,7 @@ export async function assessClaim(store, claimId, options = {}) {
     } else if (supportingGroups.groupCount === 2) {
       confidence = 0.88;
     } else {
-      confidence = 0.92; // Multi-group independent corroboration (clamped to forensic band ceiling)
+      confidence = 0.94; // Multi-group independent corroboration (3+ distinct independent groups)
     }
   }
 
@@ -174,8 +176,8 @@ export async function assessClaim(store, claimId, options = {}) {
     limitations.push(`${supportingGroups.repostCollapses.length} reworded or syndicated repost(s) collapsed to single independence channel via semantic embedding similarity.`);
   }
 
-  // Hard clamp output to calibrated band [0.15, 0.92]
-  confidence = Number(Math.max(0.15, Math.min(0.92, confidence)).toFixed(2));
+  // Hard clamp output to calibrated band [0.15, 0.95]
+  confidence = Number(Math.max(0.15, Math.min(0.95, confidence)).toFixed(2));
 
   // Update claim in store
   claim.status = status;

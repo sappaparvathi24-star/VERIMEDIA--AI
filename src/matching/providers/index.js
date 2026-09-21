@@ -4,6 +4,7 @@ import { YouTubeDiscoveryProvider } from './youtube.js';
 import { MastodonDiscoveryProvider } from './mastodon.js';
 import { ArchiveOrgDiscoveryProvider } from './archiveOrg.js';
 import { GoogleImagesDiscoveryProvider } from './googleImages.js';
+import { GoogleVisionWebDetectionProvider } from './googleVisionWebDetection.js';
 import { XDiscoveryProvider } from './x.js';
 import { InstagramDiscoveryProvider } from './instagram.js';
 import { GoogleVisionDiscoveryProvider } from './googleVision.js';
@@ -62,12 +63,13 @@ export class MultiSourceDiscoveryManager {
   constructor(config = {}) {
     this.providers = new Map();
     
-    // Register the 5 primary open discovery platforms by default (Phase 17 contract)
+    // Register the 6 primary open discovery platforms by default
     this.registerProvider(new RedditDiscoveryProvider(config.reddit));
     this.registerProvider(new YouTubeDiscoveryProvider(config.youtube));
     this.registerProvider(new MastodonDiscoveryProvider(config.mastodon));
     this.registerProvider(new ArchiveOrgDiscoveryProvider(config.archiveOrg));
     this.registerProvider(new GoogleImagesDiscoveryProvider(config.googleImages));
+    this.registerProvider(new GoogleVisionWebDetectionProvider(config.googleVision || config.googleVisionWebDetection));
 
     if (config.includeAll || config.enableVisionAndSocial) {
       this.registerProvider(new GoogleVisionDiscoveryProvider(config.googleVision));

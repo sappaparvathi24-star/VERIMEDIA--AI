@@ -200,6 +200,13 @@ export const getInvestigationReports = (id: string) =>
 export const generateInvestigationReport = (id: string) =>
   api.post(`/investigations/${id}/report`).then(r => r.data)
 
+export const get4FeatureWorkflowReport = async (investigationId: string) => {
+  const token = await getToken()
+  return axios.get(`${BASE}/api/investigations/${investigationId}/report`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {}
+  }).then(r => r.data)
+}
+
 export const getDetectionTrends = (timeRange: string = '24h', platform: string = 'ALL') =>
   api.get('/analytics/detection-trends', { params: { timeRange, platform } }).then(r => r.data)
 
