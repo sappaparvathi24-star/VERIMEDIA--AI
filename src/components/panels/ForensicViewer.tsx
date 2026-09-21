@@ -40,6 +40,7 @@ import { fetchEarliestAppearance, analyzeMultimodalGemini, type EarliestAppearan
 import { SequentialForensicReport } from '../forensics/SequentialForensicReport'
 import { CandidateComparisonHub } from './CandidateComparisonHub'
 import { generateTenComparisonReports } from '../../matching/candidateReportsGenerator'
+import { isSimulatedResult } from '../../lib/resultMode'
 
 interface ForensicViewerProps {
   result?: DetectionResult | null
@@ -121,12 +122,13 @@ export function ForensicViewer({ result: propResult, compact = false, onClose }:
   const isDraggingSlider = useRef<boolean>(false)
 
   // Confidence & Forensic metrics
-  const confidence = result?.forensics?.confidence ?? result?.ai_analysis?.confidence ?? 0.94
-  const integrityScore = result?.integrity?.score ?? 0.18
-  const trustScore = result?.forensics?.trustScore ?? result?.trust?.trust_score ?? 18
+  const isScenario = isSimulatedResult(result)
+  const confidence = result?.forensics?.confidence ?? result?.ai_analysis?.confidence ?? (isScenario ? 0.94 : null)
+  const integrityScore = result?.integrity?.score ?? (isScenario ? 0.18 : null)
+  const trustScore = result?.forensics?.trustScore ?? result?.trust?.trust_score ?? (isScenario ? 18 : null)
   const isManipulated = (result?.forensics?.authenticity === 'MANIPULATED') ||
     (result?.ml?.label === 'TAMPERED') ||
-    (typeof result?.integrity?.score === 'number' && result.integrity.score < 0.5)
+    (typeof integrityScore === 'number' && integrityScore < 0.5)
 
   const signals = result?.integrity?.signals ?? {}
 
@@ -188,12 +190,22 @@ export function ForensicViewer({ result: propResult, compact = false, onClose }:
     if ((result as any)?.comparisonSummary?.reports && Array.isArray((result as any).comparisonSummary.reports) && (result as any).comparisonSummary.reports.length > 0) {
       return (result as any).comparisonSummary.reports
     }
-    return generateTenComparisonReports(
-      result?.artifact || { filename: (result as any)?.caption || 'Uploaded Reference Asset', title: (result as any)?.caption },
-      (result as any)?.candidates || [],
-      result?.scenario || 'normal'
-    ).reports
-  }, [result])
+    if ((result as any)?.candidates && Array.isArray((result as any).candidates) && (result as any).candidates.length > 0) {
+      return generateTenComparisonReports(
+        result?.artifact || { filename: (result as any)?.caption || 'Uploaded Reference Asset', title: (result as any)?.caption },
+        (result as any).candidates,
+        result?.scenario || 'normal'
+      ).reports
+    }
+    if (isScenario) {
+      return generateTenComparisonReports(
+        result?.artifact || { filename: (result as any)?.caption || 'Uploaded Reference Asset', title: (result as any)?.caption },
+        [],
+        result?.scenario || 'normal'
+      ).reports
+    }
+    return []
+  }, [result, isScenario])
 
   const activeCandidate = useMemo(() => {
     if (!comparisonReports || comparisonReports.length === 0) return null
@@ -201,7 +213,7 @@ export function ForensicViewer({ result: propResult, compact = false, onClose }:
   }, [comparisonReports, selectedCandidateId])
 
   const elaData = (result?.forensics as any)?.ela
-  const elaMeanError = elaData?.meanError ?? (signals?.jpeg_artifact ? Number((signals.jpeg_artifact * 30).toFixed(1)) : 18.5)
+  const elaMeanError = elaData?.meanError ?? (signals?.jpeg_artifact ? Number((signals.jpeg_artifact * 30).toFixed(1)) : (isScenario ? 18.5 : null))
 
   // Drag handler for Split Slider comparison mode
   const handleMouseDown = () => {
@@ -595,7 +607,7 @@ export function ForensicViewer({ result: propResult, compact = false, onClose }:
                           <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
                             <div className={`w-full h-full rounded opacity-60 mix-blend-color-dodge ${isManipulated ? 'bg-gradient-to-tr from-rose-600/50 via-amber-500/30 to-purple-600/40' : 'bg-gradient-to-tr from-emerald-600/30 via-cyan-500/20 to-transparent'}`} />
                             <div className="absolute top-3 left-3 bg-slate-950/85 backdrop-blur border border-rose-500/50 px-2.5 py-1 rounded text-[10px] font-mono text-rose-300">
-                              ELA Residual Variance: {elaMeanError} dB
+                              ELA Residual Variance: {elaMeanError != null ? `${elaMeanError} dB` : 'Not computed'}
                             </div>
                           </div>
                         )}
@@ -661,7 +673,7 @@ export function ForensicViewer({ result: propResult, compact = false, onClose }:
 
                     {/* Similarity Score Pill */}
                     <div className="absolute top-3 right-3 bg-slate-900/90 backdrop-blur border border-cyan-500/40 px-2.5 py-1 rounded text-[11px] font-mono text-cyan-300">
-                      Match: {activeCandidate ? `${(activeCandidate.similarity * 100).toFixed(1)}%` : `${(confidence * 100).toFixed(1)}%`}
+                      Match: {activeCandidate ? `${(activeCandidate.similarity * 100).toFixed(1)}%` : (confidence != null ? `${(confidence * 100).toFixed(1)}%` : 'Pending')}
                     </div>
 
                     {/* Source domain badge */}
@@ -1001,11 +1013,17 @@ export function ForensicViewer({ result: propResult, compact = false, onClose }:
                 <span className="text-xs font-bold text-slate-300 uppercase tracking-wider font-mono">
                   Confidence Score & XAI
                 </span>
-                <span className={`text-xs px-2 py-0.5 rounded font-mono font-bold ${
-                  trustScore < 40 ? 'bg-rose-950 text-rose-400 border border-rose-800/50' : 'bg-emerald-950 text-emerald-400 border border-emerald-800/50'
-                }`}>
-                  {trustScore < 40 ? 'CRITICAL RISK' : 'CLEAN'}
-                </span>
+                {trustScore != null ? (
+                  <span className={`text-xs px-2 py-0.5 rounded font-mono font-bold ${
+                    trustScore < 40 ? 'bg-rose-950 text-rose-400 border border-rose-800/50' : 'bg-emerald-950 text-emerald-400 border border-emerald-800/50'
+                  }`}>
+                    {trustScore < 40 ? 'CRITICAL RISK' : 'CLEAN'}
+                  </span>
+                ) : (
+                  <span className="text-xs px-2 py-0.5 rounded font-mono font-bold bg-slate-900 text-slate-400 border border-slate-700/50">
+                    NOT EVALUATED
+                  </span>
+                )}
               </div>
 
               {/* Gauge Metric Card */}
@@ -1027,13 +1045,13 @@ export function ForensicViewer({ result: propResult, compact = false, onClose }:
                       stroke={isManipulated ? '#ef4444' : '#22c55e'}
                       strokeWidth="5"
                       strokeDasharray="163"
-                      strokeDashoffset={163 - (163 * confidence)}
+                      strokeDashoffset={confidence != null ? (163 - (163 * confidence)) : 163}
                       strokeLinecap="round"
                       fill="none"
                     />
                   </svg>
                   <span className="absolute font-mono text-sm font-bold text-white">
-                    {(confidence * 100).toFixed(0)}%
+                    {confidence != null ? `${(confidence * 100).toFixed(0)}%` : '--'}
                   </span>
                 </div>
 
@@ -1045,7 +1063,11 @@ export function ForensicViewer({ result: propResult, compact = false, onClose }:
                     Posterior Credible Range:
                   </div>
                   <div className="font-mono text-[11px] text-cyan-400 font-semibold">
-                    [{((confidence - 0.03) * 100).toFixed(1)}% – {Math.min(100, (confidence + 0.03) * 100).toFixed(1)}%]
+                    {confidence != null ? (
+                      `[${((confidence - 0.03) * 100).toFixed(1)}% – ${Math.min(100, (confidence + 0.03) * 100).toFixed(1)}%]`
+                    ) : (
+                      <span className="text-slate-500">Not computed</span>
+                    )}
                   </div>
                 </div>
               </div>

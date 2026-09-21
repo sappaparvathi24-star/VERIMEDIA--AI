@@ -56,7 +56,7 @@ interface DiscoveredCandidate {
 }
 
 export function DiscoveryPanel() {
-  const { currentResult, setActiveTab } = useStore()
+  const { currentResult, setCurrentResult, setActiveTab } = useStore()
   const [providers, setProviders] = useState<Record<string, ProviderInfo>>({})
   const [transparencySources, setTransparencySources] = useState<TransparencySource[]>([])
   const [transparencyNotice, setTransparencyNotice] = useState<string | null>(null)
@@ -86,9 +86,16 @@ export function DiscoveryPanel() {
   const [isGroundedLoading, setIsGroundedLoading] = useState<boolean>(false)
   const [groundedError, setGroundedError] = useState<string | null>(null)
 
-  const referenceThumbnail = (currentResult as any)?.thumbnailUrl || (currentResult as any)?.mediaUrl || (currentResult as any)?.previewUrl || (currentResult as any)?.url || null
-  const artifactName = (currentResult as any)?.filename || (currentResult as any)?.title || currentResult?.caption || 'Uploaded Media Artifact'
-  const artifactId = (currentResult as any)?.id || (currentResult as any)?.artifactId || null
+  const artifactId = (currentResult as any)?.artifact?.id || (currentResult as any)?.artifactId || (currentResult as any)?.id || null
+  const referenceThumbnail = (currentResult as any)?.artifact?.previewUrl ||
+    (currentResult as any)?.artifact?.fileUrl ||
+    (currentResult as any)?.artifact?.dataUrl ||
+    (currentResult as any)?.previewUrl ||
+    (currentResult as any)?.thumbnailUrl ||
+    (currentResult as any)?.mediaUrl ||
+    (currentResult as any)?.url ||
+    (artifactId ? `/api/artifacts/${artifactId}/file` : null)
+  const artifactName = (currentResult as any)?.artifact?.filename || (currentResult as any)?.filename || (currentResult as any)?.title || currentResult?.caption || 'Uploaded Media Artifact'
 
   async function runGroundedDiscovery() {
     setIsGroundedLoading(true)
@@ -124,12 +131,12 @@ export function DiscoveryPanel() {
     }
 
     // Auto-trigger image-first visual discovery when media artifact is present
-    const artId = ((currentResult as any)?.id || (currentResult as any)?.artifactId)
+    const artId = (currentResult as any)?.artifact?.id || ((currentResult as any)?.id || (currentResult as any)?.artifactId)
     const hasMedia = Boolean(artId || referenceThumbnail)
     if (hasMedia && !hasSearched) {
       executeDiscovery(false, 1)
     }
-  }, [(currentResult as any)?.id, (currentResult as any)?.artifactId, currentResult?.investigationId])
+  }, [(currentResult as any)?.artifact?.id, (currentResult as any)?.id, (currentResult as any)?.artifactId, currentResult?.investigationId])
 
   async function fetchProvidersAndTransparency() {
     setProvidersLoading(true)
@@ -172,6 +179,18 @@ export function DiscoveryPanel() {
       const list = Array.isArray(res) ? res : (res?.candidates || res?.results || [])
       if (list.length > 0) {
         setCandidatesList(list)
+        if (currentResult) {
+          setCurrentResult({
+            ...currentResult,
+            candidates: list,
+            comparisonReports: list,
+            discovery: {
+              ...(currentResult as any)?.discovery,
+              candidates: list,
+              totalDiscovered: list.length
+            }
+          } as any)
+        }
       }
     } catch (err) {
       console.warn('Could not load candidates for investigation:', err)
@@ -222,7 +241,7 @@ export function DiscoveryPanel() {
     try {
       const platformsToQuery = selectedProvider === 'ALL_PROVIDERS' ? undefined : [selectedProvider]
       const invId = (currentResult?.investigationId || currentResult?.case_id) || undefined
-      const artId = ((currentResult as any)?.id || (currentResult as any)?.artifactId) || undefined
+      const artId = (currentResult as any)?.artifact?.id || ((currentResult as any)?.id || (currentResult as any)?.artifactId) || undefined
 
       const queryToSend = isManualText ? testQuery.trim() : (testQuery.trim() || 'visual-reverse-search')
       const result = await searchMultiSource(queryToSend, platformsToQuery, pageNum, 10, invId, artId, isManualText)
@@ -237,6 +256,20 @@ export function DiscoveryPanel() {
         setMaxReached(Boolean(result?.maxReached || formatted.length >= 50))
         const modeLabel = isManualText ? 'Manual Keyword Fallback' : 'Reverse Image Visual Search'
         setStatusMsg(`Discovered ${formatted.length} genuine appearance(s) via ${modeLabel}. Candidates evaluated against perceptual hash.`)
+        
+        // Publish genuine candidates to global investigation state
+        if (currentResult) {
+          setCurrentResult({
+            ...currentResult,
+            candidates: formatted,
+            comparisonReports: formatted,
+            discovery: {
+              ...(currentResult as any)?.discovery,
+              candidates: formatted,
+              totalDiscovered: result?.totalDiscovered || formatted.length
+            }
+          } as any)
+        }
       } else {
         setCandidatesList([])
         setHasMore(false)
@@ -246,6 +279,20 @@ export function DiscoveryPanel() {
           setStatusMsg(`Zero matching appearances returned across ${providerName} for keyword "${testQuery}". Zero fabricated results.`)
         } else {
           setStatusMsg(`Zero visual appearances returned across ${providerName} for uploaded media. Zero fabricated results.`)
+        }
+
+        // Keep state honest without fake fallbacks
+        if (currentResult) {
+          setCurrentResult({
+            ...currentResult,
+            candidates: [],
+            comparisonReports: [],
+            discovery: {
+              ...(currentResult as any)?.discovery,
+              candidates: [],
+              totalDiscovered: 0
+            }
+          } as any)
         }
       }
 
@@ -266,7 +313,7 @@ export function DiscoveryPanel() {
       const nextPage = currentPage + 1
       const platformsToQuery = selectedProvider === 'ALL_PROVIDERS' ? undefined : [selectedProvider]
       const invId = (currentResult?.investigationId || currentResult?.case_id) || undefined
-      const artId = ((currentResult as any)?.id || (currentResult as any)?.artifactId) || undefined
+      const artId = (currentResult as any)?.artifact?.id || ((currentResult as any)?.id || (currentResult as any)?.artifactId) || undefined
       const isManual = searchMode === 'MANUAL_TEXT'
 
       const queryToSend = isManual ? testQuery.trim() : (testQuery.trim() || 'visual-reverse-search')
@@ -286,6 +333,19 @@ export function DiscoveryPanel() {
         setHasMore(Boolean(result?.hasMore && combined.length < 50))
         setMaxReached(Boolean(result?.maxReached || combined.length >= 50))
         setStatusMsg(`Loaded ${filteredNew.length} additional candidates (Total: ${combined.length}).`)
+
+        if (currentResult) {
+          setCurrentResult({
+            ...currentResult,
+            candidates: combined,
+            comparisonReports: combined,
+            discovery: {
+              ...(currentResult as any)?.discovery,
+              candidates: combined,
+              totalDiscovered: result?.totalDiscovered || combined.length
+            }
+          } as any)
+        }
       } else {
         setHasMore(false)
       }

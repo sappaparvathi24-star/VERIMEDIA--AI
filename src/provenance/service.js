@@ -19,7 +19,11 @@ import {
 } from '../forensics/imageForensics.js';
 import { performOCR } from '../forensics/ocr.js';
 import { detectC2PA } from '../forensics/c2paForensics.js';
-import { analyzeVideoMetadata } from '../forensics/videoForensics.js';
+import { analyzeVideo, analyzeVideoMetadata } from '../forensics/videoForensics.js';
+import { analyzeAudio } from '../forensics/audioForensics.js';
+import { analyzeText } from '../forensics/textForensics.js';
+import { analyzePdf } from '../forensics/pdfForensics.js';
+import { classifyContent, ContentType } from '../forensics/contentClassifier.js';
 
 class ProvenanceService {
   constructor(store = defaultStore) {
@@ -1208,6 +1212,383 @@ class ProvenanceService {
       dataUrl: storedMedia?.dataUrl || null,
       fileUrl: `/api/artifacts/${art.id}/file`
     };
+  }
+
+  /**
+   * Executes genuine Video Forensic Analysis on a video artifact.
+   */
+  async runVideoForensicAnalysis({ investigationId, artifactId, buffer, filePath, onStageChange } = {}) {
+    const art = this.store.getArtifact(artifactId);
+    if (!art) throw new Error(`Artifact not found: ${artifactId}`);
+
+    const run = this.store.createAnalysisRun({
+      investigationId,
+      artifactId,
+      runType: 'VIDEO_FORENSICS',
+      status: 'RUNNING',
+      configuration: { engine: 'LOCAL_FFMPEG_FFPROBE_ENGINE' }
+    });
+
+    if (onStageChange) {
+      onStageChange({
+        stage: 'PROBE',
+        stageIndex: 1,
+        stageTitle: 'Stream & Container Probing',
+        stageDetail: 'Extracting codec, fps, resolution, bitrate, and container parameters...',
+        progress: 30,
+        log: 'Probing video streams via ffprobe...'
+      });
+    }
+
+    const input = buffer || filePath || (art.metadata?.filePath);
+    const videoResult = await analyzeVideo(input);
+
+    const obsList = [];
+    if (videoResult.observations && Array.isArray(videoResult.observations)) {
+      for (const obs of videoResult.observations) {
+        const record = this.store.createObservation({
+          runId: run.id,
+          artifactId,
+          observationType: obs.category || 'STREAM_METADATA',
+          target: 'video_streams',
+          value: { title: obs.title, detail: obs.detail },
+          confidence: 0.95
+        });
+        obsList.push(record);
+      }
+    }
+
+    const ev = this.store.createEvidence({
+      observationIds: obsList.map(o => o.id),
+      independenceGroupId: `IG-VIDEO-FORENSICS-${artifactId}`,
+      evidenceType: 'VIDEO_TECHNICAL_EVIDENCE',
+      description: `Video Technical Audit: ${videoResult.measurements?.find(m => m.name === 'videoCodec')?.value || 'unknown'} container with ${videoResult.observations?.length || 0} stream observations.`,
+      confidence: 0.92,
+      polarity: videoResult.status === 'COMPLETED' ? 'SUPPORTING' : 'INCONCLUSIVE'
+    });
+
+    const finding = this.store.createFinding({
+      investigationId,
+      title: `Video Stream & Forensic Integrity Audit (${art.filename})`,
+      summary: `Analyzed video stream parameters, sampled keyframes, and temporal consistency. Status: ${videoResult.status}.`,
+      severity: 'INFO',
+      evidenceIds: [ev.id],
+      isRealAnalysis: true
+    });
+
+    run.status = videoResult.status === 'COMPLETED' ? 'COMPLETED' : 'FAILED';
+    run.completedAt = new Date().toISOString();
+    this.store.analysisRuns.set(run.id, run);
+
+    art.metadata = {
+      ...(art.metadata || {}),
+      videoForensics: videoResult,
+      forensicAnalysis: videoResult
+    };
+    this.store.artifacts.set(art.id, art);
+
+    return {
+      run,
+      observations: obsList,
+      evidence: ev,
+      finding,
+      forensicAnalysis: videoResult,
+      fileUrl: `/api/artifacts/${art.id}/file`
+    };
+  }
+
+  /**
+   * Executes genuine Audio Forensic Analysis on an audio artifact.
+   */
+  async runAudioForensicAnalysis({ investigationId, artifactId, buffer, filePath, onStageChange } = {}) {
+    const art = this.store.getArtifact(artifactId);
+    if (!art) throw new Error(`Artifact not found: ${artifactId}`);
+
+    const run = this.store.createAnalysisRun({
+      investigationId,
+      artifactId,
+      runType: 'AUDIO_FORENSICS',
+      status: 'RUNNING',
+      configuration: { engine: 'LOCAL_AUDIO_FFPROBE_ENGINE' }
+    });
+
+    if (onStageChange) {
+      onStageChange({
+        stage: 'AUDIO_INSPECT',
+        stageIndex: 1,
+        stageTitle: 'Audio Stream & Waveform Inspection',
+        stageDetail: 'Measuring volume profiles, clipping, and silence distributions...',
+        progress: 40,
+        log: 'Running audio signal forensics...'
+      });
+    }
+
+    const input = buffer || filePath || (art.metadata?.filePath);
+    const audioResult = await analyzeAudio(input);
+
+    const obsList = [];
+    if (audioResult.observations && Array.isArray(audioResult.observations)) {
+      for (const obs of audioResult.observations) {
+        const record = this.store.createObservation({
+          runId: run.id,
+          artifactId,
+          observationType: obs.category || 'AUDIO_METRICS',
+          target: 'audio_stream',
+          value: { title: obs.title, detail: obs.detail },
+          confidence: 0.95
+        });
+        obsList.push(record);
+      }
+    }
+
+    const ev = this.store.createEvidence({
+      observationIds: obsList.map(o => o.id),
+      independenceGroupId: `IG-AUDIO-FORENSICS-${artifactId}`,
+      evidenceType: 'AUDIO_TECHNICAL_EVIDENCE',
+      description: `Audio Signal Audit: ${audioResult.measurements?.find(m => m.name === 'codec')?.value || 'audio'} stream with ${audioResult.observations?.length || 0} acoustic observations.`,
+      confidence: 0.90,
+      polarity: audioResult.status === 'COMPLETED' ? 'SUPPORTING' : 'INCONCLUSIVE'
+    });
+
+    const finding = this.store.createFinding({
+      investigationId,
+      title: `Audio Stream & Volume Forensic Audit (${art.filename})`,
+      summary: `Evaluated container streams, dynamic range, and silence anomalies. Status: ${audioResult.status}.`,
+      severity: 'INFO',
+      evidenceIds: [ev.id],
+      isRealAnalysis: true
+    });
+
+    run.status = audioResult.status === 'COMPLETED' ? 'COMPLETED' : 'FAILED';
+    run.completedAt = new Date().toISOString();
+    this.store.analysisRuns.set(run.id, run);
+
+    art.metadata = {
+      ...(art.metadata || {}),
+      audioForensics: audioResult,
+      forensicAnalysis: audioResult
+    };
+    this.store.artifacts.set(art.id, art);
+
+    return {
+      run,
+      observations: obsList,
+      evidence: ev,
+      finding,
+      forensicAnalysis: audioResult,
+      fileUrl: `/api/artifacts/${art.id}/file`
+    };
+  }
+
+  /**
+   * Executes genuine Text Forensic Analysis on a textual artifact.
+   */
+  async runTextForensicAnalysis({ investigationId, artifactId, buffer, text, onStageChange } = {}) {
+    const art = this.store.getArtifact(artifactId);
+    if (!art) throw new Error(`Artifact not found: ${artifactId}`);
+
+    const run = this.store.createAnalysisRun({
+      investigationId,
+      artifactId,
+      runType: 'TEXT_FORENSICS',
+      status: 'RUNNING',
+      configuration: { engine: 'LOCAL_NLP_TEXT_ENGINE' }
+    });
+
+    const input = text || buffer || (art.metadata?.text) || '';
+    const textResult = await analyzeText(input);
+
+    const obsList = [];
+    if (textResult.observations && Array.isArray(textResult.observations)) {
+      for (const obs of textResult.observations) {
+        const record = this.store.createObservation({
+          runId: run.id,
+          artifactId,
+          observationType: obs.category || 'NLP_EXTRACTION',
+          target: 'text_body',
+          value: { title: obs.title, detail: obs.detail },
+          confidence: 0.90
+        });
+        obsList.push(record);
+      }
+    }
+
+    const ev = this.store.createEvidence({
+      observationIds: obsList.map(o => o.id),
+      independenceGroupId: `IG-TEXT-NLP-${artifactId}`,
+      evidenceType: 'TEXT_NLP_EVIDENCE',
+      description: `Text & NLP Linguistic Audit: ${textResult.measurements?.find(m => m.name === 'language')?.value || 'und'} text with ${textResult.observations?.length || 0} linguistic observations.`,
+      confidence: 0.88,
+      polarity: 'SUPPORTING'
+    });
+
+    const finding = this.store.createFinding({
+      investigationId,
+      title: `Text Forensic & Linguistic Extraction Audit (${art.filename})`,
+      summary: `Completed language identification, entity extraction, and claim indexing. Status: ${textResult.status}.`,
+      severity: 'INFO',
+      evidenceIds: [ev.id],
+      isRealAnalysis: true
+    });
+
+    run.status = textResult.status === 'COMPLETED' ? 'COMPLETED' : 'FAILED';
+    run.completedAt = new Date().toISOString();
+    this.store.analysisRuns.set(run.id, run);
+
+    art.metadata = {
+      ...(art.metadata || {}),
+      textForensics: textResult,
+      forensicAnalysis: textResult
+    };
+    this.store.artifacts.set(art.id, art);
+
+    return {
+      run,
+      observations: obsList,
+      evidence: ev,
+      finding,
+      forensicAnalysis: textResult,
+      fileUrl: `/api/artifacts/${art.id}/file`
+    };
+  }
+
+  /**
+   * Executes genuine PDF Forensic Analysis on a PDF artifact.
+   */
+  async runPdfForensicAnalysis({ investigationId, artifactId, buffer, onStageChange } = {}) {
+    const art = this.store.getArtifact(artifactId);
+    if (!art) throw new Error(`Artifact not found: ${artifactId}`);
+
+    const run = this.store.createAnalysisRun({
+      investigationId,
+      artifactId,
+      runType: 'PDF_FORENSICS',
+      status: 'RUNNING',
+      configuration: { engine: 'LOCAL_PDF_STRUCTURE_ENGINE' }
+    });
+
+    const pdfResult = await analyzePdf(buffer);
+
+    const obsList = [];
+    if (pdfResult.observations && Array.isArray(pdfResult.observations)) {
+      for (const obs of pdfResult.observations) {
+        const record = this.store.createObservation({
+          runId: run.id,
+          artifactId,
+          observationType: obs.category || 'DOCUMENT_STRUCTURE',
+          target: 'pdf_document',
+          value: { title: obs.title, detail: obs.detail },
+          confidence: 0.95
+        });
+        obsList.push(record);
+      }
+    }
+
+    const ev = this.store.createEvidence({
+      observationIds: obsList.map(o => o.id),
+      independenceGroupId: `IG-PDF-FORENSICS-${artifactId}`,
+      evidenceType: 'PDF_STRUCTURAL_EVIDENCE',
+      description: `PDF Structural & Metadata Audit: Version ${pdfResult.extra?.pdfVersion || 'unknown'} with ${pdfResult.extra?.pageCount || 1} pages.`,
+      confidence: 0.92,
+      polarity: 'SUPPORTING'
+    });
+
+    const finding = this.store.createFinding({
+      investigationId,
+      title: `PDF Structure & Metadata Audit (${art.filename})`,
+      summary: `Parsed PDF header dictionary, metadata timestamps, and embedded textual streams. Status: ${pdfResult.status}.`,
+      severity: 'INFO',
+      evidenceIds: [ev.id],
+      isRealAnalysis: true
+    });
+
+    run.status = pdfResult.status === 'COMPLETED' ? 'COMPLETED' : 'FAILED';
+    run.completedAt = new Date().toISOString();
+    this.store.analysisRuns.set(run.id, run);
+
+    art.metadata = {
+      ...(art.metadata || {}),
+      pdfForensics: pdfResult,
+      forensicAnalysis: pdfResult
+    };
+    this.store.artifacts.set(art.id, art);
+
+    return {
+      run,
+      observations: obsList,
+      evidence: ev,
+      finding,
+      forensicAnalysis: pdfResult,
+      fileUrl: `/api/artifacts/${art.id}/file`
+    };
+  }
+
+  /**
+   * Universal unified forensic execution: automatically detects content class via bytes
+   * and routes to the appropriate genuine forensic analysis engine.
+   */
+  async runUnifiedForensicAnalysis({ investigationId, artifactId, buffer, filename = '', onStageChange, callGeminiFn } = {}) {
+    const classification = await classifyContent(buffer, filename);
+    const art = this.store.getArtifact(artifactId);
+    if (art) {
+      art.metadata = {
+        ...(art.metadata || {}),
+        classification
+      };
+      this.store.artifacts.set(art.id, art);
+    }
+
+    switch (classification.contentType) {
+      case ContentType.IMAGE:
+        return this.runImageForensicAnalysis({
+          investigationId,
+          artifactId,
+          buffer,
+          mimeType: classification.mimeType,
+          onStageChange,
+          callGeminiFn
+        });
+
+      case ContentType.VIDEO:
+        return this.runVideoForensicAnalysis({
+          investigationId,
+          artifactId,
+          buffer,
+          onStageChange
+        });
+
+      case ContentType.AUDIO:
+        return this.runAudioForensicAnalysis({
+          investigationId,
+          artifactId,
+          buffer,
+          onStageChange
+        });
+
+      case ContentType.TEXT:
+      case ContentType.DOCUMENT:
+        return this.runTextForensicAnalysis({
+          investigationId,
+          artifactId,
+          buffer,
+          onStageChange
+        });
+
+      case ContentType.PDF:
+        return this.runPdfForensicAnalysis({
+          investigationId,
+          artifactId,
+          buffer,
+          onStageChange
+        });
+
+      default:
+        return {
+          status: 'UNSUPPORTED_FORMAT',
+          classification,
+          reason: `Content format ${classification.mimeType} is not supported for automated forensic verification.`
+        };
+    }
   }
 
   /**

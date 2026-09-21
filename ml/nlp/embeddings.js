@@ -30,7 +30,11 @@ async function getEmbeddingPipeline() {
   try {
     const { pipeline, env } = await import('@xenova/transformers');
     env.allowRemoteModels = true;
-    embeddingPipeline = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
+    const loadPromise = pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Model fetch timeout')), 2500)
+    );
+    embeddingPipeline = await Promise.race([loadPromise, timeoutPromise]);
     return embeddingPipeline;
   } catch (err) {
     console.warn('[Embeddings] Transformer embedding pipeline initialization notice, will use fallback:', err.message);

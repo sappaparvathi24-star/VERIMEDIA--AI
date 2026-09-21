@@ -7,12 +7,14 @@ export class GoogleVisionDiscoveryProvider {
     this.id = 'google_vision';
     this.name = 'Google Vision API (Web Detection)';
     this.kind = 'EXTERNAL_API';
-    this.apiKey = config.apiKey || process.env.GOOGLE_VISION_API_KEY || process.env.GOOGLE_CSE_API_KEY || process.env.GOOGLE_SEARCH_API_KEY || process.env.GEMINI_API_KEY || null;
-    this.authRequired = true;
+    this.apiKey = (config && config.apiKey !== undefined)
+      ? config.apiKey
+      : (process.env.GOOGLE_VISION_API_KEY || process.env.GOOGLE_API_KEY || null);
   }
 
   getApiKey() {
-    return this.apiKey || process.env.GOOGLE_VISION_API_KEY || process.env.GOOGLE_CSE_API_KEY || process.env.GOOGLE_SEARCH_API_KEY || process.env.GEMINI_API_KEY || null;
+    if (this.apiKey !== undefined && this.apiKey !== null) return this.apiKey;
+    return process.env.GOOGLE_VISION_API_KEY || process.env.GOOGLE_API_KEY || null;
   }
 
   isConfigured() {

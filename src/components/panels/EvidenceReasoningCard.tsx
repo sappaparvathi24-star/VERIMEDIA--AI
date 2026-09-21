@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useStore } from '../../store'
 import { Tooltip } from '../ui/Tooltip'
+import { isSimulatedResult } from '../../lib/resultMode'
 
 export function EvidenceReasoningCard() {
   const { currentResult, setShowEvidenceModal, setShowDMCAModal, setActiveTab } = useStore()
@@ -8,7 +9,7 @@ export function EvidenceReasoningCard() {
 
   if (!currentResult) return null
 
-  const isScenario = Boolean(currentResult.scenario)
+  const isScenario = isSimulatedResult(currentResult)
   const art = currentResult.artifact
   const forensic = currentResult.forensics
   const sha256 = art?.sha256 ? `${art.sha256.slice(0, 16)}…` : currentResult.fingerprint_hash || 'N/A'
@@ -284,7 +285,7 @@ export function EvidenceReasoningCard() {
 
       {/* Candidate Selector Pills */}
       <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
-        {(['current', 'sourceA', 'sourceB', 'sourceC', 'sourceD'] as const).map(key => {
+        {(isScenario ? (['current', 'sourceA', 'sourceB', 'sourceC', 'sourceD'] as const) : (['current'] as const)).map(key => {
           const item = candidatesData[key]
           const isSelected = selectedCandidate === key
           const confLabel = item.confidence != null ? `${item.confidence}%` : 'Unavailable'

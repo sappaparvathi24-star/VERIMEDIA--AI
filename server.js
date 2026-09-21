@@ -304,7 +304,7 @@ function getGenAI() {
 async function callGemini(contents, config = {}) {
   const ai = getGenAI();
   if (!ai) return null;
-  const models = ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.8-flash', 'gemini-flash-latest'];
+  const models = ['gemini-3.8-flash', 'gemini-3.1-pro-preview', 'gemini-3.1-flash-lite', 'gemini-flash-latest'];
   for (const model of models) {
     try {
       const response = await ai.models.generateContent({
@@ -434,7 +434,18 @@ const handleChat = async (req, res) => {
 
     const fullPrompt = system_prompt
       ? `${system_prompt}\n\nUser Question:\n${userText}`
-      : `You are VeriMedia AI Assistant, an expert in digital media rights, perceptual hashing, deepfake detection, forensic watermarking, and DMCA copyright enforcement.\nUser Question:\n${userText}`;
+      : `You are VeriMedia AI Intelligence Copilot, an elite digital media forensic analyst and copyright verification assistant.
+You possess deep expertise in:
+- Multimodal forensic analysis (ELA Error Level Analysis, PRNU sensor noise, DCT frequency spectrum, optical flow, FFmpeg video & audio waveform metrics, NLP claim verification, and PDF document metadata).
+- C2PA Cryptographic Provenance manifests, X.509 certificate validation, and tamper-evident hash chains.
+- Perceptual hashing (dHash, aHash, pHash, Hamming distance metrics) and reverse media discovery (Google Vision, YouTube, X/Twitter, Reddit, Mastodon, Wayback Machine).
+- Epistemic certainty standards: distinguish clearly between mathematically OBSERVED evidence, crawler-SUPPORTED matches, plausible INFERRED conclusions, and INCONCLUSIVE signals.
+- DMCA copyright enforcement, formal cease-and-desist notices, and chain-of-custody documentation.
+
+Provide direct, structured, objective, and evidence-grounded responses. If answering questions about breaking media or current events, synthesize live search grounding facts accurately.
+
+User Question:
+${userText}`;
 
     let geminiResult = null;
     try {
@@ -1213,6 +1224,16 @@ const handleV1Detect = async (req, res) => {
     artifact = provenanceService.getArtifacts(investigationId)[0] || null;
   }
 
+  // If a specific artifact or investigation was requested but could not be located in memory:
+  // Do NOT fall through to synthetic simulated clean content; return an honest error.
+  if ((artifactId || investigationId) && !artifact) {
+    return res.status(404).json({
+      error: 'ArtifactNotFound',
+      message: `Artifact or investigation '${artifactId || investigationId}' was not found in active session. In stateless or restarted environments, re-upload the artifact.`,
+      scenario: 'error'
+    });
+  }
+
   // Real detection branch if artifact or investigation is provided
   if (artifact) {
     const invId = artifact.investigationId || investigationId;
@@ -1377,6 +1398,19 @@ const handleV1Detect = async (req, res) => {
       forensics: isSkipped
         ? (forensic ? { ...forensic, status: 'SKIPPED', reason: 'video/audio forensic analysis not implemented' } : { status: 'SKIPPED', reason: 'video/audio forensic analysis not implemented' })
         : forensic,
+      candidates: matchedRef ? [
+        {
+          id: matchedRef.id,
+          title: matchedRef.filename || 'Corroborating Reference Media',
+          similarity: Number(highestSimilarity.toFixed(2)),
+          matchScore: Math.round(highestSimilarity * 100),
+          sha256: matchedRef.sha256,
+          domain: 'database',
+          platform: 'Internal Verified Repository',
+          url: `/api/artifacts/${matchedRef.id}/file`,
+          isOriginalSource: false
+        }
+      ] : [],
       timestamp: new Date().toISOString(),
       case_id: invId || null,
       investigationId: invId || null,

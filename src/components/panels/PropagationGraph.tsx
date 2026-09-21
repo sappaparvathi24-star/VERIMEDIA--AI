@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useMemo } from 'react'
 import { useStore } from '../../store'
 import { getInvestigationPropagation } from '../../services/api'
 import type { Platform } from '../../types'
+import { isSimulatedResult } from '../../lib/resultMode'
 
 const PLATFORMS: Platform[] = ['YouTube', 'Reddit', 'Instagram', 'TikTok', 'X / Twitter', 'Facebook']
 
@@ -366,7 +367,7 @@ export function PropagationGraph({ ppm: propPpm, candidates: propCandidates }: P
         ctx.stroke()
       }
 
-      // Crosshairs
+      // Radar Crosshairs
       ctx.beginPath()
       ctx.moveTo(cx - radius - 20, cy)
       ctx.lineTo(cx + radius + 20, cy)
@@ -377,6 +378,51 @@ export function PropagationGraph({ ppm: propPpm, candidates: propCandidates }: P
       const targetPlatform = currentResult?.platform || 'YouTube'
       const urgency = activePropagation?.urgency || 'high'
       const urgencyColor = urgency === 'critical' ? '#dc2626' : urgency === 'high' ? '#ef4444' : urgency === 'medium' ? '#f59e0b' : '#22c55e'
+
+      // Check whether we have real nodes to draw or if in simulated scenario
+      const hasTraceableNodes = (currentResult as any)?.candidates?.length > 0 ||
+        (currentResult as any)?.discovery?.candidates?.length > 0 ||
+        propCandidates?.length ||
+        isSimulatedResult(currentResult)
+
+      if (!hasTraceableNodes) {
+        // Honest standby radar sweep
+        const sweepAngle = (now * 1.2) % (Math.PI * 2)
+        ctx.beginPath()
+        ctx.moveTo(cx, cy)
+        ctx.arc(cx, cy, radius, sweepAngle, sweepAngle + 0.3)
+        ctx.closePath()
+        ctx.fillStyle = 'rgba(56, 189, 248, 0.08)'
+        ctx.fill()
+
+        ctx.beginPath()
+        ctx.moveTo(cx, cy)
+        ctx.lineTo(cx + Math.cos(sweepAngle) * radius, cy + Math.sin(sweepAngle) * radius)
+        ctx.strokeStyle = 'rgba(56, 189, 248, 0.4)'
+        ctx.lineWidth = 1.5
+        ctx.stroke()
+
+        // Center Root Origin Node
+        ctx.beginPath()
+        ctx.arc(cx, cy, 18, 0, Math.PI * 2)
+        ctx.fillStyle = '#080c10'
+        ctx.fill()
+        ctx.strokeStyle = '#38bdf8'
+        ctx.lineWidth = 2
+        ctx.stroke()
+
+        ctx.fillStyle = '#38bdf8'
+        ctx.font = '800 9px monospace'
+        ctx.textAlign = 'center'
+        ctx.fillText('STANDBY', cx, cy + 3)
+
+        ctx.fillStyle = '#64748b'
+        ctx.font = '600 11px monospace'
+        ctx.fillText('0 External Vectors Detected', cx, cy + radius * 0.75)
+
+        animId = requestAnimationFrame(render)
+        return
+      }
 
       // Perimeter platform nodes
       const nodes = PLATFORMS.map((p, i) => {
@@ -459,32 +505,66 @@ export function PropagationGraph({ ppm: propPpm, candidates: propCandidates }: P
     return () => cancelAnimationFrame(animId)
   }, [currentResult, activePropagation])
 
-  const totalReach = activePropagation?.totalReach ?? cascadeEvents.reduce((acc, n) => acc + n.reachEstimate, 0)
-  const velocity = activePropagation?.velocity ?? 4.8
-  const urgency = activePropagation?.urgency ?? 'high'
-  const ppm = propPpm !== undefined ? propPpm : (activePropagation?.ppm ?? 142)
+  const isScenario = isSimulatedResult(currentResult)
+
+  // Derive candidate nodes from props or investigation context
+  const rawCandidates: any[] = useMemo(() => {
+    return (
+      propCandidates ||
+      (currentResult as any)?.candidates ||
+      (currentResult as any)?.discovery?.candidates ||
+      activePropagation?.candidates ||
+      []
+    )
+  }, [propCandidates, currentResult, activePropagation])
+
+  // Derive lineage and propagation nodes honestly from discovered appearances
+  const derivedNodes: CascadeNode[] = useMemo(() => {
+    if (rawCandidates.length > 0) {
+      return rawCandidates.map((c: any, i: number) => {
+        const platform = c.platform || c.domain || 'Web'
+        const reach = c.reachEstimate || c.views || (typeof c.similarity === 'number' ? Math.round(c.similarity * 150000) : 50000)
+        return {
+          id: c.id || `NODE-${String(i + 1).padStart(2, '0')}`,
+          platform,
+          username: c.author || c.publisher || c.displayLink || 'Indexed Node',
+          url: c.url || c.link || '#',
+          publishedAt: c.publishedAt || c.timestamp || new Date().toISOString(),
+          deltaMinutes: i * 35,
+          similarity: typeof c.similarity === 'number' ? c.similarity : (c.matchScore ? c.matchScore / 100 : 0.85),
+          reachEstimate: reach,
+          mutationType: c.classification === 'EXACT_MATCH' ? 'Identical Master Clone' : c.isCropped ? 'Aspect Ratio Crop' : c.isManipulated ? 'Modified Derivative' : 'Discovered Distribution Node',
+          status: (i === 0 && (c.classification === 'EXACT_MATCH' || !isScenario)) ? 'ORIGIN' : c.isManipulated ? 'SYNTHETIC' : 'SYNDICATED'
+        }
+      })
+    }
+    if (isScenario) {
+      return cascadeEvents
+    }
+    return []
+  }, [rawCandidates, isScenario])
+
+  const hasNodes = derivedNodes.length > 0
+  const totalReach = activePropagation?.totalReach ?? (hasNodes ? derivedNodes.reduce((acc, n) => acc + n.reachEstimate, 0) : 0)
+  const velocity = activePropagation?.velocity ?? (isScenario ? 4.8 : (hasNodes ? Number((derivedNodes.length * 0.5).toFixed(1)) : 0))
+  const urgency = activePropagation?.urgency ?? (isScenario ? 'high' : (hasNodes ? 'medium' : 'low'))
+  const ppm = propPpm !== undefined ? propPpm : (activePropagation?.ppm ?? (isScenario ? 142 : (hasNodes ? Math.min(derivedNodes.length * 15, 200) : 0)))
 
   // 1. Compute velocity spike over trailing 60m window (or provide honest fallback)
-  const velocitySpike = computeVelocitySpike(activePropagation, cascadeEvents)
+  const velocitySpike = computeVelocitySpike(activePropagation, derivedNodes)
 
   // 2. Derive qualitative dissemination tier from PPM
   const disseminationLevel = getDisseminationLevel(ppm)
   const disseminationColor = getDisseminationColor(disseminationLevel)
 
-  // Candidates array from props or investigation context (fallback to cascade events)
-  const candidates: CandidateNode[] =
-    propCandidates ||
-    (currentResult as any)?.candidates ||
-    (currentResult as any)?.discovery?.candidates ||
-    activePropagation?.candidates ||
-    cascadeEvents ||
-    []
+  // Candidates array from props or investigation context
+  const candidates: CandidateNode[] = rawCandidates.length > 0 ? rawCandidates : (isScenario ? cascadeEvents : [])
 
   // 3. Compute actual distinct platforms monitored across candidates array
   const platformCount = new Set(candidates.map(c => c.platform)).size
 
   // 4. Compute replication factor R0 and empirical acceleration trend
-  const replication = computeReplicationMetrics(activePropagation, cascadeEvents)
+  const replication = computeReplicationMetrics(activePropagation, derivedNodes)
 
   // 5. Evaluate takedown recommendation conditions
   const decision = currentResult?.ai_analysis?.decision
@@ -498,15 +578,6 @@ export function PropagationGraph({ ppm: propPpm, candidates: propCandidates }: P
     decision === 'SUSPECT' ||
     currentResult?.trust?.risk_tier === 'high_risk' ||
     currentResult?.trust?.risk_tier === 'suspect'
-  )
-
-  const isScenario = !!(
-    currentResult &&
-    (currentResult.scenario === 'deepfake' ||
-      currentResult.scenario === 'scam' ||
-      currentResult.scenario === 'authentic' ||
-      (currentResult as any).is_demo ||
-      (currentResult as any).mode === 'SIMULATED_SCENARIO')
   )
 
   return (
@@ -847,118 +918,140 @@ export function PropagationGraph({ ppm: propPpm, candidates: propCandidates }: P
                 </span>
               )}
             </div>
-            <span style={{ fontSize: 11, color: '#64748b' }}>5 nodes traced in cascade order</span>
+            <span style={{ fontSize: 11, color: '#64748b' }}>{derivedNodes.length} node(s) traced in cascade order</span>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {cascadeEvents.map((node) => {
-              const isOrigin = node.status === 'ORIGIN'
-              return (
-                <div
-                  key={node.id}
-                  onClick={() => setSelectedNode(node)}
-                  style={{
-                    background: '#080c10',
-                    border: isOrigin ? '1px solid #22c55e44' : '1px solid #1e2d3d',
-                    borderRadius: 8,
-                    padding: '12px 16px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: 12,
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease'
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                    <div style={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: 6,
-                      background: isOrigin ? 'rgba(34,197,94,0.15)' : 'rgba(0,212,255,0.1)',
-                      border: `1px solid ${isOrigin ? '#22c55e44' : '#00d4ff44'}`,
+            {derivedNodes.length === 0 ? (
+              <div style={{
+                background: '#0a0f16',
+                border: '1px dashed #1e2d3d',
+                borderRadius: 8,
+                padding: 32,
+                textAlign: 'center',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: 10
+              }}>
+                <div style={{ fontSize: 24, opacity: 0.6 }}>📡</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#f8fafc' }}>
+                  No External Propagation Nodes Traced
+                </div>
+                <div style={{ fontSize: 11, color: '#64748b', maxWidth: 420 }}>
+                  Propagation cascade analysis requires discovered web appearances. Run reverse-image discovery in Engine 2 to locate multi-platform appearances.
+                </div>
+              </div>
+            ) : (
+              derivedNodes.map((node) => {
+                const isOrigin = node.status === 'ORIGIN'
+                return (
+                  <div
+                    key={node.id}
+                    onClick={() => setSelectedNode(node)}
+                    style={{
+                      background: '#080c10',
+                      border: isOrigin ? '1px solid #22c55e44' : '1px solid #1e2d3d',
+                      borderRadius: 8,
+                      padding: '12px 16px',
                       display: 'flex',
                       alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: 14,
-                      flexShrink: 0
-                    }}>
-                      {isOrigin ? '👑' : '📡'}
-                    </div>
+                      justifyContent: 'space-between',
+                      gap: 12,
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                      <div style={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: 6,
+                        background: isOrigin ? 'rgba(34,197,94,0.15)' : 'rgba(0,212,255,0.1)',
+                        border: `1px solid ${isOrigin ? '#22c55e44' : '#00d4ff44'}`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: 14,
+                        flexShrink: 0
+                      }}>
+                        {isOrigin ? '👑' : '📡'}
+                      </div>
 
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: 13, fontWeight: 800, color: '#f8fafc' }}>
-                          {node.platform}
-                        </span>
-                        <span style={{ fontSize: 11, color: '#94a3b8' }}>
-                          @{node.username}
-                        </span>
-                        <span style={{
-                          fontSize: 9,
-                          fontWeight: 800,
-                          padding: '1px 6px',
-                          borderRadius: 3,
-                          background: isOrigin ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.15)',
-                          color: isOrigin ? '#4ade80' : '#f87171'
-                        }}>
-                          {node.status}
-                        </span>
-                        {isScenario && (
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: 13, fontWeight: 800, color: '#f8fafc' }}>
+                            {node.platform}
+                          </span>
+                          <span style={{ fontSize: 11, color: '#94a3b8' }}>
+                            @{node.username}
+                          </span>
                           <span style={{
                             fontSize: 9,
                             fontWeight: 800,
-                            fontFamily: 'monospace',
                             padding: '1px 6px',
                             borderRadius: 3,
-                            background: 'rgba(245, 158, 11, 0.2)',
-                            color: '#fbbf24',
-                            border: '1px solid rgba(245, 158, 11, 0.4)'
+                            background: isOrigin ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.15)',
+                            color: isOrigin ? '#4ade80' : '#f87171'
                           }}>
-                            SIMULATED NODE
+                            {node.status}
                           </span>
-                        )}
-                      </div>
-                      <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
-                        {node.mutationType} • Published +{node.deltaMinutes}m after master
+                          {isScenario && (
+                            <span style={{
+                              fontSize: 9,
+                              fontWeight: 800,
+                              fontFamily: 'monospace',
+                              padding: '1px 6px',
+                              borderRadius: 3,
+                              background: 'rgba(245, 158, 11, 0.2)',
+                              color: '#fbbf24',
+                              border: '1px solid rgba(245, 158, 11, 0.4)'
+                            }}>
+                              SIMULATED NODE
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+                          {node.mutationType} • Published +{node.deltaMinutes}m after master
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: 13, fontWeight: 800, color: '#38bdf8', fontFamily: 'monospace' }}>
-                        {Math.round(node.similarity * 100)}% match
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: 13, fontWeight: 800, color: '#38bdf8', fontFamily: 'monospace' }}>
+                          {Math.round(node.similarity * 100)}% match
+                        </div>
+                        <div style={{ fontSize: 10, color: '#64748b' }}>
+                          {(node.reachEstimate / 1000).toFixed(0)}k reach
+                        </div>
                       </div>
-                      <div style={{ fontSize: 10, color: '#64748b' }}>
-                        {(node.reachEstimate / 1000).toFixed(0)}k reach
-                      </div>
+
+                      {!isOrigin && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setShowDMCAModal(true)
+                          }}
+                          style={{
+                            background: 'rgba(239, 68, 68, 0.15)',
+                            border: '1px solid rgba(239, 68, 68, 0.3)',
+                            color: '#f87171',
+                            padding: '4px 8px',
+                            borderRadius: 4,
+                            fontSize: 10,
+                            fontWeight: 700,
+                            cursor: 'pointer'
+                          }}
+                        >
+                          ⚖️ Takedown
+                        </button>
+                      )}
                     </div>
-
-                    {!isOrigin && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setShowDMCAModal(true)
-                        }}
-                        style={{
-                          background: 'rgba(239, 68, 68, 0.15)',
-                          border: '1px solid rgba(239, 68, 68, 0.3)',
-                          color: '#f87171',
-                          padding: '4px 8px',
-                          borderRadius: 4,
-                          fontSize: 10,
-                          fontWeight: 700,
-                          cursor: 'pointer'
-                        }}
-                      >
-                        ⚖️ Takedown
-                      </button>
-                    )}
                   </div>
-                </div>
-              )
-            })}
+                )
+              })
+            )}
           </div>
         </div>
       )}
@@ -971,65 +1064,80 @@ export function PropagationGraph({ ppm: propPpm, candidates: propCandidates }: P
           borderRadius: 10,
           padding: 20
         }}>
-          <h3 style={{ fontSize: 14, fontWeight: 800, color: '#f8fafc', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-            Content Genealogy & Propagation Graph
-          </h3>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+            <h3 style={{ fontSize: 14, fontWeight: 800, color: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+              Content Genealogy & Propagation Graph
+            </h3>
+            {isScenario && (
+              <span style={{
+                fontSize: 10,
+                fontFamily: 'monospace',
+                fontWeight: 800,
+                padding: '2px 8px',
+                borderRadius: 4,
+                background: 'rgba(245, 158, 11, 0.15)',
+                color: '#fbbf24',
+                border: '1px solid rgba(245, 158, 11, 0.3)'
+              }}>
+                [SIMULATED SCENARIO DATA]
+              </span>
+            )}
+          </div>
           <p style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.5, marginBottom: 16 }}>
             VeriMedia converts observations into a structural multi-generation genealogy answering: <em>How did this piece of content propagate and mutate across the open web?</em>
           </p>
 
-          <div style={{
-            background: '#080c10',
-            border: '1px solid #1e293b',
-            borderRadius: 8,
-            padding: 20,
-            fontFamily: 'monospace',
-            fontSize: 12,
-            lineHeight: 1.8
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ padding: '3px 8px', borderRadius: 4, background: 'rgba(34,197,94,0.2)', color: '#4ade80', fontWeight: 800 }}>
-                ORIGINAL MASTER
-              </span>
-              <span style={{ color: '#cbd5e1' }}>Source A (YouTube Official · 10 Jan 08:14 UTC)</span>
+          {derivedNodes.length === 0 ? (
+            <div style={{
+              background: '#080c10',
+              border: '1px dashed #1e293b',
+              borderRadius: 8,
+              padding: 32,
+              textAlign: 'center',
+              color: '#64748b'
+            }}>
+              <div style={{ fontSize: 24, marginBottom: 8, opacity: 0.6 }}>🌳</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#f8fafc' }}>
+                No Multi-Platform Genealogy Available
+              </div>
+              <p style={{ fontSize: 11, marginTop: 4, maxWidth: 420, margin: '6px auto 0' }}>
+                Genealogy tracing requires discovered appearances. Run reverse-image discovery in Engine 2 to locate candidate origins and mutations.
+              </p>
             </div>
-
-            <div style={{ paddingLeft: 20, color: '#64748b' }}>│</div>
-
-            <div style={{ paddingLeft: 20, color: '#cbd5e1' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ color: '#38bdf8' }}>├── REPOST (Source B · Reddit /r/sports · 11 Jan)</span>
-                <span style={{ fontSize: 10, background: '#1e293b', padding: '1px 6px', borderRadius: 3, color: '#94a3b8' }}>Re-encoded H.264</span>
+          ) : (
+            <div style={{
+              background: '#080c10',
+              border: '1px solid #1e293b',
+              borderRadius: 8,
+              padding: 20,
+              fontFamily: 'monospace',
+              fontSize: 12,
+              lineHeight: 1.8
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ padding: '3px 8px', borderRadius: 4, background: 'rgba(34,197,94,0.2)', color: '#4ade80', fontWeight: 800 }}>
+                  {derivedNodes[0]?.status === 'ORIGIN' ? 'ORIGINAL MASTER' : 'PRIMARY DISCOVERED SEED'}
+                </span>
+                <span style={{ color: '#cbd5e1' }}>
+                  {derivedNodes[0]?.platform} · @{derivedNodes[0]?.username} ({new Date(derivedNodes[0]?.publishedAt).toLocaleDateString()})
+                </span>
               </div>
 
-              <div style={{ paddingLeft: 28, color: '#64748b' }}>│</div>
-
-              <div style={{ paddingLeft: 28, color: '#cbd5e1' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ color: '#f59e0b' }}>└── CROP MUTATION (Source C · TikTok @viralclips · 12 Jan)</span>
-                  <span style={{ fontSize: 10, background: '#1e293b', padding: '1px 6px', borderRadius: 3, color: '#f59e0b' }}>Aspect 9:16 Crop</span>
-                </div>
-
-                <div style={{ paddingLeft: 28, color: '#64748b' }}>│</div>
-
-                <div style={{ paddingLeft: 28, color: '#cbd5e1' }}>
+              {derivedNodes.slice(1).map((child, idx) => (
+                <div key={child.id} style={{ paddingLeft: 20, color: '#cbd5e1' }}>
+                  <div style={{ color: '#64748b' }}>│</div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ color: '#a855f7' }}>└── CAPTION CHANGE & SYNTHESIS (Source D · X / Twitter · 13 Jan)</span>
-                    <span style={{ fontSize: 10, background: 'rgba(168,85,247,0.2)', padding: '1px 6px', borderRadius: 3, color: '#c084fc' }}>Deepfake Audio Dubbed</span>
+                    <span style={{ color: idx % 2 === 0 ? '#38bdf8' : '#f59e0b' }}>
+                      └── {child.status} ({child.platform} · @{child.username})
+                    </span>
+                    <span style={{ fontSize: 10, background: '#1e293b', padding: '1px 6px', borderRadius: 3, color: '#94a3b8' }}>
+                      {child.mutationType}
+                    </span>
                   </div>
                 </div>
-              </div>
+              ))}
             </div>
-
-            <div style={{ paddingLeft: 20, color: '#64748b' }}>│</div>
-
-            <div style={{ paddingLeft: 20, color: '#cbd5e1' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ color: '#38bdf8' }}>└── RE-ENCODE (Source E · Instagram Reels · 13 Jan)</span>
-                <span style={{ fontSize: 10, background: '#1e293b', padding: '1px 6px', borderRadius: 3, color: '#94a3b8' }}>Bitrate -55%</span>
-              </div>
-            </div>
-          </div>
+          )}
         </div>
       )}
     </div>

@@ -425,126 +425,65 @@ export class ForensicJobQueue extends EventEmitter {
     this.emitJobEvent(job, 'started');
 
     try {
-      const mimeType = task.mimeType || 'application/octet-stream';
-      const isVideoOrAudio = mimeType.startsWith('video/') || mimeType.startsWith('audio/');
+      if (this.provenanceService && task.buffer) {
+        const forensicOutcome = await this.provenanceService.runUnifiedForensicAnalysis({
+          investigationId: task.investigationId,
+          artifactId: task.artifactId,
+          buffer: task.buffer,
+          filename: task.filename,
+          callGeminiFn: this.callGeminiFn,
+          onStageChange: (stageData) => {
+            job.stage = stageData.stage?.toLowerCase() || 'processing';
+            job.stageIndex = stageData.stageIndex ?? job.stageIndex;
+            job.stageTitle = stageData.stageTitle || job.stageTitle;
+            job.stageDetail = stageData.stageDetail || job.stageDetail;
+            job.progress = stageData.progress ?? job.progress;
 
-      if (isVideoOrAudio) {
-        const skippedResult = {
-          status: 'SKIPPED',
-          reason: 'video/audio forensic analysis not implemented',
-          authenticity: null,
-          trustScore: null,
-          manipulationProbability: null,
-          confidence: null,
-          verdict: 'Analysis Skipped — Video/Audio Forensics Not Implemented',
-          summary: 'Forensic evaluation was skipped because video and audio forensic pipelines (frame extraction, spectral analysis, voice cloning detection) are not implemented.',
-          action: 'MANUAL_REVIEW_REQUIRED',
-          limitations: [
-            'Video and audio forensic analysis is currently not implemented.',
-            'No automated authenticity, manipulation, or synthetic audio determination was made.',
-            'Manual forensic inspection required.'
-          ]
-        };
+            job.stages = job.stages.map((st, idx) => {
+              if (idx < job.stageIndex) return { ...st, status: 'COMPLETED' };
+              if (idx === job.stageIndex) return { ...st, status: 'RUNNING', detail: stageData.stageDetail };
+              return { ...st, status: 'PENDING' };
+            });
 
-        if (this.provenanceService) {
-          const art = this.provenanceService.getArtifact(task.artifactId);
-          if (art) {
-            art.metadata = {
-              ...(art.metadata || {}),
-              forensicAnalysis: skippedResult
-            };
+            if (stageData.log) {
+              job.logs = [
+                ...(job.logs || []).slice(-99),
+                {
+                  id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                  timestamp: new Date().toLocaleTimeString(),
+                  level: 'info',
+                  stage: job.stage,
+                  message: stageData.log
+                }
+              ];
+            }
+
+            this.persistJob(job);
+            this.emitJobEvent(job, 'stage');
           }
-        }
+        });
 
-        job.status = JobStatus.SKIPPED;
+        job.status = JobStatus.COMPLETED;
         job.progress = 100;
         job.stage = 'fusion';
         job.stageIndex = 5;
-        job.stages = job.stages.map(s => ({ ...s, status: 'SKIPPED' }));
-        job.result = skippedResult;
+        job.stageTitle = 'Pipeline Complete';
+        job.stageDetail = 'All forensic signals calibrated and evidence record compiled.';
+        job.stages = job.stages.map(s => ({ ...s, status: 'COMPLETED' }));
+        job.result = forensicOutcome?.forensicAnalysis || forensicOutcome?.result || forensicOutcome;
         job.completedAt = new Date().toISOString();
         this.persistJob(job);
         this.emitJobEvent(job, 'completed');
-      } else if (mimeType.startsWith('image/')) {
-        if (this.provenanceService && task.buffer) {
-          const forensicOutcome = await this.provenanceService.runImageForensicAnalysis({
-            investigationId: task.investigationId,
-            artifactId: task.artifactId,
-            buffer: task.buffer,
-            mimeType: task.mimeType,
-            exif: task.exif,
-            callGeminiFn: this.callGeminiFn,
-            onStageChange: (stageData) => {
-              job.stage = stageData.stage?.toLowerCase() || 'processing';
-              job.stageIndex = stageData.stageIndex ?? job.stageIndex;
-              job.stageTitle = stageData.stageTitle || job.stageTitle;
-              job.stageDetail = stageData.stageDetail || job.stageDetail;
-              job.progress = stageData.progress ?? job.progress;
-
-              job.stages = job.stages.map((st, idx) => {
-                if (idx < job.stageIndex) return { ...st, status: 'COMPLETED' };
-                if (idx === job.stageIndex) return { ...st, status: 'RUNNING', detail: stageData.stageDetail };
-                return { ...st, status: 'PENDING' };
-              });
-
-              if (stageData.log) {
-                job.logs = [
-                  ...(job.logs || []).slice(-99),
-                  {
-                    id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-                    timestamp: new Date().toLocaleTimeString(),
-                    level: 'info',
-                    stage: job.stage,
-                    message: stageData.log
-                  }
-                ];
-              }
-
-              this.persistJob(job);
-              this.emitJobEvent(job, 'stage');
-            }
-          });
-
-          job.status = JobStatus.COMPLETED;
-          job.progress = 100;
-          job.stage = 'fusion';
-          job.stageIndex = 5;
-          job.stageTitle = 'Pipeline Complete';
-          job.stageDetail = 'All forensic signals calibrated and evidence record compiled.';
-          job.stages = job.stages.map(s => ({ ...s, status: 'COMPLETED' }));
-          job.result = forensicOutcome.forensicAnalysis || {
-            status: 'COMPLETED',
-            evidenceId: forensicOutcome.evidence?.id,
-            findingId: forensicOutcome.finding?.id
-          };
-          job.completedAt = new Date().toISOString();
-          this.persistJob(job);
-          this.emitJobEvent(job, 'completed');
-        } else {
-          // No buffer available for physical analysis
-          job.status = JobStatus.COMPLETED;
-          job.progress = 100;
-          job.stage = 'fusion';
-          job.stageIndex = 5;
-          job.stages = job.stages.map(s => ({ ...s, status: 'COMPLETED' }));
-          job.result = {
-            status: 'INCONCLUSIVE',
-            reason: 'Media binary buffer was not provided for pixel-level forensic evaluation.'
-          };
-          job.completedAt = new Date().toISOString();
-          this.persistJob(job);
-          this.emitJobEvent(job, 'completed');
-        }
       } else {
-        // Unsupported format
-        job.status = JobStatus.SKIPPED;
+        // No buffer available for physical analysis
+        job.status = JobStatus.COMPLETED;
         job.progress = 100;
         job.stage = 'fusion';
         job.stageIndex = 5;
-        job.stages = job.stages.map(s => ({ ...s, status: 'SKIPPED' }));
+        job.stages = job.stages.map(s => ({ ...s, status: 'COMPLETED' }));
         job.result = {
-          status: 'SKIPPED',
-          reason: `Forensic pipeline does not support mime-type '${mimeType}'`
+          status: 'INCONCLUSIVE',
+          reason: 'Media binary buffer was not provided for physical forensic evaluation.'
         };
         job.completedAt = new Date().toISOString();
         this.persistJob(job);

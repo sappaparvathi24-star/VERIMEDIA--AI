@@ -456,20 +456,10 @@ export class PersistenceManager {
   // ---------------------------------------------------------------------------
   // Durable SQLite Persistence & Entity Integrity Helpers
   // ---------------------------------------------------------------------------
-  _cleanId(val) {
-    if (!val || typeof val !== 'string') return null;
-    const trimmed = val.trim();
-    if (!trimmed || trimmed === 'null' || trimmed === 'undefined' || trimmed === '[object Object]') {
-      return null;
-    }
-    return trimmed;
-  }
-
   ensureInvestigationExists(db, invId) {
-    const cleanInvId = this._cleanId(invId) || 'INV-DEFAULT';
-    if (!db) return cleanInvId;
+    if (!invId || !db) return;
     try {
-      const existing = db.prepare('SELECT id FROM investigations WHERE id = ?').get(cleanInvId);
+      const existing = db.prepare('SELECT id FROM investigations WHERE id = ?').get(invId);
       if (!existing) {
         const org = db.prepare('SELECT id FROM organizations WHERE id = ?').get('org_verimedia_default');
         if (!org) {
@@ -478,48 +468,37 @@ export class PersistenceManager {
         db.prepare(`
           INSERT OR IGNORE INTO investigations (id, organization_id, title, status)
           VALUES (?, 'org_verimedia_default', 'Investigation ' || ?, 'ACTIVE')
-        `).run(cleanInvId, cleanInvId);
+        `).run(invId, invId);
       }
-    } catch (err) {
-      console.warn('[Persistence] ensureInvestigationExists error:', err.message);
-    }
-    return cleanInvId;
+    } catch (_) {}
   }
 
   ensureRunExists(db, runId, investigationId) {
-    const cleanRunId = this._cleanId(runId);
-    if (!cleanRunId || !db) return null;
+    if (!runId || !db) return;
     try {
-      const existing = db.prepare('SELECT id FROM analysis_runs WHERE id = ?').get(cleanRunId);
+      const existing = db.prepare('SELECT id FROM analysis_runs WHERE id = ?').get(runId);
       if (!existing) {
-        const cleanInvId = this.ensureInvestigationExists(db, investigationId || 'INV-DEFAULT');
+        this.ensureInvestigationExists(db, investigationId || 'INV-DEFAULT');
         db.prepare(`
           INSERT OR IGNORE INTO analysis_runs (id, investigation_id, method_name, method_version, start_time, status)
           VALUES (?, ?, 'DEFAULT_ANALYSIS', '1.0.0', datetime('now'), 'COMPLETED')
-        `).run(cleanRunId, cleanInvId);
+        `).run(runId, investigationId || 'INV-DEFAULT');
       }
-    } catch (err) {
-      console.warn('[Persistence] ensureRunExists error:', err.message);
-    }
-    return cleanRunId;
+    } catch (_) {}
   }
 
   ensureArtifactExists(db, artId, investigationId) {
-    const cleanArtId = this._cleanId(artId);
-    if (!cleanArtId || !db) return null;
+    if (!artId || !db) return;
     try {
-      const existing = db.prepare('SELECT id FROM media_artifacts WHERE id = ?').get(cleanArtId);
+      const existing = db.prepare('SELECT id FROM media_artifacts WHERE id = ?').get(artId);
       if (!existing) {
-        const cleanInvId = this.ensureInvestigationExists(db, investigationId || 'INV-DEFAULT');
+        this.ensureInvestigationExists(db, investigationId || 'INV-DEFAULT');
         db.prepare(`
           INSERT OR IGNORE INTO media_artifacts (id, investigation_id, sha256)
           VALUES (?, ?, '0'.repeat(64))
-        `).run(cleanArtId, cleanInvId);
+        `).run(artId, investigationId || 'INV-DEFAULT');
       }
-    } catch (err) {
-      console.warn('[Persistence] ensureArtifactExists error:', err.message);
-    }
-    return cleanArtId;
+    } catch (_) {}
   }
 
   saveInvestigation(inv) {
@@ -639,17 +618,9 @@ export class PersistenceManager {
     try {
       const db = getDatabase();
       if (!db) return;
-      
-      const artId = this._cleanId(art.id);
-      if (!artId) return;
-
-      let invId = this._cleanId(art.investigationId) || 'INV-DEFAULT';
-      this.ensureInvestigationExists(db, invId);
-      if (!db.prepare('SELECT id FROM investigations WHERE id = ?').get(invId)) {
-        invId = 'INV-DEFAULT';
-        this.ensureInvestigationExists(db, 'INV-DEFAULT');
+      if (art.investigationId) {
+        this.ensureInvestigationExists(db, art.investigationId);
       }
-
       db.prepare(`
         INSERT INTO media_artifacts (
           id, investigation_id, filename, byte_size, mime_type, sha256, phash,
@@ -673,8 +644,8 @@ export class PersistenceManager {
           limitations_json = excluded.limitations_json,
           updated_at = excluded.updated_at
       `).run({
-        id: artId,
-        investigation_id: invId,
+        id: art.id,
+        investigation_id: art.investigationId || 'INV-DEFAULT',
         filename: art.filename || 'unnamed',
         byte_size: Number(art.byteSize || art.bytes || 0),
         mime_type: art.mimeType || 'application/octet-stream',
@@ -753,22 +724,10 @@ export class PersistenceManager {
       const db = getDatabase();
       if (!db) return;
 
-      const runId = this._cleanId(run.id);
-      if (!runId) return;
-
-      let investigationId = this._cleanId(run.investigationId) || this._cleanId(run.investigation_id) || 'INV-DEFAULT';
+      const investigationId = run.investigationId || run.investigation_id || 'INV-DEFAULT';
       this.ensureInvestigationExists(db, investigationId);
-      if (!db.prepare('SELECT id FROM investigations WHERE id = ?').get(investigationId)) {
-        investigationId = 'INV-DEFAULT';
-        this.ensureInvestigationExists(db, 'INV-DEFAULT');
-      }
-
-      let artifactId = this._cleanId(run.artifactId) || this._cleanId(run.artifact_id);
-      if (artifactId) {
-        this.ensureArtifactExists(db, artifactId, investigationId);
-        if (!db.prepare('SELECT id FROM media_artifacts WHERE id = ?').get(artifactId)) {
-          artifactId = null;
-        }
+      if (run.artifactId || run.artifact_id) {
+        this.ensureArtifactExists(db, run.artifactId || run.artifact_id, investigationId);
       }
 
       const methodName = run.method_name || run.methodName || run.method || 'PROVENANCE_HASH_AND_PERCEPTUAL_ANALYSIS';
@@ -811,9 +770,9 @@ export class PersistenceManager {
           is_demo = excluded.is_demo,
           updated_at = excluded.updated_at
       `).run({
-        id: runId,
+        id: run.id,
         investigation_id: investigationId,
-        artifact_id: artifactId,
+        artifact_id: run.artifactId || run.artifact_id || null,
         method_name: methodName,
         method_version: methodVersion,
         parameters_json: typeof parameters === 'string' ? parameters : JSON.stringify(parameters),
@@ -883,30 +842,17 @@ export class PersistenceManager {
       const db = getDatabase();
       if (!db) return;
 
-      const obsId = this._cleanId(obs.id);
-      if (!obsId) return;
-
-      let investigationId = this._cleanId(obs.investigationId) || this._cleanId(obs.investigation_id) || 'INV-DEFAULT';
+      const investigationId = obs.investigationId || obs.investigation_id || 'INV-DEFAULT';
       this.ensureInvestigationExists(db, investigationId);
-      if (!db.prepare('SELECT id FROM investigations WHERE id = ?').get(investigationId)) {
-        investigationId = 'INV-DEFAULT';
-        this.ensureInvestigationExists(db, 'INV-DEFAULT');
-      }
 
-      let runId = this._cleanId(obs.analysisRunId) || this._cleanId(obs.analysis_run_id) || this._cleanId(obs.runId);
+      const runId = obs.analysisRunId || obs.analysis_run_id || obs.runId || null;
       if (runId) {
         this.ensureRunExists(db, runId, investigationId);
-        if (!db.prepare('SELECT id FROM analysis_runs WHERE id = ?').get(runId)) {
-          runId = null;
-        }
       }
 
-      let artifactId = this._cleanId(obs.artifactId) || this._cleanId(obs.artifact_id);
+      const artifactId = obs.artifactId || obs.artifact_id || null;
       if (artifactId) {
         this.ensureArtifactExists(db, artifactId, investigationId);
-        if (!db.prepare('SELECT id FROM media_artifacts WHERE id = ?').get(artifactId)) {
-          artifactId = null;
-        }
       }
 
       const observationType = obs.observation_type || obs.observationType || obs.type || 'METRIC';
@@ -956,7 +902,7 @@ export class PersistenceManager {
           is_demo = excluded.is_demo,
           updated_at = excluded.updated_at
       `).run({
-        id: obsId,
+        id: obs.id,
         investigation_id: investigationId,
         analysis_run_id: runId,
         artifact_id: artifactId,

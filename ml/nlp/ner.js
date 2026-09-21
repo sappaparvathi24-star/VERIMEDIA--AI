@@ -28,7 +28,11 @@ async function getNERPipeline() {
   try {
     const { pipeline, env } = await import('@xenova/transformers');
     env.allowRemoteModels = true;
-    nerPipeline = await pipeline('token-classification', 'Xenova/bert-base-NER');
+    const loadPromise = pipeline('token-classification', 'Xenova/bert-base-NER');
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Model fetch timeout')), 2500)
+    );
+    nerPipeline = await Promise.race([loadPromise, timeoutPromise]);
     return nerPipeline;
   } catch (err) {
     console.warn('[NER Engine] Pipeline initialization notice, will use fallback:', err.message);

@@ -2,7 +2,6 @@
 import axios from 'axios'
 import { getToken } from '../lib/supabaseClient'
 import { networkLogger } from './networkLogger'
-import { uploadStateObserver } from './uploadObserver'
 import type {
   DetectionRequest, DetectionResult,
   DMCARequest, DMCANotice,
@@ -10,7 +9,7 @@ import type {
   HealthStatus,
 } from '../types'
 
-export { networkLogger, uploadStateObserver }
+export { networkLogger }
 
 // Canonical Render backend URL — update this single constant when the backend URL changes
 const RENDER_BACKEND = 'https://verimedia-ai-2.onrender.com'
@@ -91,13 +90,6 @@ export const getWhatRemainsUnknown = (id: string) =>
   api.get(`/investigations/${id}/what-remains-unknown`).then(r => r.data)
 
 export const registerMediaArtifact = async (file: File) => {
-  uploadStateObserver.notify('Uploading to Supabase', {
-    fileName: file.name,
-    fileSize: file.size,
-    mimeType: file.type,
-    target: 'media_artifacts'
-  })
-
   const token = await getToken()
   const formData = new FormData()
   formData.append('media', file)
@@ -135,30 +127,30 @@ export const registerMediaArtifact = async (file: File) => {
 
   // Return valid JSON if returned by server
   if (res && res.data && typeof res.data === 'object' && !res.data.error) {
-    const art = res.data.artifact || res.data
-    uploadStateObserver.notify('Artifact registered', {
-      artifactId: art.id,
-      sha256: art.sha256
-    })
     return res.data
   }
 
   if (res && res.data && typeof res.data === 'object' && res.data.artifact) {
-    const art = res.data.artifact
-    uploadStateObserver.notify('Artifact registered', {
-      artifactId: art.id,
-      sha256: art.sha256
-    })
     return res.data
   }
 
-  // Fallback: Read file to Data URL so local client investigation proceed gracefully
+  // Fallback: Read file to Data URL and calculate genuine SHA-256 hash using Web Crypto
   const localDataUrl = await new Promise<string>((resolve) => {
     const reader = new FileReader()
     reader.onloadend = () => resolve(reader.result as string)
     reader.onerror = () => resolve('')
     reader.readAsDataURL(file)
   }).catch(() => '')
+
+  let genuineSha256 = ''
+  try {
+    const arrayBuffer = await file.arrayBuffer()
+    const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer)
+    const hashArray = Array.from(new Uint8Array(hashBuffer))
+    genuineSha256 = hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
+  } catch {
+    genuineSha256 = 'uncomputed_hash'
+  }
 
   const artId = 'art_loc_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7)
   return {
@@ -167,7 +159,7 @@ export const registerMediaArtifact = async (file: File) => {
     artifact: {
       id: artId,
       filename: file.name,
-      sha256: 'computed_' + Math.random().toString(36).substring(2, 10),
+      sha256: genuineSha256,
       mimeType: file.type || 'image/jpeg',
       byteSize: file.size,
       dataUrl: localDataUrl,
@@ -279,50 +271,8 @@ export const getDetectionTrends = (timeRange: string = '24h', platform: string =
   api.get('/analytics/detection-trends', { params: { timeRange, platform } }).then(r => r.data)
 
 // ── Legacy Compatibility Wrappers ──────────────────────────────────────────
-export const detect = async (req: DetectionRequest): Promise<DetectionResult> => {
-  uploadStateObserver.notify('Triggering forensic analysis', {
-    endpoint: '/v1/detect/',
-    platform: req.platform,
-    username: req.username,
-    caption: req.caption,
-    artifactId: req.artifactId
-  })
-
-  try {
-    const res = await api.post<DetectionResult>('/v1/detect/', req)
-    uploadStateObserver.notify('Analysis complete', {
-      verdict: res.data?.ai_analysis?.decision,
-      trustScore: res.data?.trust?.trust_score
-    })
-    return res.data
-  } catch (err: any) {
-    const status = err?.response?.status || err?.status
-    const responseData = err?.response?.data || err?.response
-
-    console.error(`[Detection API Error ${status || 'Unknown'}] Full Response Body:`, responseData || err)
-
-    uploadStateObserver.notify('Upload error', {
-      route: '/v1/detect/',
-      status: status || 'NETWORK_ERROR',
-      responseBody: responseData || err?.message || err
-    })
-
-    if (status === 403 || status === 500 || (status && status >= 400)) {
-      let bodyStr = ''
-      try {
-        bodyStr = typeof responseData === 'object' ? JSON.stringify(responseData, null, 2) : String(responseData || err?.message || 'Unknown Error')
-      } catch {
-        bodyStr = String(responseData || err?.message || 'Error parsing response')
-      }
-
-      if (typeof window !== 'undefined' && typeof window.alert === 'function') {
-        window.alert(`[Detection Route Error ${status}]\n\nFull API Response Body:\n${bodyStr}`)
-      }
-    }
-
-    throw err
-  }
-}
+export const detect = (req: DetectionRequest): Promise<DetectionResult> =>
+  api.post<DetectionResult>('/v1/detect/', req).then(r => r.data)
 
 export const getDetectStats = () =>
   api.get<{ total_scans: number; status: string }>('/v1/detect/stats').then(r => r.data)

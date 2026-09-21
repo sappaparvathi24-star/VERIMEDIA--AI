@@ -125,6 +125,9 @@ export async function extractKeyframe(filePath, timestampSeconds = 1) {
   });
 }
 
+import { createEngineResult, EngineStatus } from './analysisContract.js';
+import { computePerceptualFingerprints, hashSimilarity } from './perceptualHash.js';
+
 /** Parse "num/den" fraction string to float */
 function evalFraction(str) {
   if (!str) return null;
@@ -135,4 +138,216 @@ function evalFraction(str) {
     return den !== 0 ? num / den : null;
   }
   return parseFloat(str) || null;
+}
+
+/**
+ * Executes comprehensive Video Forensic Analysis on a video buffer or file path.
+ * @param {Buffer|string} input - Video buffer or file path
+ * @param {object} [opts]
+ * @returns {Promise<object>} Canonical analysis contract result
+ */
+export async function analyzeVideo(input, opts = {}) {
+  const startedAt = new Date().toISOString();
+  let tmpPath = null;
+  let isTemp = false;
+
+  try {
+    let filePath = '';
+    let buffer = null;
+
+    if (Buffer.isBuffer(input)) {
+      buffer = input;
+      tmpPath = path.join(os.tmpdir(), `vm_vid_${crypto.randomBytes(8).toString('hex')}.mp4`);
+      fs.writeFileSync(tmpPath, buffer);
+      filePath = tmpPath;
+      isTemp = true;
+    } else if (typeof input === 'string' && fs.existsSync(input)) {
+      filePath = input;
+      buffer = fs.readFileSync(filePath);
+    } else {
+      return createEngineResult({
+        engine: 'VIDEO_FORENSICS',
+        status: EngineStatus.FAILED,
+        applicable: true,
+        startedAt,
+        completedAt: new Date().toISOString(),
+        errors: ['Invalid video input: buffer or existing file path required'],
+        realAnalysis: false
+      });
+    }
+
+    const sha256 = crypto.createHash('sha256').update(buffer).digest('hex');
+
+    // 1. Probe technical video and audio stream metadata
+    const meta = await analyzeVideoMetadata(filePath);
+    if (!meta.supported) {
+      return createEngineResult({
+        engine: 'VIDEO_FORENSICS',
+        status: EngineStatus.FAILED,
+        applicable: true,
+        startedAt,
+        completedAt: new Date().toISOString(),
+        errors: [meta.reason || 'Failed to inspect video streams via ffprobe'],
+        realAnalysis: true
+      });
+    }
+
+    const duration = meta.duration || 0;
+    const keyframeTimestamp = duration > 1 ? 1 : (duration > 0.1 ? duration / 2 : 0);
+
+    // 2. Extract primary keyframe
+    const kfResult = await extractKeyframe(filePath, keyframeTimestamp);
+    let keyframeFingerprints = null;
+    if (kfResult.supported && kfResult.buffer) {
+      keyframeFingerprints = await computePerceptualFingerprints(kfResult.buffer);
+    }
+
+    // 3. Multi-frame sampling across video duration (up to 4 sample points)
+    const samplePoints = [];
+    if (duration > 0.5) {
+      samplePoints.push(duration * 0.2, duration * 0.5, duration * 0.8);
+    } else {
+      samplePoints.push(0);
+    }
+
+    const sampledFrames = [];
+    for (let i = 0; i < samplePoints.length; i++) {
+      const pt = samplePoints[i];
+      const frameRes = await extractKeyframe(filePath, pt);
+      if (frameRes.supported && frameRes.buffer) {
+        const fps = await computePerceptualFingerprints(frameRes.buffer);
+        sampledFrames.push({
+          timestampSeconds: Number(pt.toFixed(2)),
+          fingerprints: fps
+        });
+      }
+    }
+
+    // 4. Inter-frame similarity and jump detection
+    let duplicateFramesDetected = false;
+    let highTemporalChange = false;
+
+    if (sampledFrames.length >= 2) {
+      for (let i = 0; i < sampledFrames.length - 1; i++) {
+        const hashA = sampledFrames[i].fingerprints?.aHash;
+        const hashB = sampledFrames[i + 1].fingerprints?.aHash;
+        if (hashA && hashB) {
+          const sim = hashSimilarity(hashA, hashB);
+          if (sim >= 0.99) {
+            duplicateFramesDetected = true;
+          } else if (sim < 0.40) {
+            highTemporalChange = true;
+          }
+        }
+      }
+    }
+
+    // 5. Structure measurements and observations
+    const measurements = [
+      { name: 'sha256', value: sha256, type: 'CRYPTOGRAPHIC_HASH' },
+      { name: 'durationSeconds', value: duration, unit: 's' },
+      { name: 'fps', value: meta.fps, unit: 'frames/sec' },
+      { name: 'frameCount', value: meta.frameCount, unit: 'count' },
+      { name: 'videoCodec', value: meta.codec, type: 'STREAM_METADATA' },
+      { name: 'container', value: meta.container, type: 'CONTAINER_FORMAT' },
+      { name: 'bitrate', value: meta.bitrate, unit: 'bps' },
+      { name: 'streamCount', value: meta.streamCount, unit: 'count' }
+    ];
+
+    if (meta.resolution) {
+      measurements.push(
+        { name: 'width', value: meta.resolution.width, unit: 'px' },
+        { name: 'height', value: meta.resolution.height, unit: 'px' }
+      );
+    }
+
+    if (keyframeFingerprints?.aHash) {
+      measurements.push(
+        { name: 'keyframe_aHash', value: keyframeFingerprints.aHash, type: 'PERCEPTUAL_HASH' },
+        { name: 'keyframe_dHash', value: keyframeFingerprints.dHash, type: 'PERCEPTUAL_HASH' },
+        { name: 'keyframe_pHash', value: keyframeFingerprints.pHash, type: 'PERCEPTUAL_HASH' }
+      );
+    }
+
+    const observations = [
+      {
+        category: 'STREAM_METADATA',
+        title: 'Video Stream Parameters',
+        detail: `Codec: ${meta.codec || 'unknown'}, Resolution: ${meta.resolution?.width}x${meta.resolution?.height}, FPS: ${meta.fps}, Duration: ${duration.toFixed(2)}s`
+      }
+    ];
+
+    if (meta.audioCodec) {
+      observations.push({
+        category: 'AUDIO_TRACK',
+        title: 'Embedded Audio Stream',
+        detail: `Codec: ${meta.audioCodec}, Sample Rate: ${meta.audioSampleRate}Hz, Channels: ${meta.audioChannels}`
+      });
+    } else {
+      observations.push({
+        category: 'AUDIO_TRACK',
+        title: 'No Audio Stream',
+        detail: 'The video container contains no synchronized audio track.'
+      });
+    }
+
+    if (duplicateFramesDetected) {
+      observations.push({
+        category: 'TEMPORAL_STRUCTURE',
+        title: 'Identical Sampled Frame Signatures',
+        detail: 'Sampled frame fingerprints exhibit >=99% perceptual match across distinct time points (possible static image loop or frame duplication).'
+      });
+    }
+
+    if (highTemporalChange) {
+      observations.push({
+        category: 'TEMPORAL_STRUCTURE',
+        title: 'Significant Inter-Frame Scene Discontinuity',
+        detail: 'Sampled intervals indicate major perceptual divergence (<40% visual hash agreement), consistent with scene transitions or cut points.'
+      });
+    }
+
+    const limitations = [
+      'Temporal frame sampling evaluated across representative intervals rather than exhaustive decoded frame-by-frame deep scan.',
+      'Container creation timestamp reflects container metadata which can be rewritten without re-encoding video content.'
+    ];
+
+    return createEngineResult({
+      engine: 'VIDEO_FORENSICS',
+      status: EngineStatus.COMPLETED,
+      applicable: true,
+      startedAt,
+      completedAt: new Date().toISOString(),
+      observations,
+      measurements,
+      evidenceIds: [`ev_vid_${sha256.substring(0, 12)}`],
+      limitations,
+      source: 'LOCAL_FFPROBE_FFMPEG_ENGINE',
+      realAnalysis: true,
+      extra: {
+        videoMetadata: meta,
+        keyframe: {
+          timestampSeconds: keyframeTimestamp,
+          hasBuffer: Boolean(kfResult.buffer),
+          buffer: kfResult.buffer || null,
+          fingerprints: keyframeFingerprints
+        },
+        sampledFrames
+      }
+    });
+  } catch (err) {
+    return createEngineResult({
+      engine: 'VIDEO_FORENSICS',
+      status: EngineStatus.FAILED,
+      applicable: true,
+      startedAt,
+      completedAt: new Date().toISOString(),
+      errors: [err.message],
+      realAnalysis: true
+    });
+  } finally {
+    if (isTemp && tmpPath && fs.existsSync(tmpPath)) {
+      try { fs.unlinkSync(tmpPath); } catch (_) {}
+    }
+  }
 }

@@ -34,7 +34,6 @@ import {
 import { useStore } from '../../store'
 import { useDetection } from '../../hooks/useDetection'
 import { registerMediaArtifact } from '../../services/api'
-import { uploadStateObserver } from '../../services/uploadObserver'
 import { ForensicViewer } from '../panels/ForensicViewer'
 import { DiscoveryPanel } from '../panels/DiscoveryPanel'
 import { OriginPanel } from '../panels/OriginPanel'
@@ -42,6 +41,7 @@ import { PropagationGraph } from '../panels/PropagationGraph'
 import { EvidenceReasoningCard } from '../panels/EvidenceReasoningCard'
 import type { Platform, ContentType } from '../../types'
 import { DEMO_PIECES, buildDemoDetectionResult, type DemoPiece } from '../../data/demoPieces'
+import { isSimulatedResult } from '../../lib/resultMode'
 
 const STAGES = [
   {
@@ -125,14 +125,7 @@ export function InvestigationFlow() {
   const [showAdvancedOptions, setShowAdvancedOptions] = useState(false)
 
   // Stepper active stage (1 to 5)
-  const isSimulatedScenario = !!(
-    currentResult &&
-    (currentResult.scenario === 'deepfake' ||
-      currentResult.scenario === 'scam' ||
-      currentResult.scenario === 'authentic' ||
-      currentResult.is_demo ||
-      currentResult.mode === 'SIMULATED_SCENARIO')
-  )
+  const isSimulatedScenario = isSimulatedResult(currentResult)
 
   const [currentStage, setCurrentStage] = useState<number>(1)
   const [elapsedTime, setElapsedTime] = useState(0)
@@ -158,14 +151,6 @@ export function InvestigationFlow() {
     if (!caption) {
       setCaption(file.name.replace(/\.[^/.]+$/, ''))
     }
-
-    // Notify State Observer: File received
-    uploadStateObserver.notify('File received', {
-      fileName: file.name,
-      fileSize: file.size,
-      fileType: file.type || 'unknown',
-      lastModified: file.lastModified
-    })
   }
 
   function handleFileDrop(e: DragEvent<HTMLDivElement>) {
@@ -180,13 +165,6 @@ export function InvestigationFlow() {
     if (!selectedFile) return
     setScanError(null)
 
-    uploadStateObserver.notify('Uploading to Supabase', {
-      fileName: selectedFile.name,
-      fileSize: selectedFile.size,
-      fileType: selectedFile.type,
-      target: 'media_artifacts'
-    })
-
     try {
       await runMediaInvestigation(selectedFile, {
         platform: platform || 'YouTube',
@@ -197,10 +175,6 @@ export function InvestigationFlow() {
       setCurrentStage(1)
     } catch (err: any) {
       console.error('Investigation error:', err)
-      uploadStateObserver.notify('Upload error', {
-        fileName: selectedFile.name,
-        error: err?.message || String(err)
-      })
     }
   }
 

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useStore } from '../../store'
 import { Tooltip } from '../ui/Tooltip'
 import { getInvestigationReasoning, getInvestigationCandidates, listInvestigations } from '../../services/api'
+import { isSimulatedResult } from '../../lib/resultMode'
 
 interface ForensicSignalItem {
   id: string
@@ -595,14 +596,7 @@ export function EvidenceReasoningPanel() {
     )
   }
 
-  const isScenario = !!(
-    currentResult &&
-    (currentResult.scenario === 'deepfake' ||
-      currentResult.scenario === 'scam' ||
-      currentResult.scenario === 'authentic' ||
-      (currentResult as any).is_demo ||
-      (currentResult as any).mode === 'SIMULATED_SCENARIO')
-  )
+  const isScenario = isSimulatedResult(currentResult)
 
   // Use real candidates if available, otherwise if scenario use benchmark candidates, otherwise build honest scan candidate
   const activeCandidates = usingRealData && realCandidates.length > 0

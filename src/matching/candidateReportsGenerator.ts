@@ -1,4 +1,4 @@
-// VeriMedia AI — Multi-Candidate Automated Comparison & 10 Reports Engine
+// VeriMedia AI — Multi-Candidate Automated Comparison & Classification Engine
 import type { ComparisonReport, ComparisonCandidateSummary, ThreeWayClassification } from '../types'
 
 /**
@@ -55,20 +55,158 @@ export function classifyThreeWay(
 }
 
 /**
- * Builds 10 rich, grounded comparative reports for any uploaded media or candidate set.
+ * Real comparison report generator: Processes ONLY real discovered candidates without any synthetic padding.
+ * If 0 candidates exist, returns 0 reports. If 6 exist, returns 6. Never pads.
  */
-export function generateTenComparisonReports(
+export function generateComparisonReports(
+  referenceArtifact: any,
+  rawCandidates: any[] = []
+): ComparisonCandidateSummary {
+  if (!rawCandidates || !Array.isArray(rawCandidates) || rawCandidates.length === 0) {
+    return {
+      total: 0,
+      knownCount: 0,
+      unknownCount: 0,
+      notSoCount: 0,
+      reports: []
+    }
+  }
+
+  const reports: ComparisonReport[] = rawCandidates.map((raw, i) => {
+    // Calibrate similarity score from real candidate measurements
+    let sim = 0
+    if (typeof raw.similarity === 'number' && !isNaN(raw.similarity)) {
+      sim = raw.similarity
+    } else if (typeof raw.matchScore === 'number' && !isNaN(raw.matchScore) && raw.matchScore > 0) {
+      sim = raw.matchScore > 1 ? raw.matchScore / 100 : raw.matchScore
+    } else if (typeof raw.visionScore === 'number' && !isNaN(raw.visionScore)) {
+      sim = raw.visionScore
+    }
+
+    const isCropped = Boolean(raw.isCropped)
+    const cropPercentage = typeof raw.cropPercentage === 'number' ? raw.cropPercentage : 0
+    const cropDetails = raw.cropDetails || (isCropped ? `Aspect crop detected (${cropPercentage}% reduction)` : 'Original frame bounds preserved')
+    const isManipulated = Boolean(raw.isManipulated)
+    const manipulationFlags: string[] = Array.isArray(raw.manipulationFlags) ? [...raw.manipulationFlags] : []
+    const isOriginal = Boolean(raw.isOriginalSource || raw.classification === 'EXACT_MATCH')
+
+    const domain = raw.domain || raw.displayLink || (raw.url ? new URL(raw.url).hostname : 'unknown-domain.com')
+    const publisher = raw.publisher || raw.author || raw.displayLink || domain
+    const platform = raw.platform || domain
+
+    const { classification, label, reason } = classifyThreeWay(sim, {
+      isOriginalSource: isOriginal,
+      hasManipulation: isManipulated,
+      isCropped,
+      publisherTier: raw.publisherTier,
+      domain,
+      isExactMatch: sim >= 0.99
+    })
+
+    const title = raw.title || `Candidate #${i + 1} from ${domain}`
+    const url = raw.url || raw.link || ''
+    const publishedAt = raw.publishedAt || raw.timestamp || null
+    const formattedDate = publishedAt
+      ? new Date(publishedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+      : 'Date Unavailable'
+
+    return {
+      id: raw.id || `REP-${Date.now().toString(36)}-${i + 1}`,
+      candidateIndex: i + 1,
+      title,
+      url,
+      domain,
+      publisher,
+      author: raw.author || null,
+      publishedAt: publishedAt || '',
+      formattedDate,
+      platform,
+      thumbnailUrl: raw.thumbnailUrl || raw.mediaUrl || null,
+      mediaUrl: raw.mediaUrl || raw.url || null,
+      snippet: raw.snippet || `Discovered candidate match indexed on ${domain}. Perceptual similarity: ${Math.round(sim * 100)}%.`,
+      
+      // Grounded scoring
+      matchScore: Math.round(sim * 100),
+      similarity: Number(sim.toFixed(4)),
+      visionScore: typeof raw.visionScore === 'number' ? Number(raw.visionScore.toFixed(4)) : null,
+      phashSimilarity: typeof raw.phashSimilarity === 'number' ? Number(raw.phashSimilarity.toFixed(4)) : Number(sim.toFixed(4)),
+      hammingDistance: typeof raw.hammingDistance === 'number' ? raw.hammingDistance : Math.round((1 - sim) * 32),
+      similarityBasis: raw.similarityBasis || (sim >= 0.9 ? 'CONCORDANT_VISION_AND_PHASH' : (sim >= 0.6 ? 'PERCEPTUAL_HASH_COMPARISON' : 'DISTANT_EMBEDDING')),
+
+      // 3-Way Classification
+      classification,
+      classificationLabel: label,
+      classificationReason: reason,
+
+      // Transformations
+      transformations: {
+        isCropped,
+        cropPercentage: isCropped ? cropPercentage : 0,
+        cropDetails,
+        isRecompressed: raw.transformations?.isRecompressed ?? (sim < 0.95 && sim > 0.5),
+        compressionDelta: raw.transformations?.compressionDelta ?? (sim < 0.95 ? 'Recompressed stream' : 'Bit-accurate stream'),
+        isManipulated,
+        manipulationFlags,
+        watermarkAltered: Boolean(raw.transformations?.watermarkAltered),
+        aspectRatioDiff: raw.transformations?.aspectRatioDiff || (isCropped ? 'Altered aspect ratio' : 'Standard bounds'),
+        resolutionChange: raw.transformations?.resolutionChange || 'Unmodified resolution'
+      },
+
+      // Signal Deltas
+      signalDelta: {
+        spatialVariance: Number((Math.max(0, 1 - sim) * 0.8).toFixed(3)),
+        colorDrift: Number((Math.max(0, 1 - sim) * 0.4).toFixed(3)),
+        frequencyAnomaly: isManipulated ? 0.78 : 0.12,
+        exifConsistency: isOriginal ? 'MATCH' : (isCropped || isManipulated ? 'STRIPPED' : 'DISCREPANCY'),
+        perceptualDistance: Math.round((1 - sim) * 32)
+      },
+
+      // Provenance
+      provenance: {
+        isEarliestAppearance: Boolean(raw.isEarliestAppearance || (i === 0 && isOriginal)),
+        earliestTimestamp: publishedAt || '',
+        formattedDate,
+        indexingOrder: i + 1,
+        syndicationRoute: isOriginal ? 'Primary Origin Feed' : `Discovered Appearance #${i + 1}`,
+        publisherTier: raw.publisherTier || 'STANDARD_WEB'
+      },
+
+      // Recommendation
+      recommendation: {
+        action: classification === 'KNOWN'
+          ? 'CONFIRM_AUTHENTIC_SOURCE'
+          : (classification === 'UNKNOWN'
+              ? (isManipulated || isCropped ? 'FILE_DMCA_TAKEDOWN' : 'FLAG_UNAUTHORIZED_DERIVATIVE')
+              : 'DISMISS_UNRELATED'),
+        rationale: classification === 'KNOWN'
+          ? 'Verified authentic reference asset. Cleared for standard editorial publication.'
+          : (classification === 'UNKNOWN'
+              ? 'Potential unauthorized alteration or derivative. Review provenance chain before publication.'
+              : 'Low similarity match. No action required.'),
+        riskTier: classification === 'KNOWN' ? 'LOW' : (classification === 'UNKNOWN' ? 'HIGH' : 'LOW')
+      }
+    }
+  })
+
+  return {
+    total: reports.length,
+    knownCount: reports.filter(r => r.classification === 'KNOWN').length,
+    unknownCount: reports.filter(r => r.classification === 'UNKNOWN').length,
+    notSoCount: reports.filter(r => r.classification === 'NOT_SO').length,
+    reports
+  }
+}
+
+/**
+ * Demo-only comparison report generator. Strictly gated to cases where referenceArtifact.isDemo === true.
+ */
+export function generateDemoComparisonReports(
   referenceArtifact: any,
   rawCandidates: any[] = [],
   scenarioHint: string = 'normal'
 ): ComparisonCandidateSummary {
   const refTitle = referenceArtifact?.filename || referenceArtifact?.title || referenceArtifact?.caption || 'Uploaded Reference Media'
-  const isDemo = Boolean(referenceArtifact?.isDemo)
-  
-  // Format or generate exactly 10 comprehensive candidate reports
-  const reports: ComparisonReport[] = []
-  
-  // Pre-configured archetype templates for realistic multi-platform distribution
+
   const platformPresets = [
     {
       platform: 'Reuters / Associated Press Pool',
@@ -172,62 +310,64 @@ export function generateTenComparisonReports(
     }
   ]
 
-  for (let i = 0; i < 10; i++) {
+  const count = 10
+  const reports: ComparisonReport[] = []
+
+  for (let i = 0; i < count; i++) {
     const raw = rawCandidates[i] || null
     const preset = platformPresets[i % platformPresets.length]
 
-    // Calibrate similarity score
     let sim = raw?.similarity != null ? Number(raw.similarity) : preset.simBase
     if (typeof raw?.matchScore === 'number' && raw.matchScore > 0) {
       sim = raw.matchScore / 100
     }
 
-    // Dynamic scenario adjustments
-    let isCropped = false
-    let cropPercentage = 0
-    let cropDetails = 'Standard full-frame aspect ratio maintained.'
-    let isManipulated = false
-    let manipulationFlags: string[] = []
-    let isOriginal = false
+    let isCropped = Boolean(raw?.isCropped)
+    let cropPercentage = raw?.cropPercentage || 0
+    let cropDetails = raw?.cropDetails || 'Standard full-frame aspect ratio maintained.'
+    let isManipulated = Boolean(raw?.isManipulated)
+    const manipulationFlags: string[] = Array.isArray(raw?.manipulationFlags) ? [...raw.manipulationFlags] : []
+    let isOriginal = Boolean(raw?.isOriginalSource)
 
-    if (preset.type === 'master' || (i === 0 && scenarioHint === 'normal')) {
-      isOriginal = true
-      sim = Math.max(sim, 0.98)
-    } else if (preset.type === 'crop' || scenarioHint === 'crop') {
-      isCropped = true
-      cropPercentage = 15 + ((i * 4) % 25)
-      cropDetails = `Bounding box cropped by ${cropPercentage}% along vertical/horizontal axis. Watermark region removed.`
-      manipulationFlags.push('BOUNDARY_CROP', 'WATERMARK_REMOVAL')
-    } else if (preset.type === 'deepfake' || scenarioHint === 'deepfake') {
-      isManipulated = true
-      manipulationFlags.push('FACIAL_SYNTHESIS_SEAMS', 'HIGH_FREQUENCY_ELA_ANOMALY', 'LIPSYNC_MISMATCH')
-    } else if (preset.type === 'tampered' || scenarioHint === 'adversarial') {
-      isManipulated = true
-      manipulationFlags.push('ADVERSARIAL_NOISE_INJECTION', 'INPAINTED_DATA_REGION')
+    if (!raw) {
+      if (preset.type === 'master' || (i === 0 && scenarioHint === 'normal')) {
+        isOriginal = true
+        sim = Math.max(sim, 0.98)
+      } else if (preset.type === 'crop' || scenarioHint === 'crop') {
+        isCropped = true
+        cropPercentage = 15 + ((i * 4) % 25)
+        cropDetails = `Bounding box cropped by ${cropPercentage}% along vertical/horizontal axis. Watermark region removed.`
+        manipulationFlags.push('BOUNDARY_CROP', 'WATERMARK_REMOVAL')
+      } else if (preset.type === 'deepfake' || scenarioHint === 'deepfake') {
+        isManipulated = true
+        manipulationFlags.push('FACIAL_SYNTHESIS_SEAMS', 'HIGH_FREQUENCY_ELA_ANOMALY', 'LIPSYNC_MISMATCH')
+      } else if (preset.type === 'tampered' || scenarioHint === 'adversarial') {
+        isManipulated = true
+        manipulationFlags.push('ADVERSARIAL_NOISE_INJECTION', 'INPAINTED_DATA_REGION')
+      }
     }
 
     const { classification, label, reason } = classifyThreeWay(sim, {
       isOriginalSource: isOriginal,
       hasManipulation: isManipulated,
       isCropped,
-      publisherTier: preset.tier,
+      publisherTier: raw?.publisherTier || preset.tier,
       domain: raw?.domain || preset.domain,
       isExactMatch: sim >= 0.98
     })
 
     const title = raw?.title || `${preset.titlePrefix}${refTitle.replace(/\.[^/.]+$/, '')}`
     const domain = raw?.domain || raw?.displayLink || preset.domain
-    const url = raw?.url || raw?.link || `https://${domain}/article/verified-media-item-${i + 1}`
+    const url = raw?.url || raw?.link || `https://${domain}/demo-archive/case-item-${i + 1}`
     const publisher = raw?.publisher || raw?.author || preset.publisher
     const platform = raw?.platform || preset.platform
 
-    // Date computation (chronological waterfall)
     const baseDate = new Date(Date.now() - (10 - i) * 3600 * 1000 * 24)
-    const publishedAt = raw?.publishedAt || baseDate.toISOString()
-    const formattedDate = baseDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) + ' • ' + baseDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZoneName: 'short' })
+    const publishedAt = raw?.publishedAt || raw?.timestamp || baseDate.toISOString()
+    const formattedDate = new Date(publishedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 
-    const report: ComparisonReport = {
-      id: raw?.id || `REP-${Date.now().toString(36)}-${i + 1}`,
+    reports.push({
+      id: raw?.id || `DEMO-REP-${i + 1}`,
       candidateIndex: i + 1,
       title,
       url,
@@ -239,36 +379,28 @@ export function generateTenComparisonReports(
       platform,
       thumbnailUrl: raw?.thumbnailUrl || raw?.mediaUrl || null,
       mediaUrl: raw?.mediaUrl || raw?.url || null,
-      snippet: raw?.snippet || `Discovered candidate match indexed on ${domain}. Perceptual match rated at ${Math.round(sim * 100)}% with ${classification.toLowerCase()} status.`,
-      
-      // Grounded scoring
+      snippet: raw?.snippet || `[DEMO SCENARIO] Candidate match indexed on ${domain}. Perceptual match rated at ${Math.round(sim * 100)}%.`,
       matchScore: Math.round(sim * 100),
       similarity: Number(sim.toFixed(4)),
       visionScore: raw?.visionScore ?? (sim > 0.7 ? Number(sim.toFixed(4)) : null),
       phashSimilarity: raw?.phashSimilarity ?? Number(sim.toFixed(4)),
       hammingDistance: raw?.hammingDistance ?? Math.round((1 - sim) * 32),
-      similarityBasis: sim >= 0.9 ? 'CONCORDANT_VISION_AND_PHASH' : (sim >= 0.6 ? 'PERCEPTUAL_HASH_COMPARISON' : 'DISTANT_EMBEDDING'),
-
-      // 3-Way Classification
+      similarityBasis: 'DEMO_PRESET_SCENARIO',
       classification,
       classificationLabel: label,
       classificationReason: reason,
-
-      // Transformations
       transformations: {
         isCropped,
         cropPercentage: isCropped ? cropPercentage : 0,
         cropDetails,
         isRecompressed: sim < 0.95 && sim > 0.5,
-        compressionDelta: sim < 0.95 ? 'JPEG Quality Factor Q=72 vs Reference Q=95 (23% lossy drift)' : 'Bit-accurate lossless replication',
+        compressionDelta: sim < 0.95 ? 'JPEG Quality Factor Q=72 vs Reference Q=95' : 'Bit-accurate replication',
         isManipulated,
         manipulationFlags,
         watermarkAltered: isCropped,
-        aspectRatioDiff: isCropped ? '16:9 vs 4:3 (Letterbox Crop)' : '1:1 Matched Dimensions',
+        aspectRatioDiff: isCropped ? '16:9 vs 4:3 Crop' : '1:1 Matched Dimensions',
         resolutionChange: sim < 0.9 ? 'Downscaled from 3840x2160 to 1280x720' : 'Identical resolution'
       },
-
-      // Signal Deltas
       signalDelta: {
         spatialVariance: Number((Math.max(0, 1 - sim) * 0.8).toFixed(3)),
         colorDrift: Number((Math.max(0, 1 - sim) * 0.4).toFixed(3)),
@@ -276,8 +408,6 @@ export function generateTenComparisonReports(
         exifConsistency: isOriginal ? 'MATCH' : (isCropped || isManipulated ? 'STRIPPED' : 'DISCREPANCY'),
         perceptualDistance: Math.round((1 - sim) * 32)
       },
-
-      // Provenance
       provenance: {
         isEarliestAppearance: i === 0 && isOriginal,
         earliestTimestamp: publishedAt,
@@ -286,8 +416,6 @@ export function generateTenComparisonReports(
         syndicationRoute: isOriginal ? 'Primary Origin Feed' : `Syndicated Derivative Route #${i + 1}`,
         publisherTier: preset.tier
       },
-
-      // Recommendation
       recommendation: {
         action: classification === 'KNOWN'
           ? 'CONFIRM_AUTHENTIC_SOURCE'
@@ -295,26 +423,37 @@ export function generateTenComparisonReports(
               ? (isManipulated || isCropped ? 'FILE_DMCA_TAKEDOWN' : 'FLAG_UNAUTHORIZED_DERIVATIVE')
               : 'DISMISS_UNRELATED'),
         rationale: classification === 'KNOWN'
-          ? 'Verified authentic reference asset. Cleared for standard editorial publication.'
+          ? 'Verified authentic reference asset.'
           : (classification === 'UNKNOWN'
-              ? 'Unauthorized modification detected. Recommend filing automated DMCA takedown notice and marking as tampered in provenance ledger.'
-              : 'False positive or distinct scene. No rights enforcement action required.'),
+              ? 'Unauthorized modification detected.'
+              : 'False positive or distinct scene.'),
         riskTier: classification === 'KNOWN' ? 'LOW' : (classification === 'UNKNOWN' ? 'HIGH' : 'LOW')
       }
-    }
-
-    reports.push(report)
+    })
   }
-
-  const knownCount = reports.filter(r => r.classification === 'KNOWN').length
-  const unknownCount = reports.filter(r => r.classification === 'UNKNOWN').length
-  const notSoCount = reports.filter(r => r.classification === 'NOT_SO').length
 
   return {
     total: reports.length,
-    knownCount,
-    unknownCount,
-    notSoCount,
+    knownCount: reports.filter(r => r.classification === 'KNOWN').length,
+    unknownCount: reports.filter(r => r.classification === 'UNKNOWN').length,
+    notSoCount: reports.filter(r => r.classification === 'NOT_SO').length,
     reports
   }
 }
+
+/**
+ * Universal entry point: Routes to generateDemoComparisonReports ONLY when referenceArtifact.isDemo === true.
+ * For real non-demo investigations, executes generateComparisonReports with zero synthetic padding.
+ */
+export function generateTenComparisonReports(
+  referenceArtifact: any,
+  rawCandidates: any[] = [],
+  scenarioHint: string = 'normal'
+): ComparisonCandidateSummary {
+  const isDemo = Boolean(referenceArtifact?.isDemo)
+  if (isDemo) {
+    return generateDemoComparisonReports(referenceArtifact, rawCandidates, scenarioHint)
+  }
+  return generateComparisonReports(referenceArtifact, rawCandidates)
+}
+
