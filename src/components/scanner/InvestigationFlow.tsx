@@ -34,6 +34,7 @@ import {
 import { useStore } from '../../store'
 import { useDetection } from '../../hooks/useDetection'
 import { registerMediaArtifact } from '../../services/api'
+import { uploadStateObserver } from '../../services/uploadObserver'
 import { ForensicViewer } from '../panels/ForensicViewer'
 import { DiscoveryPanel } from '../panels/DiscoveryPanel'
 import { OriginPanel } from '../panels/OriginPanel'
@@ -157,6 +158,14 @@ export function InvestigationFlow() {
     if (!caption) {
       setCaption(file.name.replace(/\.[^/.]+$/, ''))
     }
+
+    // Notify State Observer: File received
+    uploadStateObserver.notify('File received', {
+      fileName: file.name,
+      fileSize: file.size,
+      fileType: file.type || 'unknown',
+      lastModified: file.lastModified
+    })
   }
 
   function handleFileDrop(e: DragEvent<HTMLDivElement>) {
@@ -171,6 +180,13 @@ export function InvestigationFlow() {
     if (!selectedFile) return
     setScanError(null)
 
+    uploadStateObserver.notify('Uploading to Supabase', {
+      fileName: selectedFile.name,
+      fileSize: selectedFile.size,
+      fileType: selectedFile.type,
+      target: 'media_artifacts'
+    })
+
     try {
       await runMediaInvestigation(selectedFile, {
         platform: platform || 'YouTube',
@@ -181,6 +197,10 @@ export function InvestigationFlow() {
       setCurrentStage(1)
     } catch (err: any) {
       console.error('Investigation error:', err)
+      uploadStateObserver.notify('Upload error', {
+        fileName: selectedFile.name,
+        error: err?.message || String(err)
+      })
     }
   }
 

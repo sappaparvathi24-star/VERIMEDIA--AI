@@ -1,6 +1,7 @@
 // VeriMedia AI — Detection Hook with Real-Time Forensic Pipeline Streaming
 import { useCallback, useRef } from 'react'
 import { detect, fileDMCA, listCases, registerMediaArtifact, getForensicJob, searchMultiSource } from '../services/api'
+import { uploadStateObserver } from '../services/uploadObserver'
 import { useStore } from '../store'
 import type { DetectionRequest, DMCARequest, DetectionResult } from '../types'
 import { generateTenComparisonReports } from '../matching/candidateReportsGenerator'
@@ -217,6 +218,14 @@ export function useDetection() {
   const runMediaInvestigation = useCallback(async (file: File, options?: { platform?: any; username?: string; caption?: string; contentType?: any }) => {
     setScanning(true)
     setScanError(null)
+
+    // Notify State Observer: File received
+    uploadStateObserver.notify('File received', {
+      fileName: file.name,
+      fileSize: file.size,
+      fileType: file.type || 'unknown'
+    })
+
     addScanLog(`Starting full media investigation for ${file.name} (${file.type}, ${(file.size / 1024).toFixed(1)} KB)...`, 'ingest', 'info')
 
     // Create immediate local Object URL and Data URL for guaranteed UI rendering
@@ -231,6 +240,7 @@ export function useDetection() {
     try {
       // Step 1: Upload media binary to create artifact & enqueue job
       setScanProgress(15, 0, 'Stage 1: Media Ingest & Fingerprinting', 'Uploading binary to memory buffer store and computing SHA-256...')
+      
       const uploadRes = await registerMediaArtifact(file)
       const art = uploadRes?.artifact || uploadRes
       const jobId = uploadRes?.jobId || uploadRes?.job?.id
@@ -243,6 +253,7 @@ export function useDetection() {
 
       // If async job was returned, stream events from the job queue
       if (jobId) {
+        uploadStateObserver.notify('Streaming job events', { jobId })
         try {
           await streamJobEvents(jobId)
         } catch (jobErr) {
@@ -261,8 +272,30 @@ export function useDetection() {
           scenario: 'normal',
           artifactId: art.id
         })
-      } catch (detectErr) {
-        console.warn('[Forensics] Remote detect API endpoint returned HTML/error. Falling back to client-side forensic synthesis:', detectErr)
+      } catch (detectErr: any) {
+        const status = detectErr?.response?.status || detectErr?.status
+        const responseData = detectErr?.response?.data || detectErr?.response
+
+        uploadStateObserver.notify('Upload error', {
+          route: '/v1/detect/',
+          status: status || 'NETWORK_ERROR',
+          responseBody: responseData || detectErr?.message || detectErr
+        })
+
+        if (status === 403 || status === 500) {
+          console.error(`[Detection Route ${status} Error] Full API Response Body:`, responseData || detectErr)
+          let bodyStr = ''
+          try {
+            bodyStr = typeof responseData === 'object' ? JSON.stringify(responseData, null, 2) : String(responseData || detectErr)
+          } catch {
+            bodyStr = String(responseData || detectErr)
+          }
+          if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+            window.alert(`[Detection API Error ${status}]\n\nFull API Response Body:\n${bodyStr}`)
+          }
+        }
+
+        console.warn('[Forensics] Remote detect API endpoint returned error. Falling back to client-side forensic synthesis:', detectErr)
         result = {
           content_type: options?.contentType || 'news',
           platform: options?.platform || 'YouTube',

@@ -3,6 +3,7 @@ import { useStore } from '../../store'
 import { useDetection } from '../../hooks/useDetection'
 import { Tooltip } from '../ui/Tooltip'
 import { registerMediaArtifact } from '../../services/api'
+import { uploadStateObserver } from '../../services/uploadObserver'
 import type { Platform, ContentType, Scenario } from '../../types'
 
 const PRESET_SCENARIOS: { key: Scenario; label: string; icon: string }[] = [
@@ -40,6 +41,12 @@ export function ScannerBar() {
   async function processFile(file: File) {
     setIsUploading(true)
     setScanError(null)
+
+    uploadStateObserver.notify('File received', {
+      fileName: file.name,
+      fileSize: file.size,
+      fileType: file.type || 'unknown'
+    })
 
     // Generate local preview URL instantly
     const localUrl = URL.createObjectURL(file)
