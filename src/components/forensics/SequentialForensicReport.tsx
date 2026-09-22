@@ -556,14 +556,20 @@ export function SequentialForensicReport({ result, onClose, onFileDMCA }: Props)
                 {displayMediaUrl ? (
                   <div style={{ position: 'relative', maxWidth: '100%', maxHeight: 360 }}>
                     <img
-                      src={displayMediaUrl}
+                      src={
+                        elaViewMode === 'heatmap' && elaData?.heatmapDataUrl
+                          ? elaData.heatmapDataUrl
+                          : elaViewMode === 'diff' && (elaData?.elaDataUrl || elaData?.maskDataUrl)
+                          ? (elaData.elaDataUrl || elaData.maskDataUrl)
+                          : displayMediaUrl
+                      }
                       alt="ELA Target"
                       style={{
                         maxWidth: '100%',
                         maxHeight: 360,
                         objectFit: 'contain',
                         borderRadius: 6,
-                        filter: elaViewMode === 'heatmap' ? `contrast(200%) brightness(120%) drop-shadow(0 0 10px rgba(0,212,255,0.4))` : 'none'
+                        boxShadow: '0 4px 20px rgba(0,0,0,0.5)'
                       }}
                     />
                     {elaViewMode === 'heatmap' && (
@@ -571,7 +577,7 @@ export function SequentialForensicReport({ result, onClose, onFileDMCA }: Props)
                         position: 'absolute',
                         top: 10,
                         left: 10,
-                        background: 'rgba(0,0,0,0.8)',
+                        background: 'rgba(0,0,0,0.85)',
                         border: '1px solid #00d4ff',
                         color: '#00d4ff',
                         padding: '4px 8px',
@@ -579,7 +585,23 @@ export function SequentialForensicReport({ result, onClose, onFileDMCA }: Props)
                         fontSize: 10,
                         fontWeight: 700
                       }}>
-                        ⚡ ELA High-Pass Differential Map (95% Resynthesis)
+                        ⚡ ELA Thermal Heatmap (DCT Quantization Residuals)
+                      </div>
+                    )}
+                    {elaViewMode === 'diff' && (
+                      <div style={{
+                        position: 'absolute',
+                        top: 10,
+                        left: 10,
+                        background: 'rgba(0,0,0,0.85)',
+                        border: '1px solid #f43f5e',
+                        color: '#fb7185',
+                        padding: '4px 8px',
+                        borderRadius: 4,
+                        fontSize: 10,
+                        fontWeight: 700
+                      }}>
+                        ⚡ High-Pass Residual Amplification (20x Gain)
                       </div>
                     )}
                   </div>

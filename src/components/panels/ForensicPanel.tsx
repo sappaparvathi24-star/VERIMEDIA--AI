@@ -36,7 +36,7 @@ function getSignalColor(anomaly: number): string {
 
 export function ForensicPanel() {
   const { currentResult, isScanning, setScanError } = useStore()
-  const { runDetection } = useDetection()
+  const { runDetection, runMediaInvestigation } = useDetection()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isUploading, setIsUploading] = useState(false)
   const [activeSubTab, setActiveSubTab] = useState<'viewer' | 'matrix'>('viewer')
@@ -55,28 +55,11 @@ export function ForensicPanel() {
     setIsUploading(true)
     setScanError(null)
     try {
-      // Step 1: Upload and enqueue async forensic job
-      const uploadData = await uploadArtifactAsync(file)
-      const artifactId: string = uploadData?.artifact?.id || uploadData?.artifactId
-      const jobId: string = uploadData?.jobId || uploadData?.job?.id
-
-      if (!artifactId) {
-        throw new Error('Upload response did not include an artifact ID.')
-      }
-
-      // Step 2: Poll until the forensic job completes so artifact.metadata.forensicAnalysis is populated
-      if (jobId) {
-        await pollForensicJob(jobId, 45_000, 1_200)
-      }
-
-      // Step 3: Run detection — handleV1Detect reads forensicAnalysis from the artifact store
-      await runDetection({
+      await runMediaInvestigation(file, {
         platform: 'YouTube',
         username: 'uploaded_evidence',
         caption: file.name,
-        content_type: 'news',
-        scenario: 'normal',
-        artifactId,
+        contentType: 'news'
       })
     } catch (err: unknown) {
       console.error('File upload error in forensic panel:', err)

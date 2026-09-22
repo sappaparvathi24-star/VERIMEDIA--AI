@@ -134,7 +134,28 @@ export interface DetectionResult {
       meanError?: number
       maxError?: number
       variance?: number
+      stdDev?: number
+      highErrorRatio?: number
+      splicingRiskScore?: number
       hasCompressionAnomaly?: boolean
+      elaDataUrl?: string
+      heatmapDataUrl?: string
+      maskDataUrl?: string
+      confidence?: number
+      anomalyRegions?: Array<{
+        x: number
+        y: number
+        width: number
+        height: number
+        clusterCount?: number
+        peakMeanError?: number
+        meanError?: number
+        maxError?: number
+        description?: string
+        severity?: 'HIGH' | 'MODERATE'
+      }>
+      rawAnomalyCount?: number
+      assessment?: string
     }
     exif?: {
       make?: string

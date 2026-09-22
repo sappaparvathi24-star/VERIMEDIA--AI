@@ -28,7 +28,7 @@ import {
 import { MultiSourceDiscoveryManager } from './src/matching/providers/index.js';
 import { getFullDiscoveryTransparency } from './src/matching/discoveryTransparency.js';
 import { computeAverageHash, hashSimilarity } from './src/forensics/perceptualHash.js';
-import { getArtifactMedia, storeArtifactMedia } from './src/forensics/imageForensics.js';
+import { getArtifactMedia, storeArtifactMedia, performErrorLevelAnalysis } from './src/forensics/imageForensics.js';
 import { 
   SourceTypes, 
   EvidencePolarity, 
@@ -4505,6 +4505,66 @@ app.post('/api/search/multi-source', async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ error: 'Multi-source search failed', message: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// REAL-TIME ERROR LEVEL ANALYSIS (ELA) & COMPRESSION RESIDUAL HEATMAP ENGINE
+// ---------------------------------------------------------------------------
+app.post('/api/forensics/ela', upload.single('file'), async (req, res) => {
+  const clientIp = req.ip || req.connection?.remoteAddress || 'unknown';
+  if (!checkRateLimit(clientIp)) {
+    return res.status(429).json({ error: 'Rate limit exceeded. Please wait a moment.' });
+  }
+
+  try {
+    let imageBuffer = null;
+    let mimeType = 'image/jpeg';
+
+    if (req.file && req.file.buffer) {
+      imageBuffer = req.file.buffer;
+      mimeType = req.file.mimetype || 'image/jpeg';
+    } else if (req.body?.imageBase64 || req.body?.dataUrl) {
+      const dataStr = req.body.imageBase64 || req.body.dataUrl;
+      const match = dataStr.match(/^data:([^;]+);base64,(.+)$/);
+      if (match) {
+        mimeType = match[1];
+        imageBuffer = Buffer.from(match[2], 'base64');
+      } else {
+        imageBuffer = Buffer.from(dataStr, 'base64');
+      }
+    } else if (req.body?.artifactId) {
+      const art = provenanceService.store?.getArtifact(req.body.artifactId);
+      const media = getArtifactMedia(req.body.artifactId);
+      if (media && media.buffer) {
+        imageBuffer = media.buffer;
+        mimeType = media.mimeType || 'image/jpeg';
+      }
+    }
+
+    if (!imageBuffer) {
+      return res.status(400).json({
+        error: 'No valid image provided. Supply a multipart file, imageBase64, dataUrl, or artifactId.'
+      });
+    }
+
+    const quality = req.body?.quality ? parseInt(req.body.quality, 10) : (req.query.quality ? parseInt(req.query.quality, 10) : 90);
+    const multiplier = req.body?.multiplier ? parseInt(req.body.multiplier, 10) : (req.query.multiplier ? parseInt(req.query.multiplier, 10) : 20);
+    const colormap = req.body?.colormap || req.query.colormap || 'thermal';
+
+    const result = await performErrorLevelAnalysis(imageBuffer, mimeType, {
+      quality: isNaN(quality) ? 90 : quality,
+      multiplier: isNaN(multiplier) ? 20 : multiplier,
+      colormap
+    });
+
+    res.json({
+      status: 'ok',
+      ...result
+    });
+  } catch (err) {
+    console.error('ELA execution error:', err);
+    res.status(500).json({ error: 'ELA computation failed', message: err.message });
   }
 });
 

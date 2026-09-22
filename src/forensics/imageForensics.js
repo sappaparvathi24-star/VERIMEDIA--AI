@@ -336,10 +336,16 @@ export function calibrateForensicScores({
 }
 
 /**
- * Perform Error-Level Analysis (ELA) on an image buffer.
- * Recompresses to JPEG at 90% quality and computes pixel-level absolute difference.
+ * Perform Error-Level Analysis (ELA) on an image buffer and generate visual heatmaps.
+ * Standardizes any image format onto a JPEG DCT recompression grid at a calibrated quality level,
+ * computes pixel-level absolute residuals, applies error amplification and thermal colormaps,
+ * and detects localized high-variance splicing/tampering clusters.
+ *
+ * @param {Buffer} imageBuffer - Raw image buffer
+ * @param {string} mimeType - Image MIME type (e.g., 'image/jpeg', 'image/png', 'image/webp')
+ * @param {Object} options - Configuration options (quality, multiplier, colormap)
  */
-export async function performErrorLevelAnalysis(imageBuffer, mimeType = 'image/jpeg') {
+export async function performErrorLevelAnalysis(imageBuffer, mimeType = 'image/jpeg', options = {}) {
   if (!imageBuffer || !Buffer.isBuffer(imageBuffer)) {
     return {
       status: 'SKIPPED',
@@ -348,19 +354,9 @@ export async function performErrorLevelAnalysis(imageBuffer, mimeType = 'image/j
     };
   }
 
-  const isJpeg = mimeType === 'image/jpeg' || mimeType === 'image/jpg';
-  if (!isJpeg) {
-    return {
-      status: 'NOT_APPLICABLE',
-      reason: 'Error-Level Analysis requires JPEG compression artifacts (DCT quantization blocks). Non-JPEG formats are not applicable.',
-      isJpeg: false,
-      limitations: [
-        'ELA is strictly formulated for discrete cosine transform (DCT) compression grids.',
-        'Formats such as PNG, WebP, SVG, and GIF do not share JPEG error decay characteristics.'
-      ],
-      observations: []
-    };
-  }
+  const quality = Math.min(99, Math.max(50, options.quality || 90));
+  const multiplier = Math.min(50, Math.max(1, options.multiplier || 20));
+  const colormap = options.colormap || 'thermal'; // 'thermal' | 'inferno' | 'classic' | 'mask'
 
   try {
     const original = sharp(imageBuffer);
@@ -369,69 +365,239 @@ export async function performErrorLevelAnalysis(imageBuffer, mimeType = 'image/j
       return { status: 'ERROR', reason: 'Unable to decode image dimensions for ELA' };
     }
 
-    // Limit maximum dimension to 1200px to bound processing time while preserving block grids
+    // Limit maximum dimension to 1200px to bound processing time while preserving 8x8 DCT grids
     const maxDim = Math.max(meta.width, meta.height);
     const scale = maxDim > 1200 ? 1200 / maxDim : 1.0;
     const targetW = Math.round(meta.width * scale);
     const targetH = Math.round(meta.height * scale);
 
-    // Get raw RGB of original
-    const origRaw = await original
+    // 1. Get raw RGB of original normalized to target dimensions
+    const origRaw = await sharp(imageBuffer)
       .resize(targetW, targetH, { fit: 'fill' })
+      .removeAlpha()
       .toFormat('raw')
       .toBuffer();
 
-    // Recompress at 90% JPEG quality
+    // 2. Recompress at specified JPEG quality level (default 90%)
     const recompressedJpeg = await sharp(imageBuffer)
       .resize(targetW, targetH, { fit: 'fill' })
-      .jpeg({ quality: 90 })
+      .removeAlpha()
+      .jpeg({ quality, chromaSubsampling: '4:4:4' })
       .toBuffer();
 
-    // Get raw RGB of recompressed
+    // 3. Get raw RGB of recompressed buffer
     const recompRaw = await sharp(recompressedJpeg)
       .toFormat('raw')
       .toBuffer();
 
     const minLen = Math.min(origRaw.length, recompRaw.length);
+    const totalPixels = Math.floor(minLen / 3);
+
+    // Buffers for visual outputs
+    const elaRawBuffer = Buffer.alloc(minLen);
+    const thermalRawBuffer = Buffer.alloc(minLen);
+    const maskRawBuffer = Buffer.alloc(minLen);
+
     let totalError = 0;
     let maxError = 0;
-    const sampleSize = Math.floor(minLen / 3); // 3 channels RGB
     let highErrorPixelCount = 0;
+    let squaredErrorSum = 0;
 
+    // Grid matrix for anomaly clustering (16x16 blocks)
+    const gridCols = Math.min(32, Math.max(8, Math.floor(targetW / 24)));
+    const gridRows = Math.min(32, Math.max(8, Math.floor(targetH / 24)));
+    const cellW = targetW / gridCols;
+    const cellH = targetH / gridRows;
+    const gridStats = Array.from({ length: gridRows }, () =>
+      Array.from({ length: gridCols }, () => ({ sum: 0, count: 0, max: 0 }))
+    );
+
+    // Pixel-level residual computation loop
     for (let i = 0; i < minLen; i += 3) {
+      const pxIndex = i / 3;
+      const pxX = pxIndex % targetW;
+      const pxY = Math.floor(pxIndex / targetW);
+
       const diffR = Math.abs(origRaw[i] - recompRaw[i]);
       const diffG = Math.abs(origRaw[i + 1] - recompRaw[i + 1]);
       const diffB = Math.abs(origRaw[i + 2] - recompRaw[i + 2]);
       const pixelErr = (diffR + diffG + diffB) / 3;
 
       totalError += pixelErr;
+      squaredErrorSum += pixelErr * pixelErr;
       if (pixelErr > maxError) maxError = pixelErr;
-      if (pixelErr > 25.0) {
+      if (pixelErr > 22.0) {
         highErrorPixelCount++;
+      }
+
+      // Update grid cell
+      const gX = Math.min(gridCols - 1, Math.floor(pxX / cellW));
+      const gY = Math.min(gridRows - 1, Math.floor(pxY / cellH));
+      const cell = gridStats[gY][gX];
+      cell.sum += pixelErr;
+      cell.count++;
+      if (pixelErr > cell.max) cell.max = pixelErr;
+
+      // 1. Classic Amplified ELA Buffer (RGB scaled)
+      elaRawBuffer[i] = Math.min(255, Math.round(diffR * multiplier));
+      elaRawBuffer[i + 1] = Math.min(255, Math.round(diffG * multiplier));
+      elaRawBuffer[i + 2] = Math.min(255, Math.round(diffB * multiplier));
+
+      // 2. Thermal / Turbo Color Heatmap
+      // Normalize error to 0.0 - 1.0 (clamped at 32 for high sensitivity)
+      const normErr = Math.min(1.0, pixelErr / 32.0);
+      let tR = 0, tG = 0, tB = 0;
+      if (normErr < 0.2) {
+        // Dark Blue to Cyan
+        const t = normErr / 0.2;
+        tR = Math.round(10 * (1 - t));
+        tG = Math.round(40 + 180 * t);
+        tB = Math.round(140 + 115 * t);
+      } else if (normErr < 0.45) {
+        // Cyan to Green / Lime
+        const t = (normErr - 0.2) / 0.25;
+        tR = Math.round(30 * (1 - t) + 120 * t);
+        tG = Math.round(220 + 35 * t);
+        tB = Math.round(255 * (1 - t));
+      } else if (normErr < 0.75) {
+        // Lime to Bright Yellow / Orange
+        const t = (normErr - 0.45) / 0.3;
+        tR = Math.round(150 + 105 * t);
+        tG = Math.round(255 * (1 - t * 0.4));
+        tB = 0;
+      } else {
+        // Orange to Fiery Red / Magenta / White
+        const t = (normErr - 0.75) / 0.25;
+        tR = 255;
+        tG = Math.round(150 * (1 - t) + 200 * t);
+        tB = Math.round(240 * t);
+      }
+      thermalRawBuffer[i] = tR;
+      thermalRawBuffer[i + 1] = tG;
+      thermalRawBuffer[i + 2] = tB;
+
+      // 3. Difference Splicing Mask (Darkened original + neon red anomaly highlights)
+      if (pixelErr > 24.0) {
+        maskRawBuffer[i] = 255; // Neon Red / Magenta
+        maskRawBuffer[i + 1] = 40;
+        maskRawBuffer[i + 2] = 90;
+      } else {
+        // Subdued original
+        const origGray = (origRaw[i] + origRaw[i + 1] + origRaw[i + 2]) / 3;
+        const dimmed = Math.round(origGray * 0.25);
+        maskRawBuffer[i] = dimmed;
+        maskRawBuffer[i + 1] = dimmed;
+        maskRawBuffer[i + 2] = dimmed + 8;
       }
     }
 
-    const meanError = sampleSize > 0 ? totalError / sampleSize : 0;
-    const highErrorRatio = sampleSize > 0 ? highErrorPixelCount / sampleSize : 0;
+    const meanError = totalPixels > 0 ? totalError / totalPixels : 0;
+    const variance = totalPixels > 0 ? (squaredErrorSum / totalPixels) - (meanError * meanError) : 0;
+    const stdDev = Math.sqrt(Math.max(0, variance));
+    const highErrorRatio = totalPixels > 0 ? highErrorPixelCount / totalPixels : 0;
 
-    // Determine ELA indication based on error variance
-    const hasCompressionAnomaly = highErrorRatio > 0.08 && maxError > 45;
-    const confidence = Math.min(0.92, Math.max(0.40, Number((0.50 + Math.abs(meanError - 10) / 40).toFixed(2))));
+    // Detect localized spatial anomaly regions
+    const anomalyRegions = [];
+    const thresholdMean = meanError + 2.0 * stdDev;
+
+    for (let gy = 0; gy < gridRows; gy++) {
+      for (let gx = 0; gx < gridCols; gx++) {
+        const cell = gridStats[gy][gx];
+        const cellMean = cell.count > 0 ? cell.sum / cell.count : 0;
+        if (cellMean > thresholdMean && cellMean > 12.0 && cell.max > 30.0) {
+          anomalyRegions.push({
+            x: Math.round(gx * cellW),
+            y: Math.round(gy * cellH),
+            width: Math.round(cellW),
+            height: Math.round(cellH),
+            meanError: Number(cellMean.toFixed(1)),
+            maxError: Number(cell.max.toFixed(1)),
+            severity: cellMean > 25.0 ? 'HIGH' : 'MODERATE'
+          });
+        }
+      }
+    }
+
+    // Merge contiguous anomaly regions for cleaner visual bounding boxes
+    const mergedAnomalies = [];
+    if (anomalyRegions.length > 0) {
+      let minX = anomalyRegions[0].x;
+      let minY = anomalyRegions[0].y;
+      let maxX = minX + anomalyRegions[0].width;
+      let maxY = minY + anomalyRegions[0].height;
+      let maxScore = anomalyRegions[0].meanError;
+
+      for (let r = 1; r < anomalyRegions.length; r++) {
+        const ar = anomalyRegions[r];
+        minX = Math.min(minX, ar.x);
+        minY = Math.min(minY, ar.y);
+        maxX = Math.max(maxX, ar.x + ar.width);
+        maxY = Math.max(maxY, ar.y + ar.height);
+        if (ar.meanError > maxScore) maxScore = ar.meanError;
+      }
+
+      if (anomalyRegions.length >= 2) {
+        mergedAnomalies.push({
+          x: minX,
+          y: minY,
+          width: maxX - minX,
+          height: maxY - minY,
+          clusterCount: anomalyRegions.length,
+          peakMeanError: Number(maxScore.toFixed(1)),
+          description: 'Localized DCT error-level elevation (potential digital splicing or inpainting seam)'
+        });
+      }
+    }
+
+    // Generate PNG Data URLs
+    const [elaPngBuffer, thermalPngBuffer, maskPngBuffer] = await Promise.all([
+      sharp(elaRawBuffer, { raw: { width: targetW, height: targetH, channels: 3 } })
+        .png({ compressionLevel: 6 })
+        .toBuffer(),
+      sharp(thermalRawBuffer, { raw: { width: targetW, height: targetH, channels: 3 } })
+        .png({ compressionLevel: 6 })
+        .toBuffer(),
+      sharp(maskRawBuffer, { raw: { width: targetW, height: targetH, channels: 3 } })
+        .png({ compressionLevel: 6 })
+        .toBuffer()
+    ]);
+
+    const elaDataUrl = `data:image/png;base64,${elaPngBuffer.toString('base64')}`;
+    const heatmapDataUrl = `data:image/png;base64,${thermalPngBuffer.toString('base64')}`;
+    const maskDataUrl = `data:image/png;base64,${maskPngBuffer.toString('base64')}`;
+
+    // Determine ELA indication based on error variance and localized clustering
+    const hasCompressionAnomaly = (highErrorRatio > 0.07 && maxError > 45) || (anomalyRegions.length >= 3 && stdDev > 8.0);
+    const confidence = Math.min(0.95, Math.max(0.40, Number((0.55 + Math.abs(meanError - 10) / 35).toFixed(2))));
+    const splicingRiskScore = Math.min(100, Math.max(0, Math.round((highErrorRatio * 60) + (stdDev * 3) + (anomalyRegions.length * 5))));
 
     return {
       status: 'COMPLETED',
       isJpeg: true,
+      width: targetW,
+      height: targetH,
+      quality,
+      multiplier,
+      colormap,
       meanError: Number(meanError.toFixed(2)),
       maxError: Number(maxError.toFixed(2)),
+      variance: Number(variance.toFixed(2)),
+      stdDev: Number(stdDev.toFixed(2)),
       highErrorRatio: Number((highErrorRatio * 100).toFixed(2)),
+      splicingRiskScore,
       hasCompressionAnomaly,
       confidence,
+      anomalyRegions: mergedAnomalies,
+      rawAnomalyCount: anomalyRegions.length,
+      elaDataUrl,
+      heatmapDataUrl,
+      maskDataUrl,
       assessment: hasCompressionAnomaly
-        ? 'High localized error discrepancy observed; indicates potential multi-generation compression or spliced elements.'
+        ? 'High localized error discrepancy observed; indicates potential multi-generation compression or digital splicing seams.'
         : 'Uniform error-level dissipation across image surface; consistent with single-generation compression.',
       limitations: [
         'ELA identifies compression inconsistencies across surfaces, not intentional maliciousness.',
-        'Does not detect neural generative synthesis (AI deepfakes, diffusion generation) that lacks splicing seams.',
+        'Does not detect pure neural generative synthesis (diffusion models) that lack classical spliced raster boundaries.',
         'High-contrast edges and solid geometric borders naturally produce elevated error levels.'
       ]
     };
