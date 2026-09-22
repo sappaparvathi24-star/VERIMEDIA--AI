@@ -222,7 +222,7 @@ export function isOriginAllowed(origin) {
 const corsOptions = {
   origin: (origin, callback) => {
     if (isOriginAllowed(origin)) {
-      return callback(null, origin || true);
+      return callback(null, origin || '*');
     }
     // Deny gracefully without throwing an unhandled Error that causes 500 on preflight
     return callback(null, false);

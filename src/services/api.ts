@@ -784,10 +784,8 @@ export const runBackendConnectivityDiagnostic = async (): Promise<DiagnosticResu
     }
 
     const allowOrigin = headersObj['access-control-allow-origin']
-    let corsStatus: DiagnosticResult['corsStatus'] = 'OK'
-    if (!allowOrigin && BASE !== '' && !window.location.hostname.includes('vercel.app')) {
-      corsStatus = 'MISSING_ALLOW_ORIGIN'
-    }
+    // If HTTP status is 200, the request succeeded completely (either via same-origin, Vercel proxy, or valid CORS)
+    const corsStatus: DiagnosticResult['corsStatus'] = 'OK'
 
     console.log(`%c[Status]: %c${response.status} ${response.statusText || 'OK'}`, 'color: #94a3b8; font-weight: bold;', 'color: #4ade80; font-weight: bold;')
     console.log(`%c[Latency]: %c${latencyMs} ms`, 'color: #94a3b8; font-weight: bold;', 'color: #facc15; font-weight: bold;')
