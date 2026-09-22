@@ -924,7 +924,7 @@ export function SequentialForensicReport({ result, onClose, onFileDMCA }: Props)
                 marginBottom: 16
               }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: '#00d4ff', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <Sparkles size={14} /> Gemini AI Multimodal Reasoning Summary
+                  <Sparkles size={14} /> VeriMedia AI Multimodal Reasoning Summary
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   {aiAnalysis.reasoning_points?.map((point, i) => (

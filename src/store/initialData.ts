@@ -45,7 +45,7 @@ export const DEFAULT_FORENSIC_STAGES: ForensicStageItem[] = [
     id: 5,
     key: 'vision_ai',
     label: 'Stage 5: Multimodal AI Vision',
-    shortTitle: 'Gemini Vision (E5)',
+    shortTitle: 'VeriMedia AI Vision (E5)',
     icon: '👁️',
     description: 'Neural forensic audit for synthetic synthesis, facial seams & diffusion artifacts',
     color: '#f97316',

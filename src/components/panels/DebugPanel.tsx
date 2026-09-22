@@ -166,8 +166,8 @@ export function DebugPanel() {
         )
       case 'GEMINI_AI':
         return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-purple-950/90 text-purple-300 border border-purple-700/80">
-            ✨ GEMINI MULTIMODAL
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-cyan-950/90 text-cyan-300 border border-cyan-700/80">
+            ✨ VERIMEDIA MULTIMODAL
           </span>
         )
       case 'CLOUD_DATABASE':
@@ -348,7 +348,7 @@ export function DebugPanel() {
             <option value="REAL_ONLY">Verified Real Data Only</option>
             <option value="FALLBACK_ONLY">Fallback Defaults Only</option>
             <option value="REAL_FORENSICS">Binary Forensics (Sharp/ELA)</option>
-            <option value="GEMINI_AI">Gemini Multimodal Reasoning</option>
+            <option value="GEMINI_AI">VeriMedia AI Multimodal Reasoning</option>
             <option value="PERSISTENCE_STORE">Database Store Queries</option>
             <option value="DISCOVERY_PROVIDER">Discovery Provider</option>
           </select>

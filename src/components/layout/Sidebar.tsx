@@ -100,8 +100,8 @@ const WORKSPACE_TOOLS: NavItem[] = [
 export function Sidebar() {
   const { activeTab, setActiveTab, cases, setShowHeroOverlay, setShowMonitoringModal, setShowCommandPalette } = useStore()
 
-  // Thin rail state (expanded for clear access to 5 engines)
-  const [isCollapsed, setIsCollapsed] = useState(false)
+  // Thin rail state (starts collapsed for minimized clean workspace)
+  const [isCollapsed, setIsCollapsed] = useState(true)
 
   const openCasesCount = cases.filter(c => c.status === 'open' || c.status === 'under_review').length
   const railWidth = isCollapsed ? 68 : 240

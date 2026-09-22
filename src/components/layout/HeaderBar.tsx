@@ -199,25 +199,25 @@ export function HeaderBar() {
         </Tooltip>
       </div>
 
-      {/* Right: Quick Operational Counters & Live Health */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-        {/* Metric Tickers */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'rgba(13, 17, 23, 0.6)', padding: '4px 12px', borderRadius: 8, border: '1px solid #1e2d3d' }}>
+      {/* Right: Streamlined Operational Counters & Compact Actions */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        {/* Metric Tickers (Compact) */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(13, 17, 23, 0.6)', padding: '4px 8px', borderRadius: 6, border: '1px solid #1e2d3d' }}>
           {[
             { label: 'Scans', val: stats?.total || 0, color: '#00d4ff' },
             { label: 'Threats', val: stats?.threats || 0, color: '#ef4444' },
             { label: 'DMCA', val: stats?.dmca || 0, color: '#f59e0b' },
           ].map(s => (
             <Tooltip key={s.label} content={STAT_DESCRIPTIONS[s.label]} position="bottom">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'default' }}>
-                <span style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', fontWeight: 700, fontFamily: 'monospace' }}>{s.label}:</span>
-                <span style={{ fontSize: 12, fontWeight: 800, color: s.color, fontFamily: 'monospace' }}>{s.val}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'default' }}>
+                <span style={{ fontSize: 9, color: '#64748b', textTransform: 'uppercase', fontWeight: 700, fontFamily: 'monospace' }}>{s.label}:</span>
+                <span style={{ fontSize: 11, fontWeight: 800, color: s.color, fontFamily: 'monospace' }}>{s.val}</span>
               </div>
             </Tooltip>
           ))}
         </div>
 
-        {/* Check Another Image Button */}
+        {/* Check Another Image Button (Compact) */}
         <Tooltip content="Upload and analyze another image or media asset" position="bottom">
           <button
             onClick={() => {
@@ -228,80 +228,78 @@ export function HeaderBar() {
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: 6,
+              gap: 4,
               background: 'linear-gradient(135deg, #00d4ff 0%, #0077ff 100%)',
               border: 'none',
-              padding: '6px 13px',
+              padding: '5px 10px',
               borderRadius: 6,
               color: '#040d1a',
               fontSize: 11,
               fontWeight: 800,
               cursor: 'pointer',
-              boxShadow: '0 0 14px rgba(0, 212, 255, 0.4)',
-              transition: 'all 0.15s'
+              boxShadow: '0 0 10px rgba(0, 212, 255, 0.3)',
+              whiteSpace: 'nowrap'
             }}
             className="hover:scale-105"
           >
             <span>📷</span>
-            <span>Check Another Image</span>
+            <span>New Scan</span>
           </button>
         </Tooltip>
 
-        {/* VeriMedia AI Assistant Button */}
-        <Tooltip content="VeriMedia Assistant: Multimodal Analysis, Executive Dossiers & Technical Explainer" position="bottom">
+        {/* VeriMedia AI Assistant Button (Compact - Light Blue Theme) */}
+        <Tooltip content="VeriMedia Assistant: Multimodal Analysis & AI Explainer" position="bottom">
           <button
             onClick={() => useStore.getState().setActiveTab('intelligence')}
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: 6,
-              background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.25) 0%, rgba(56, 189, 248, 0.25) 100%)',
-              border: '1px solid rgba(168, 85, 247, 0.4)',
-              padding: '6px 12px',
+              gap: 4,
+              background: 'rgba(0, 212, 255, 0.12)',
+              border: '1px solid rgba(0, 212, 255, 0.4)',
+              padding: '5px 9px',
               borderRadius: 6,
-              color: '#ffffff',
+              color: '#38bdf8',
               fontSize: 11,
-              fontWeight: 800,
+              fontWeight: 700,
               cursor: 'pointer',
-              transition: 'all 0.15s',
-              boxShadow: '0 0 12px rgba(168, 85, 247, 0.2)'
+              whiteSpace: 'nowrap'
             }}
             className="hover:scale-105"
           >
             <span>✨</span>
-            <span>VeriMedia Assistant</span>
+            <span>Assistant</span>
           </button>
         </Tooltip>
 
-        {/* Search Grounded Verification History Side-Panel Toggle */}
-        <Tooltip content="Toggle Search-Grounded Verification History Side-Panel & Recharts Analytics" position="bottom">
+        {/* Search Grounded Verification History Side-Panel Toggle (Compact) */}
+        <Tooltip content="Search-Grounded Verification History Side-Panel" position="bottom">
           <button
             onClick={() => toggleVerificationHistoryDrawer()}
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: 6,
+              gap: 4,
               background: showVerificationHistoryDrawer ? 'rgba(0, 212, 255, 0.25)' : 'rgba(15, 23, 42, 0.8)',
               border: showVerificationHistoryDrawer ? '1px solid #00d4ff' : '1px solid rgba(56, 189, 248, 0.35)',
-              padding: '6px 12px',
+              padding: '5px 9px',
               borderRadius: 6,
               color: showVerificationHistoryDrawer ? '#ffffff' : '#38bdf8',
               fontSize: 11,
               fontWeight: 700,
               cursor: 'pointer',
-              transition: 'all 0.15s',
-              boxShadow: showVerificationHistoryDrawer ? '0 0 12px rgba(0, 212, 255, 0.4)' : 'none'
+              whiteSpace: 'nowrap'
             }}
-            className="hover:scale-105 hover:border-cyan-400"
+            className="hover:scale-105"
           >
             <span>🔍</span>
-            <span>Search History</span>
+            <span>History</span>
             <span style={{
               background: 'rgba(0, 212, 255, 0.3)',
               color: '#00d4ff',
-              borderRadius: 10,
-              padding: '1px 6px',
-              fontSize: 10,
+              borderRadius: 8,
+              padding: '1px 5px',
+              fontSize: 9,
               fontWeight: 800,
               fontFamily: 'monospace'
             }}>
@@ -310,43 +308,43 @@ export function HeaderBar() {
           </button>
         </Tooltip>
 
-        {/* Live Monitoring Modal Trigger */}
-        <Tooltip content="Live Platform Ingestion Jobs & Discovery Scheduler" position="bottom">
+        {/* Live Monitoring Modal Trigger (Compact) */}
+        <Tooltip content="Live Platform Ingestion Jobs" position="bottom">
           <button
             onClick={() => setShowMonitoringModal(true)}
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: 6,
+              gap: 4,
               background: 'rgba(30, 41, 59, 0.6)',
               border: '1px solid #334155',
-              padding: '6px 12px',
+              padding: '5px 9px',
               borderRadius: 6,
               color: '#cbd5e1',
               fontSize: 11,
               fontWeight: 700,
               cursor: 'pointer',
-              transition: 'all 0.15s'
+              whiteSpace: 'nowrap'
             }}
-            className="hover:border-slate-400 hover:text-white"
+            className="hover:border-slate-400"
           >
             <span>📡</span>
             <span>Jobs</span>
           </button>
         </Tooltip>
 
-        {/* Manual Backend Connectivity & CORS Diagnostic Button */}
-        <Tooltip content="Check System Status: Ping /health endpoint & log detailed network, header & CORS diagnostics to browser console" position="bottom">
+        {/* Manual Diagnostic Button (Compact) */}
+        <Tooltip content="Check System Health Status" position="bottom">
           <button
             onClick={handlePingDiagnostic}
             disabled={isDiagnosing}
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: 6,
-              background: isDiagnosing ? 'rgba(0, 212, 255, 0.2)' : 'linear-gradient(135deg, rgba(14, 165, 233, 0.25) 0%, rgba(3, 105, 161, 0.35) 100%)',
-              border: '1px solid rgba(56, 189, 248, 0.5)',
-              padding: '6px 12px',
+              gap: 4,
+              background: 'rgba(14, 165, 233, 0.15)',
+              border: '1px solid rgba(56, 189, 248, 0.4)',
+              padding: '5px 9px',
               borderRadius: 6,
               color: '#38bdf8',
               fontSize: 11,

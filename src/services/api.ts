@@ -106,11 +106,15 @@ export const getWhatWeKnow = (id: string) =>
 export const getWhatRemainsUnknown = (id: string) =>
   api.get(`/investigations/${id}/what-remains-unknown`).then(r => r.data)
 
-export const registerMediaArtifact = async (file: File) => {
+export const registerMediaArtifact = async (file: File, investigationId?: string) => {
   const token = await getToken()
   const formData = new FormData()
   formData.append('media', file)
   formData.append('file', file)
+  if (investigationId) {
+    formData.append('investigationId', investigationId)
+    formData.append('caseId', investigationId)
+  }
 
   const base = getApiBaseUrl()
   let res: any

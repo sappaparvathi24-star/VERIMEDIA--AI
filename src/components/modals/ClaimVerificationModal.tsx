@@ -1071,7 +1071,7 @@ ${(claimResult.googleSearch?.groundedWebSources || []).map(g => `- ${g.title}: $
                   className="px-3.5 py-2 rounded-xl bg-purple-950/80 hover:bg-purple-900 border border-purple-600/50 text-purple-300 text-xs font-bold transition-colors flex items-center gap-1.5"
                 >
                   <Sparkles size={14} />
-                  <span>Ask Gemini</span>
+                  <span>Ask VeriMedia AI</span>
                 </button>
               </>
             )}

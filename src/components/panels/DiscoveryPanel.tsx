@@ -638,7 +638,7 @@ export function DiscoveryPanel() {
                   color: '#38bdf8',
                   fontFamily: 'monospace'
                 }}>
-                  gemini-3.5-flash + googleSearch
+                  VeriMedia Search Grounding Engine
                 </span>
               </div>
               <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>

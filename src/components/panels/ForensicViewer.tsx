@@ -1300,7 +1300,7 @@ export function ForensicViewer({ result: propResult, compact = false, onClose }:
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1.5 text-amber-400 font-mono text-[11px] font-bold uppercase tracking-wider">
                         <Sparkles className="w-3.5 h-3.5" />
-                        <span>Gemini 3.6 Flash Vision Report</span>
+                        <span>VeriMedia AI Vision Report</span>
                       </div>
                       <button
                         onClick={handleRunVisionAnalysis}
@@ -1315,7 +1315,7 @@ export function ForensicViewer({ result: propResult, compact = false, onClose }:
                     {isAnalyzingVision ? (
                       <div className="p-3 bg-[#080d16] rounded border border-slate-800 text-slate-400 text-xs flex items-center gap-2">
                         <RefreshCw className="w-4 h-4 animate-spin text-amber-400" />
-                        <span>Gemini 3.6 Flash inspecting image composition and generative artifacts...</span>
+                        <span>VeriMedia AI inspecting image composition and generative artifacts...</span>
                       </div>
                     ) : visionText ? (
                       <div className="p-3 bg-[#080d16] rounded border border-slate-800 text-slate-200 text-xs leading-relaxed font-sans whitespace-pre-wrap max-h-[320px] overflow-y-auto">
@@ -1323,7 +1323,7 @@ export function ForensicViewer({ result: propResult, compact = false, onClose }:
                       </div>
                     ) : (
                       <div className="p-3 bg-[#080d16] rounded border border-slate-800 text-slate-400 text-xs">
-                        No Gemini vision analysis generated yet. Click "Re-scan" above.
+                        No VeriMedia AI vision analysis generated yet. Click "Re-scan" above.
                       </div>
                     )}
                   </div>

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, DragEvent } from 'react'
+import { HumanReadableSummaryCard } from './HumanReadableSummaryCard'
 import {
   UploadCloud,
   File,
@@ -30,11 +31,13 @@ import {
   FileCode,
   Share2,
   FileCheck2,
-  FileDown
+  FileDown,
+  FolderPlus,
+  FolderCheck
 } from 'lucide-react'
 import { useStore } from '../../store'
 import { useDetection } from '../../hooks/useDetection'
-import { registerMediaArtifact } from '../../services/api'
+import { registerMediaArtifact, createInvestigation } from '../../services/api'
 import { ForensicViewer } from '../panels/ForensicViewer'
 import { DiscoveryPanel } from '../panels/DiscoveryPanel'
 import { OriginPanel } from '../panels/OriginPanel'
@@ -45,6 +48,7 @@ import { DEMO_PIECES, buildDemoDetectionResult, type DemoPiece } from '../../dat
 import { isSimulatedResult } from '../../lib/resultMode'
 import { ClaimSearchBar } from './ClaimSearchBar'
 import { exportInvestigationPDF } from '../../utils/pdfExport'
+import { AssistantPopup } from './AssistantPopup'
 
 const STAGES = [
   {
@@ -89,7 +93,7 @@ const STAGES = [
     label: 'Stage 5: Verdict & Action',
     shortTitle: 'Verdict (E5)',
     icon: '⚖️',
-    description: 'Trust score calibration, Gemini AI reasoning summary & DMCA notice',
+    description: 'Trust score calibration, VeriMedia AI reasoning summary & DMCA notice',
     color: '#22c55e',
   },
 ]
@@ -133,6 +137,7 @@ export function InvestigationFlow() {
   const [currentStage, setCurrentStage] = useState<number>(1)
   const [elapsedTime, setElapsedTime] = useState(0)
   const [isExportingPDF, setIsExportingPDF] = useState(false)
+  const [isAssistantOpen, setIsAssistantOpen] = useState(false)
 
   async function handleExportPDF() {
     if (!currentResult) return
@@ -176,6 +181,34 @@ export function InvestigationFlow() {
     if (file) handleFileSelected(file)
   }
 
+  // Fix 1: New Investigation creation step
+  const [caseNameInput, setCaseNameInput] = useState('')
+  const [activeCase, setActiveCase] = useState<{ id: string; title: string } | null>(null)
+  const [isCaseSkipped, setIsCaseSkipped] = useState(false)
+  const [isCreatingCase, setIsCreatingCase] = useState(false)
+
+  const isCaseReady = Boolean(activeCase || isCaseSkipped)
+
+  async function handleCreateCase(e?: React.FormEvent) {
+    if (e) e.preventDefault()
+    const trimmed = caseNameInput.trim()
+    if (!trimmed || isCreatingCase) return
+    setIsCreatingCase(true)
+
+    try {
+      const res = await createInvestigation({ title: trimmed })
+      const caseId = res?.id || res?.investigation?.id || `INV-${Math.floor(1000 + Math.random() * 9000)}`
+      const title = res?.title || res?.investigation?.title || trimmed
+      setActiveCase({ id: caseId, title })
+    } catch (err: any) {
+      console.warn('Backend createInvestigation notice:', err)
+      const fallbackId = `INV-${Math.floor(1000 + Math.random() * 9000)}`
+      setActiveCase({ id: fallbackId, title: trimmed })
+    } finally {
+      setIsCreatingCase(false)
+    }
+  }
+
   // Execute full real forensic pipeline on uploaded media
   async function handleStartInvestigation() {
     if (!selectedFile) return
@@ -185,8 +218,9 @@ export function InvestigationFlow() {
       await runMediaInvestigation(selectedFile, {
         platform: platform || 'YouTube',
         username: username || 'analyst_upload',
-        caption: caption || selectedFile.name,
-        contentType: contentType || 'news'
+        caption: activeCase?.title || caption || selectedFile.name,
+        contentType: contentType || 'news',
+        investigationId: activeCase?.id
       })
       setCurrentStage(1)
     } catch (err: any) {
@@ -275,26 +309,153 @@ export function InvestigationFlow() {
 
         {/* Upload Container */}
         <div style={{ width: '100%' }}>
+          {/* Fix 1: Active Case Chip or New Investigation Creation Form */}
+          {activeCase ? (
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 10,
+              padding: '8px 16px',
+              borderRadius: 20,
+              background: 'rgba(34, 197, 94, 0.1)',
+              border: '1px solid rgba(34, 197, 94, 0.35)',
+              color: '#4ade80',
+              fontSize: 13,
+              fontWeight: 700,
+              marginBottom: 18,
+              boxShadow: '0 0 15px rgba(34, 197, 94, 0.15)'
+            }}>
+              <FolderCheck size={16} />
+              <span>Case Linked: <strong>{activeCase.title}</strong></span>
+              <span style={{ fontSize: 11, color: '#86efac', fontFamily: 'monospace', background: 'rgba(34, 197, 94, 0.2)', padding: '2px 8px', borderRadius: 10 }}>
+                {activeCase.id}
+              </span>
+              <button
+                type="button"
+                onClick={() => { setActiveCase(null); setIsCaseSkipped(false); }}
+                style={{ background: 'none', border: 'none', color: '#86efac', cursor: 'pointer', padding: 2, display: 'flex', alignItems: 'center' }}
+                title="Change Case"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          ) : !selectedFile ? (
+            <div style={{
+              width: '100%',
+              padding: 18,
+              borderRadius: 12,
+              background: 'linear-gradient(180deg, rgba(14, 23, 38, 0.85) 0%, rgba(10, 16, 26, 0.95) 100%)',
+              border: '1px solid rgba(0, 212, 255, 0.35)',
+              marginBottom: 20,
+              boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <FolderPlus size={18} style={{ color: '#00d4ff' }} />
+                  <span style={{ fontSize: 13, fontWeight: 800, color: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                    Step 1 — Create New Investigation
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsCaseSkipped(true)}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#38bdf8',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    textDecoration: 'underline'
+                  }}
+                >
+                  Skip — auto-name this case
+                </button>
+              </div>
+
+              <form onSubmit={handleCreateCase} style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                <input
+                  type="text"
+                  value={caseNameInput}
+                  onChange={(e) => setCaseNameInput(e.target.value)}
+                  placeholder="Case name (e.g. Q3-election-clip)"
+                  style={{
+                    flex: 1,
+                    padding: '10px 14px',
+                    borderRadius: 8,
+                    background: '#080c10',
+                    border: '1px solid #1e2d3d',
+                    color: '#f8fafc',
+                    fontSize: 14,
+                    outline: 'none'
+                  }}
+                />
+                <button
+                  type="submit"
+                  disabled={!caseNameInput.trim() || isCreatingCase}
+                  style={{
+                    padding: '10px 20px',
+                    borderRadius: 8,
+                    background: caseNameInput.trim() && !isCreatingCase ? 'linear-gradient(135deg, #00d4ff 0%, #0284c7 100%)' : '#1e293b',
+                    border: 'none',
+                    color: caseNameInput.trim() && !isCreatingCase ? '#080c10' : '#64748b',
+                    fontSize: 13,
+                    fontWeight: 800,
+                    cursor: caseNameInput.trim() && !isCreatingCase ? 'pointer' : 'not-allowed',
+                    whiteSpace: 'nowrap',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6
+                  }}
+                >
+                  {isCreatingCase ? 'Creating…' : 'Create Investigation'}
+                </button>
+              </form>
+            </div>
+          ) : null}
+
           {!selectedFile ? (
-            /* Empty Drag & Drop Zone */
-            <div
-              onDragOver={(e) => { e.preventDefault(); setIsDragging(true) }}
-              onDragLeave={(e) => { e.preventDefault(); setIsDragging(false) }}
-              onDrop={handleFileDrop}
-              onClick={() => fileInputRef.current?.click()}
-              style={{
-                borderRadius: 14,
-                border: `2px dashed ${isDragging ? '#00d4ff' : 'rgba(255, 255, 255, 0.15)'}`,
-                background: isDragging
-                  ? 'rgba(0, 212, 255, 0.06)'
-                  : 'linear-gradient(180deg, rgba(14, 23, 38, 0.7) 0%, rgba(10, 16, 26, 0.9) 100%)',
-                padding: '48px 32px',
-                textAlign: 'center',
-                cursor: 'pointer',
-                transition: 'all 0.2s ease',
-                boxShadow: isDragging ? '0 0 30px rgba(0, 212, 255, 0.2)' : '0 10px 30px rgba(0, 0, 0, 0.3)',
-              }}
-            >
+            /* Empty Drag & Drop Zone Gated by Case Creation */
+            <div style={{ position: 'relative', width: '100%' }}>
+              {!isCaseReady && (
+                <div style={{
+                  position: 'absolute',
+                  top: 14,
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  zIndex: 10,
+                  background: 'rgba(8, 12, 16, 0.94)',
+                  border: '1px solid rgba(0, 212, 255, 0.5)',
+                  color: '#38bdf8',
+                  padding: '6px 18px',
+                  borderRadius: 20,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  pointerEvents: 'none',
+                  boxShadow: '0 4px 16px rgba(0,0,0,0.6)'
+                }}>
+                  💡 Create an investigation to begin (or click Skip)
+                </div>
+              )}
+              <div
+                onDragOver={(e) => { e.preventDefault(); if (isCaseReady) setIsDragging(true) }}
+                onDragLeave={(e) => { e.preventDefault(); if (isCaseReady) setIsDragging(false) }}
+                onDrop={(e) => { if (isCaseReady) handleFileDrop(e) }}
+                onClick={() => { if (isCaseReady) fileInputRef.current?.click() }}
+                style={{
+                  borderRadius: 14,
+                  border: `2px dashed ${isDragging ? '#00d4ff' : 'rgba(255, 255, 255, 0.15)'}`,
+                  background: isDragging
+                    ? 'rgba(0, 212, 255, 0.06)'
+                    : 'linear-gradient(180deg, rgba(14, 23, 38, 0.7) 0%, rgba(10, 16, 26, 0.9) 100%)',
+                  padding: '48px 32px',
+                  textAlign: 'center',
+                  cursor: isCaseReady ? 'pointer' : 'not-allowed',
+                  opacity: isCaseReady ? 1 : 0.55,
+                  transition: 'all 0.2s ease',
+                  boxShadow: isDragging ? '0 0 30px rgba(0, 212, 255, 0.2)' : '0 10px 30px rgba(0, 0, 0, 0.3)',
+                }}
+              >
               <input
                 ref={fileInputRef}
                 type="file"
@@ -344,9 +505,10 @@ export function InvestigationFlow() {
                 <span>•</span>
                 <span>🌐 Multi-Source Search</span>
                 <span>•</span>
-                <span>✨ Gemini Reasoning</span>
+                <span>✨ VeriMedia AI Reasoning</span>
               </div>
             </div>
+          </div>
           ) : (
             /* File Staged with Preview & Optional Context */
             <div style={{
@@ -682,136 +844,6 @@ export function InvestigationFlow() {
             </div>
           )}
         </div>
-
-        {/* Instant Benchmark Demo Pieces Showcase */}
-        {!selectedFile && (
-          <div style={{ marginTop: 32, width: '100%' }}>
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              marginBottom: 14
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Sparkles size={16} style={{ color: '#00d4ff' }} />
-                <span style={{ fontSize: 13, fontWeight: 700, color: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  Instant Real-Time Demo Pieces & Scenarios
-                </span>
-              </div>
-              <span style={{ fontSize: 11, color: '#64748b' }}>
-                Pre-configured with 10 comparison reports & 3-way classifications
-              </span>
-            </div>
-
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-              gap: 12
-            }}>
-              {DEMO_PIECES.map((demo) => (
-                <button
-                  key={demo.id}
-                  onClick={() => handleLaunchDemo(demo)}
-                  style={{
-                    background: '#0e1624',
-                    border: '1px solid #1e2d3d',
-                    borderRadius: 10,
-                    padding: 12,
-                    textAlign: 'left',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s ease',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 8,
-                    overflow: 'hidden'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = '#00d4ff'
-                    e.currentTarget.style.transform = 'translateY(-2px)'
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = '#1e2d3d'
-                    e.currentTarget.style.transform = 'translateY(0)'
-                  }}
-                >
-                  <div style={{
-                    width: '100%',
-                    height: 80,
-                    borderRadius: 6,
-                    overflow: 'hidden',
-                    background: '#060a12',
-                    position: 'relative'
-                  }}>
-                    <img
-                      src={demo.mediaUrl}
-                      alt={demo.title}
-                      style={{
-                        width: '100%',
-                        height: '100%',
-                        objectFit: 'cover'
-                      }}
-                    />
-                    <div style={{
-                      position: 'absolute',
-                      bottom: 4,
-                      right: 4,
-                      background: 'rgba(0,0,0,0.8)',
-                      padding: '2px 6px',
-                      borderRadius: 4,
-                      fontSize: 9,
-                      fontWeight: 700,
-                      color: demo.category === 'DEEPFAKE' ? '#f43f5e' : '#38bdf8',
-                      fontFamily: 'monospace'
-                    }}>
-                      {demo.category}
-                    </div>
-                  </div>
-
-                  <div>
-                    <div style={{
-                      fontSize: 12,
-                      fontWeight: 700,
-                      color: '#f8fafc',
-                      lineHeight: 1.3,
-                      marginBottom: 4,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap'
-                    }}>
-                      {demo.title}
-                    </div>
-                    <div style={{
-                      fontSize: 10,
-                      color: '#94a3b8',
-                      lineHeight: 1.3,
-                      display: '-webkit-box',
-                      WebkitLineClamp: 2,
-                      WebkitBoxOrient: 'vertical',
-                      overflow: 'hidden'
-                    }}>
-                      {demo.description}
-                    </div>
-                  </div>
-
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    marginTop: 'auto',
-                    paddingTop: 6,
-                    borderTop: '1px solid #1a273b',
-                    fontSize: 10,
-                    color: '#00d4ff',
-                    fontWeight: 600
-                  }}>
-                    <span>10 Reports</span>
-                    <ArrowRight size={12} />
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
     )
   }
@@ -828,71 +860,102 @@ export function InvestigationFlow() {
         justifyContent: 'center',
         minHeight: 'calc(100vh - 120px)',
         padding: '32px 20px',
-        maxWidth: 820,
+        maxWidth: 840,
         margin: '0 auto',
         textAlign: 'center'
       }}>
-        {/* Animated Radar Pulse Circle */}
+        {/* Animated Radar Pulse Circle with Dual Rings */}
         <div style={{
           position: 'relative',
-          width: 110,
-          height: 110,
+          width: 120,
+          height: 120,
           borderRadius: '50%',
-          background: 'rgba(0, 212, 255, 0.05)',
-          border: '2px solid rgba(0, 212, 255, 0.4)',
+          background: 'radial-gradient(circle, rgba(0,212,255,0.15) 0%, rgba(0,212,255,0.02) 70%)',
+          border: '2px solid rgba(0, 212, 255, 0.6)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          marginBottom: 24,
-          boxShadow: '0 0 50px rgba(0, 212, 255, 0.25)'
+          marginBottom: 20,
+          boxShadow: '0 0 60px rgba(0, 212, 255, 0.35)'
         }}>
-          <RefreshCw size={40} className="animate-spin" style={{ color: '#00d4ff' }} />
+          {/* Inner Spinning Ring */}
           <div style={{
             position: 'absolute',
-            bottom: -6,
+            inset: -8,
+            borderRadius: '50%',
+            border: '2px dashed rgba(56, 189, 248, 0.4)',
+            animation: 'spin 8s linear infinite'
+          }} />
+
+          <RefreshCw size={44} className="animate-spin" style={{ color: '#00d4ff', filter: 'drop-shadow(0 0 8px #00d4ff)' }} />
+
+          <div style={{
+            position: 'absolute',
+            bottom: -8,
             background: '#040d1a',
-            border: '1px solid #00d4ff',
-            borderRadius: 12,
-            padding: '2px 8px',
+            border: '1.5px solid #00d4ff',
+            borderRadius: 14,
+            padding: '2px 10px',
             fontSize: 11,
             fontWeight: 800,
-            color: '#00d4ff'
+            color: '#00d4ff',
+            boxShadow: '0 0 12px rgba(0, 212, 255, 0.4)'
           }}>
-            {elapsedTime.toFixed(1)}s
+            {elapsedTime.toFixed(1)}s • {scanProgress}%
           </div>
         </div>
 
-        <h2 style={{ fontSize: 24, fontWeight: 800, color: '#f8fafc', margin: '0 0 8px 0' }}>
-          Running Multi-Stage Forensic Audit
+        <h2 style={{ fontSize: 24, fontWeight: 900, color: '#f8fafc', margin: '0 0 6px 0', letterSpacing: '-0.02em' }}>
+          Running Multi-Engine Forensic Pipeline
         </h2>
-        <div style={{ fontSize: 14, color: '#38bdf8', fontWeight: 600, marginBottom: 8 }}>
-          {scanStageTitle}
+        <div style={{ fontSize: 14, color: '#38bdf8', fontWeight: 700, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <Sparkles size={16} /> {scanStageTitle}
         </div>
-        <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 24, maxWidth: 600 }}>
+        <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 20, maxWidth: 620, lineHeight: 1.5 }}>
           {scanStageDetail}
         </div>
 
-        {/* Progress Bar */}
+        {/* High-Tech Animated Progress Bar */}
         <div style={{
           width: '100%',
-          height: 8,
-          borderRadius: 4,
-          background: '#111b2b',
-          overflow: 'hidden',
-          marginBottom: 24,
-          border: '1px solid #1e2d3d'
+          marginBottom: 24
         }}>
           <div style={{
-            height: '100%',
-            width: `${scanProgress}%`,
-            background: 'linear-gradient(90deg, #00d4ff 0%, #38bdf8 50%, #a855f7 100%)',
-            transition: 'width 0.3s ease',
-            borderRadius: 4,
-            boxShadow: '0 0 12px rgba(0, 212, 255, 0.6)'
-          }} />
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            fontSize: 11,
+            fontWeight: 800,
+            color: '#64748b',
+            marginBottom: 6,
+            fontFamily: 'monospace'
+          }}>
+            <span>ANALYSIS PROGRESS</span>
+            <span style={{ color: '#00d4ff', fontSize: 12 }}>{scanProgress}%</span>
+          </div>
+
+          <div style={{
+            width: '100%',
+            height: 10,
+            borderRadius: 6,
+            background: '#0d1522',
+            overflow: 'hidden',
+            padding: 1,
+            border: '1px solid rgba(0, 212, 255, 0.3)',
+            boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.6)'
+          }}>
+            <div style={{
+              height: '100%',
+              width: `${Math.max(scanProgress, 4)}%`,
+              background: 'linear-gradient(90deg, #00d4ff 0%, #38bdf8 40%, #a855f7 80%, #3b82f6 100%)',
+              transition: 'width 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+              borderRadius: 4,
+              boxShadow: '0 0 16px rgba(0, 212, 255, 0.8)'
+            }} />
+          </div>
         </div>
 
-        {/* 6 Stages Step Checklist */}
+        {/* 6 Stages Step Checklist with Glowing Active State */}
         <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
           {scanStages.map((st, idx) => {
             const isDone = st.status === 'COMPLETED' || scanStageIndex > idx
@@ -907,25 +970,26 @@ export function InvestigationFlow() {
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  padding: '10px 16px',
+                  padding: '12px 18px',
                   borderRadius: 8,
-                  background: isCurrent ? 'rgba(0, 212, 255, 0.08)' : '#0a101a',
-                  border: `1px solid ${isCurrent ? '#00d4ff60' : isDone ? '#22c55e30' : isFailed ? '#ef444430' : '#1e2d3d'}`,
+                  background: isCurrent ? 'rgba(0, 212, 255, 0.12)' : isDone ? 'rgba(34, 197, 94, 0.04)' : '#080d16',
+                  border: `1px solid ${isCurrent ? '#00d4ff' : isDone ? 'rgba(34, 197, 94, 0.3)' : isFailed ? 'rgba(239, 68, 68, 0.3)' : '#1e2d3d'}`,
+                  boxShadow: isCurrent ? '0 0 20px rgba(0, 212, 255, 0.2)' : 'none',
                   transition: 'all 0.2s ease'
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <span style={{ fontSize: 16 }}>{st.icon}</span>
+                  <span style={{ fontSize: 18 }}>{st.icon}</span>
                   <div style={{ textAlign: 'left' }}>
                     <div style={{
                       fontSize: 13,
-                      fontWeight: 700,
-                      color: isCurrent ? '#00d4ff' : isDone ? '#f8fafc' : isFailed ? '#f87171' : '#64748b'
+                      fontWeight: 800,
+                      color: isCurrent ? '#38bdf8' : isDone ? '#f8fafc' : isFailed ? '#f87171' : '#64748b'
                     }}>
                       {st.label}
                     </div>
                     {st.detail && (
-                      <div style={{ fontSize: 11, color: '#94a3b8' }}>
+                      <div style={{ fontSize: 11, color: isCurrent ? '#7dd3fc' : '#94a3b8' }}>
                         {st.detail}
                       </div>
                     )}
@@ -934,12 +998,12 @@ export function InvestigationFlow() {
 
                 <div>
                   {isDone ? (
-                    <span style={{ color: '#22c55e', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <CheckCircle size={14} /> Completed
+                    <span style={{ color: '#4ade80', fontSize: 12, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <CheckCircle size={15} /> Completed
                     </span>
                   ) : isCurrent ? (
-                    <span style={{ color: '#00d4ff', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <RefreshCw size={12} className="animate-spin" /> In Progress...
+                    <span style={{ color: '#00d4ff', fontSize: 12, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <RefreshCw size={13} className="animate-spin" /> Analyzing...
                     </span>
                   ) : isSkipped ? (
                     <span style={{ color: '#f59e0b', fontSize: 12 }}>
@@ -997,13 +1061,18 @@ export function InvestigationFlow() {
 
   return (
     <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      width: '100vw',
+      height: '100vh',
+      zIndex: 1000,
       display: 'flex',
       flexDirection: 'column',
-      height: '100%',
       overflow: 'hidden',
       background: '#080c10'
     }}>
-      {/* Top Banner: Investigation Case Summary & Reset Action */}
+      {/* Top Banner: Investigation Case Summary, Minimized Dashboard Indicator, Exit & Reset Actions */}
       <div style={{
         padding: '12px 20px',
         background: '#0d1522',
@@ -1014,6 +1083,23 @@ export function InvestigationFlow() {
         flexShrink: 0
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          {/* Dashboard Minimized Badge */}
+          <div style={{
+            padding: '4px 10px',
+            borderRadius: 6,
+            background: 'rgba(56, 189, 248, 0.15)',
+            border: '1px solid rgba(56, 189, 248, 0.4)',
+            color: '#38bdf8',
+            fontSize: 10,
+            fontWeight: 800,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 5,
+            letterSpacing: '0.04em'
+          }}>
+            <Activity size={12} /> Dashboard Minimized
+          </div>
+
           <div style={{
             padding: '4px 10px',
             borderRadius: 6,
@@ -1045,6 +1131,25 @@ export function InvestigationFlow() {
 
         {/* Header Actions */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button
+            onClick={() => setIsAssistantOpen(!isAssistantOpen)}
+            className="vm-btn"
+            style={{
+              padding: '6px 14px',
+              fontSize: 11,
+              fontWeight: 800,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              background: 'linear-gradient(135deg, #00d4ff 0%, #0284c7 100%)',
+              color: '#080c10',
+              border: 'none',
+              boxShadow: '0 0 12px rgba(0, 212, 255, 0.4)'
+            }}
+          >
+            <Sparkles size={13} /> {isAssistantOpen ? 'Close AI Assistant' : '✨ Forensic AI Assistant'}
+          </button>
+
           <button
             onClick={() => useStore.getState().setShowEvidenceModal(true)}
             className="vm-btn vm-btn-ghost"
@@ -1098,17 +1203,29 @@ export function InvestigationFlow() {
             </button>
           )}
 
+          {/* Prominent Exit Button */}
           <button
             onClick={handleReset}
-            className="vm-btn vm-btn-primary"
-            style={{ padding: '6px 14px', fontSize: 11, display: 'flex', alignItems: 'center', gap: 6, background: 'linear-gradient(135deg, #00d4ff 0%, #0077ff 100%)', color: '#040d1a', fontWeight: 800 }}
+            className="vm-btn"
+            style={{
+              padding: '6px 14px',
+              fontSize: 11,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              background: 'rgba(239, 68, 68, 0.15)',
+              border: '1px solid rgba(239, 68, 68, 0.5)',
+              color: '#f87171',
+              fontWeight: 800
+            }}
+            title="Exit maximized analysis and return to main dashboard"
           >
-            <RefreshCw size={13} /> Check Another Image
+            <X size={14} /> Exit Analysis
           </button>
         </div>
       </div>
 
-      {/* Top Stepper Navigation (Stages 1 through 5) */}
+      {/* Top Stepper Navigation (Stages 1 through 5 with full stage progress) */}
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(5, 1fr)',
@@ -1118,7 +1235,7 @@ export function InvestigationFlow() {
       }}>
         {STAGES.map((st) => {
           const isActive = st.id === currentStage
-          const isPassed = st.id < currentStage
+          const isPassed = st.id <= currentStage || Boolean(currentResult)
 
           return (
             <button
@@ -1151,7 +1268,7 @@ export function InvestigationFlow() {
                 justifyContent: 'center',
                 flexShrink: 0
               }}>
-                {isPassed ? '✓' : st.id}
+                {isPassed && !isActive ? '✓' : st.id}
               </div>
 
               <div style={{ minWidth: 0 }}>
@@ -1179,6 +1296,13 @@ export function InvestigationFlow() {
           )
         })}
       </div>
+
+      {/* Floating AI Assistant Popup */}
+      <AssistantPopup
+        result={currentResult}
+        isOpen={isAssistantOpen}
+        onClose={() => setIsAssistantOpen(false)}
+      />
 
       {/* Center: Stage Content View */}
       <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '16px 20px 40px 20px', scrollBehavior: 'smooth' }}>
@@ -1226,6 +1350,13 @@ export function InvestigationFlow() {
             </div>
           </div>
         )}
+
+        {/* Human-Readable Executive Summary Card & Engine Feature Navigator */}
+        <HumanReadableSummaryCard
+          result={currentResult}
+          onSelectStage={(stageId) => setCurrentStage(stageId)}
+          currentStage={currentStage}
+        />
 
         {/* Stage 1: Forensic Inspection */}
         {currentStage === 1 && (

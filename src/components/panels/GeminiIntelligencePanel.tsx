@@ -314,7 +314,7 @@ I am connected to the **Gemini 3.8 Flash Reasoning Engine** with **live Google S
                 fontWeight: 700,
                 fontFamily: 'monospace',
               }}>
-                GEMINI 3.8 FLASH • SEARCH GROUNDED
+                VERIMEDIA FLASH AI • SEARCH GROUNDED
               </span>
               <span style={{
                 fontSize: 10,
