@@ -63,17 +63,17 @@ export class MultiSourceDiscoveryManager {
   constructor(config = {}) {
     this.providers = new Map();
     
-    // Register the discovery platforms
+    // Register the 6 core discovery platforms
     this.registerProvider(new RedditDiscoveryProvider(config.reddit));
     this.registerProvider(new YouTubeDiscoveryProvider(config.youtube));
     this.registerProvider(new MastodonDiscoveryProvider(config.mastodon));
     this.registerProvider(new ArchiveOrgDiscoveryProvider(config.archiveOrg));
     this.registerProvider(new GoogleImagesDiscoveryProvider(config.googleImages));
     this.registerProvider(new GoogleVisionWebDetectionProvider(config.googleVision || config.googleVisionWebDetection));
-    this.registerProvider(new InstagramDiscoveryProvider(config.instagram));
-    this.registerProvider(new XDiscoveryProvider(config.x));
 
-    if (config.includeAll || config.enableVisionAndSocial) {
+    if (config.includeAll || config.enableVisionAndSocial || config.includeSocial) {
+      this.registerProvider(new InstagramDiscoveryProvider(config.instagram));
+      this.registerProvider(new XDiscoveryProvider(config.x));
       this.registerProvider(new GoogleVisionDiscoveryProvider(config.googleVision));
     }
   }

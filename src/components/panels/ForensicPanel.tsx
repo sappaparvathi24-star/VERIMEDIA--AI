@@ -183,6 +183,7 @@ export function ForensicPanel() {
   const anomalies = currentResult?.detected_anomalies || forensics?.detectedAnomalies || currentResult?.integrity?.flags || []
 
   const isReal = currentResult.mode === 'REAL_PIPELINE' || Boolean(artifact)
+  const forensicStatus = forensics?.status || (currentResult as any)?.forensic_status
 
   return (
     <div style={{
@@ -282,6 +283,40 @@ export function ForensicPanel() {
           </button>
         </div>
       </div>
+
+      {/* Distinct Informational Banner for SKIPPED Forensic Status */}
+      {forensicStatus === 'SKIPPED' && (
+        <div style={{
+          padding: '12px 16px',
+          borderRadius: 8,
+          background: 'rgba(56, 189, 248, 0.08)',
+          border: '1px solid rgba(56, 189, 248, 0.3)',
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: 12
+        }}>
+          <span style={{ fontSize: 18, marginTop: 1 }}>ℹ️</span>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#38bdf8', marginBottom: 2, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span>Forensic Analysis Skipped for this Media Type</span>
+              <span style={{
+                fontSize: 10,
+                fontWeight: 800,
+                fontFamily: 'monospace',
+                padding: '2px 6px',
+                borderRadius: 4,
+                background: 'rgba(56, 189, 248, 0.2)',
+                color: '#38bdf8'
+              }}>
+                STATUS: SKIPPED
+              </span>
+            </div>
+            <div style={{ fontSize: 12, color: '#cbd5e1', lineHeight: 1.5 }}>
+              This media type has no forensic analyzers registered in the current pipeline. The file was fingerprinted and registered in the provenance record, but visual forensic algorithms (Error Level Analysis, PRNU sensor noise, and facial landmark meshes) are only available for image assets.
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* View Mode Sub-tabs */}
       <div style={{

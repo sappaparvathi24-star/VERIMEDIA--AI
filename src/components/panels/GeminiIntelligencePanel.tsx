@@ -38,7 +38,7 @@ interface Message {
 }
 
 const FORENSIC_PROMPTS = [
-  'Audit C2PA manifest & hardware signature integrity',
+  'Audit C2PA manifest check (requires optional dependency)',
   'Explain ELA compression residual variance on TikTok upload',
   'Evaluate PRNU camera sensor fingerprint match confidence',
   'Draft an executive DMCA takedown brief with evidence ledger',
@@ -51,7 +51,7 @@ const SIGNALS_CATALOG = [
   { key: 'edge_consistency', label: 'Edge & Gradient Coherence', desc: 'Boundary continuity, clone stamp splicing & laplacian filter' },
   { key: 'face_landmark', label: 'Facial Landmark Delaunay Mesh', desc: 'Neural diffusion texture & biometric asymmetry artifacts' },
   { key: 'temporal_mismatch', label: 'Optical Flow & Frame Vectors', desc: 'Motion vector continuity & inter-frame temporal interpolation' },
-  { key: 'c2pa_manifest', label: 'C2PA Cryptographic Provenance', desc: 'X.509 cert chain, signed manifest & tamper-evident tree' },
+  { key: 'c2pa_manifest', label: 'C2PA Cryptographic Provenance (Optional)', desc: 'X.509 cert chain & signed manifest check (requires optional c2pa-node dependency)' },
 ]
 
 export function GeminiIntelligencePanel() {

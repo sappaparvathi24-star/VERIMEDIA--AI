@@ -4,7 +4,7 @@ import type {
   DetectionResult, CaseRecord, HealthStatus,
   ScanStats, TabId, ForensicStageItem, ForensicStageStatus, ScanLogEntry
 } from '../types'
-import { DEFAULT_SHOWCASE_RESULT, SAMPLE_CASES, DEFAULT_FORENSIC_STAGES } from './initialData'
+import { DEFAULT_FORENSIC_STAGES } from './initialData'
 
 interface AppState {
   // Detection & Forensic Scan
@@ -29,6 +29,9 @@ interface AppState {
   // Cases
   cases: CaseRecord[]
   casesLoading: boolean
+  // Set when the real /api/v1/cases fetch fails, so the UI can show an honest
+  // error instead of silently displaying stale or placeholder case data.
+  casesError: string | null
 
   // Health
   health: HealthStatus | null
@@ -89,8 +92,9 @@ export const useStore = create<AppState>((set, get) => ({
   activeJobId: null,
   showGlobalProgressDrawer: false,
 
-  cases: SAMPLE_CASES,
+  cases: [],
   casesLoading: false,
+  casesError: null,
   health: null,
   activeTab: 'scanner',
   showEvidenceModal: false,

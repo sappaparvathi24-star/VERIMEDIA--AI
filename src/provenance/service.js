@@ -81,6 +81,30 @@ class ProvenanceService {
     return this.store.deleteArtifact(id);
   }
 
+  getAnalysisRun(id) {
+    return this.store.getAnalysisRun(id);
+  }
+
+  createAnalysisRun(payload) {
+    return this.store.createAnalysisRun(payload);
+  }
+
+  getObservation(id) {
+    return this.store.getObservation(id);
+  }
+
+  createObservation(payload) {
+    return this.store.createObservation(payload);
+  }
+
+  getEvidence(id) {
+    return this.store.getEvidence(id);
+  }
+
+  createEvidence(payload) {
+    return this.store.createEvidence(payload);
+  }
+
   getSource(id) {
     return this.store.getSource(id);
   }

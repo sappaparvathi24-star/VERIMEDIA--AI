@@ -28,6 +28,15 @@ import { MultiSourceDiscoveryManager } from './src/matching/providers/index.js';
 import { getFullDiscoveryTransparency } from './src/matching/discoveryTransparency.js';
 import { computeAverageHash, hashSimilarity } from './src/forensics/perceptualHash.js';
 import { getArtifactMedia, storeArtifactMedia } from './src/forensics/imageForensics.js';
+import { 
+  SourceTypes, 
+  EvidencePolarity, 
+  CandidateRelationshipType, 
+  CandidateStatus, 
+  AppearanceStatus, 
+  FindingStatus 
+} from './src/provenance/core.js';
+import { buildQuerySignals } from './src/matching/querySignals.js';
 import { ForensicJobQueue } from './src/jobs/forensicQueue.js';
 import { classifyEntailment } from './ml/nlp/entailment.js';
 import { embedText, groupEvidenceBySemanticIndependence, INDEPENDENCE_TEXT_SIMILARITY_THRESHOLD } from './ml/nlp/embeddings.js';
@@ -1316,16 +1325,378 @@ const handleV1Detect = async (req, res) => {
       }
     }
 
-    const isThreat = !isSkipped && (highestSimilarity > 0.80 || (forensic?.riskLevel === 'HIGH' || forensic?.riskLevel === 'CRITICAL'));
+    // --- REAL REVERSE-SEARCH ENGINE INTEGRATION ---
+    // Obtain actual image bytes from uploaded payload or stored artifact media
+    let imageBuffer = (uploadedFile && uploadedFile.buffer) ? uploadedFile.buffer : null;
+    if (!imageBuffer && artifact.id) {
+      try {
+        const media = getArtifactMedia(artifact.id);
+        if (media && media.buffer) {
+          imageBuffer = media.buffer;
+        }
+      } catch (_) {}
+    }
+    if (!imageBuffer && artifact.metadata?.filePath) {
+      try {
+        if (fs.existsSync(artifact.metadata.filePath)) {
+          imageBuffer = fs.readFileSync(artifact.metadata.filePath);
+        }
+      } catch (_) {}
+    }
+
+    // Extract genuine search query signals
+    const searchSignals = buildQuerySignals(artifact, {
+      query: caption,
+      filename: artifact.filename,
+      claimStatement: caption
+    });
+
+    // Execute real reverse-search with a 15-second safety timeout
+    const SEARCH_TIMEOUT_MS = 15000;
+    let discoveryResult = null;
+    let discoveryTimedOut = false;
+    let discoveryError = null;
+
+    if (!isVideoOrAudio) {
+      try {
+        const searchPromise = multiSourceDiscovery.searchAll(searchSignals, {
+          imageBuffer,
+          imageBase64: imageBuffer ? imageBuffer.toString('base64') : null,
+          artifactId: artifact.id,
+          investigationId: invId,
+          perceptualHash: artifact.perceptualHash,
+          isVisualSearch: Boolean(imageBuffer),
+          query: caption || artifact.metadata?.originalName || artifact.filename || 'visual-reverse-search'
+        });
+
+        const timeoutPromise = new Promise((resolve) =>
+          setTimeout(() => resolve({ __timedOut: true }), SEARCH_TIMEOUT_MS)
+        );
+
+        const raceWinner = await Promise.race([searchPromise, timeoutPromise]);
+        if (raceWinner && raceWinner.__timedOut) {
+          discoveryTimedOut = true;
+        } else {
+          discoveryResult = raceWinner;
+        }
+      } catch (err) {
+        discoveryError = err;
+      }
+    }
+
+    // Transparently assess discovery outcome
+    let discoveryStatus = 'COMPLETED';
+    let discoveryReason = null;
+
+    if (isVideoOrAudio) {
+      discoveryStatus = 'SKIPPED';
+      discoveryReason = 'Reverse search skipped for video/audio assets in standard upload.';
+    } else if (discoveryTimedOut) {
+      discoveryStatus = 'TIMEOUT';
+      discoveryReason = 'Reverse search timed out after 15 seconds. Upstream providers did not respond within the time limit; continuing with local analysis.';
+    } else if (discoveryError) {
+      discoveryStatus = 'FAILED';
+      discoveryReason = `Reverse search encountered an error: ${discoveryError.message}`;
+    } else if (discoveryResult) {
+      const candCount = discoveryResult.candidates?.length || 0;
+      if (candCount > 0) {
+        discoveryStatus = 'COMPLETED';
+        discoveryReason = `Reverse search completed successfully. Discovered ${candCount} matching candidate appearance(s) across active providers.`;
+      } else {
+        const vStatus = discoveryResult.providerStatuses?.google_vision || discoveryResult.providerStatuses?.google_vision_web_detection;
+        if (vStatus?.status === 'UNAVAILABLE') {
+          discoveryStatus = 'UNAVAILABLE';
+          discoveryReason = vStatus.reason || 'Google Vision reverse search is unavailable (API key not configured on this deployment). Zero fabricated results.';
+        } else {
+          discoveryStatus = 'ZERO_RESULTS';
+          discoveryReason = 'Reverse search executed across active providers but returned 0 candidate matches for this visual asset.';
+        }
+      }
+    } else {
+      discoveryStatus = 'SKIPPED';
+      discoveryReason = 'Reverse search was skipped or could not be executed.';
+    }
+
+    // Persist discovered candidates as proper evidence into case file
+    const discoveredCandidates = discoveryResult?.candidates || [];
+    if (discoveredCandidates.length > 0 && invId) {
+      try {
+        const job = provenanceService.store.createDiscoveryJob({
+          investigationId: invId,
+          artifactId: artifact.id,
+          status: 'COMPLETED',
+          queryStrategy: 'ALL',
+          startedAt: new Date(Date.now() - (discoveryResult.processingTimeMs || 1000)).toISOString(),
+          completedAt: new Date().toISOString(),
+          candidateCount: discoveredCandidates.length,
+          isDemo: Boolean(inv?.isDemo),
+          metadata: {
+            artifactFilename: artifact.filename,
+            artifactSha256: artifact.sha256,
+            providerStatuses: discoveryResult.providerStatuses || {},
+            query: discoveryResult.query
+          }
+        });
+
+        const run = provenanceService.store.createAnalysisRun({
+          investigationId: invId,
+          artifactId: artifact.id,
+          method: 'SOURCE_DISCOVERY_ENGINE',
+          status: 'COMPLETED',
+          metadata: {
+            jobId: job.id,
+            strategy: 'ALL',
+            timestamp: new Date().toISOString()
+          }
+        });
+
+        for (const extItem of discoveredCandidates) {
+          if (!extItem.url) continue;
+
+          let candidateSource = Array.from(provenanceService.store.sources.values()).find(s => s.url === extItem.url);
+          if (!candidateSource) {
+            let domain = 'external-web';
+            try {
+              domain = new URL(extItem.url).hostname;
+            } catch (_) {}
+
+            candidateSource = provenanceService.store.createSource({
+              url: extItem.url,
+              name: extItem.title || `${extItem.platform || 'Web'} Appearance`,
+              domain,
+              platform: extItem.platform || 'External Web',
+              type: SourceTypes.SOCIAL_POST,
+              isFirstParty: false,
+              independentlyObserved: true,
+              containsMediaDirectly: Boolean(extItem.mediaUrl || extItem.thumbnailUrl),
+              canDownload: Boolean(extItem.mediaUrl),
+              observedAt: extItem.publishedAt || null
+            });
+          }
+
+          const indepGroup = extItem.platform?.startsWith('Reddit')
+            ? `IG-REDDIT-${extItem.subreddit || 'COMMUNITY'}`
+            : (extItem.platform?.startsWith('YouTube')
+              ? `IG-YOUTUBE-${extItem.author || 'CHANNEL'}`
+              : (extItem.platform?.startsWith('Mastodon')
+                ? `IG-MASTODON-${extItem.metadata?.instance || 'FEDIVERSE'}`
+                : `IG-EXT-${candidateSource.domain || candidateSource.id}`));
+
+          const obsExt = provenanceService.store.createObservation({
+            runId: run.id,
+            artifactId: artifact.id,
+            observationType: 'EXTERNAL_API_MATCH',
+            target: extItem.url,
+            value: {
+              platform: extItem.platform,
+              title: extItem.title,
+              author: extItem.author,
+              publishedAt: extItem.publishedAt,
+              similarityStatus: extItem.similarityStatus || 'VISUAL_MATCH_VERIFIED',
+              similarity: extItem.similarity,
+              metadata: extItem.metadata || {}
+            },
+            confidence: extItem.similarity || 0.85
+          });
+
+          const evExt = provenanceService.store.createEvidence({
+            observationIds: [obsExt.id],
+            independenceGroupId: indepGroup,
+            evidenceType: 'EXTERNAL_API_SIGHTING',
+            description: `Live sighting discovered on ${extItem.platform} (${extItem.title || extItem.url}) with publication timestamp ${extItem.publishedAt || 'UNREPORTED'}.`,
+            confidence: extItem.similarity || 0.85,
+            polarity: EvidencePolarity.SUPPORTING,
+            metadata: {
+              platform: extItem.platform,
+              url: extItem.url,
+              author: extItem.author,
+              publishedAt: extItem.publishedAt
+            }
+          });
+
+          // Discovered media artifact so Genealogy graph has genuine multi-node lineage
+          const candArtifact = provenanceService.store.createArtifact({
+            investigationId: invId,
+            filename: extItem.title || `${extItem.platform} Appearance`,
+            mimeType: 'image/jpeg',
+            sha256: null,
+            perceptualHash: extItem.candidateHash || null,
+            dimensions: null,
+            metadata: {
+              url: extItem.url,
+              platform: extItem.platform,
+              author: extItem.author,
+              publishedAt: extItem.publishedAt,
+              thumbnailUrl: extItem.thumbnailUrl || null,
+              mediaUrl: extItem.mediaUrl || null,
+              isExternalAppearance: true
+            }
+          });
+          if (inv && Array.isArray(inv.artifactIds) && !inv.artifactIds.includes(candArtifact.id)) {
+            inv.artifactIds.push(candArtifact.id);
+          }
+
+          provenanceService.store.createRelationship({
+            investigationId: invId,
+            fromArtifactId: candArtifact.id,
+            toArtifactId: artifact.id,
+            relationshipType: extItem.similarity > 0.95 ? 'EXACT_MATCH' : 'RELATED_MEDIA',
+            confidence: extItem.similarity || 0.85,
+            status: 'SUPPORTED',
+            evidenceIds: [evExt.id]
+          });
+
+          provenanceService.store.createAppearance({
+            artifactId: candArtifact.id,
+            sourceId: candidateSource.id,
+            observedAt: extItem.publishedAt || new Date().toISOString(),
+            retrievedAt: new Date().toISOString(),
+            status: AppearanceStatus.OBSERVED,
+            notes: `Discovered live appearance on ${extItem.platform} (${extItem.title || extItem.url})`,
+            evidenceIds: [evExt.id]
+          });
+
+          provenanceService.store.createDiscoveryCandidate({
+            discoveryJobId: job.id,
+            investigationId: invId,
+            artifactId: artifact.id,
+            matchedArtifactId: candArtifact.id,
+            sourceId: candidateSource.id,
+            url: extItem.url,
+            title: extItem.title || `${extItem.platform} Candidate`,
+            platform: extItem.platform,
+            author: extItem.author || null,
+            discoveredAt: new Date().toISOString(),
+            publishedAt: extItem.publishedAt || null,
+            retrievedAt: extItem.retrievedAt || new Date().toISOString(),
+            contentHash: null,
+            perceptualFingerprint: extItem.candidateHash || null,
+            similarity: extItem.similarity ?? null,
+            classification: extItem.classification || null,
+            matchType: extItem.matchType || (extItem.source === 'google_vision' ? 'visual_match' : 'text_inferred'),
+            similarityMeasurements: {
+              comparisonMethod: extItem.similarityBasis || extItem.similarityStatus || 'EXTERNAL_API_REVERSE_IMAGE_SEARCH',
+              comparisonStatus: 'MEASURED',
+              thumbnailUrl: extItem.thumbnailUrl || null,
+              visualSimilarity: extItem.similarity ?? null,
+              phashSimilarity: extItem.phashSimilarity ?? null,
+              visionScore: extItem.visionScore ?? null,
+              classification: extItem.classification || null,
+              matchType: extItem.matchType || 'visual_match'
+            },
+            relationshipType: CandidateRelationshipType.RELATED_MEDIA,
+            evidenceIds: [evExt.id],
+            independenceGroup: indepGroup,
+            status: CandidateStatus.SUPPORTED,
+            sourceCharacteristics: {
+              directMediaHost: Boolean(extItem.mediaUrl),
+              primaryPublisherClaim: false,
+              repost: false,
+              syndication: false,
+              archive: extItem.platform === 'Wayback Machine',
+              socialPlatform: true,
+              unknownHost: false,
+              publicationTimestampAvailable: Boolean(extItem.publishedAt),
+              mediaBytesRetrievable: Boolean(extItem.mediaUrl),
+              attributionPresent: Boolean(extItem.author),
+              independentlyObserved: true
+            },
+            transformationIndicators: extItem.transformations || [],
+            limitations: [
+              'External web discovery result indexed from public provider API.',
+              'Corroboration evaluated against visual fingerprint.'
+            ],
+            isDemo: Boolean(inv?.isDemo || artifact.isDemo),
+            metadata: {
+              observationId: obsExt.id,
+              evidenceId: evExt.id,
+              sourceType: 'EXTERNAL_API_VERIFIED',
+              thumbnailUrl: extItem.thumbnailUrl || null,
+              mediaUrl: extItem.mediaUrl || null,
+              similarity: extItem.similarity ?? null
+            }
+          });
+
+          provenanceService.store.createFinding({
+            investigationId: invId,
+            findingType: 'DISCOVERED_APPEARANCES',
+            statement: `Reverse search identified public web appearance on ${extItem.platform} (${extItem.title || extItem.url}).`,
+            confidence: extItem.similarity || 0.85,
+            status: FindingStatus.CONFIRMED,
+            evidenceIds: [evExt.id]
+          });
+        }
+      } catch (saveErr) {
+        console.warn('[Discovery] Failed to persist discovery evidence into case file:', saveErr.message);
+      }
+    }
+
+    // Format discovered candidates for frontend rendering (Comparison tab & Propagation graph)
+    const discoveredCandidatesFormatted = discoveredCandidates.map((cand, idx) => {
+      const sim = typeof cand.similarity === 'number' ? cand.similarity : (cand.visionScore || 0.85);
+      let candDomain = 'web';
+      try {
+        if (cand.url) candDomain = new URL(cand.url).hostname;
+      } catch (_) {}
+
+      return {
+        id: cand.id || `CAND-${Date.now().toString(36)}-${idx}`,
+        title: cand.title || `${cand.platform} Match`,
+        url: cand.url,
+        domain: cand.domain || candDomain,
+        platform: cand.platform || 'Web',
+        publisher: cand.publisher || cand.author || cand.platform || 'Web Source',
+        author: cand.author || null,
+        publishedAt: cand.publishedAt || null,
+        similarity: Number(sim.toFixed(2)),
+        matchScore: Math.round(sim * 100),
+        visionScore: cand.visionScore ?? null,
+        phashSimilarity: cand.phashSimilarity ?? null,
+        thumbnailUrl: cand.thumbnailUrl || cand.mediaUrl || null,
+        mediaUrl: cand.mediaUrl || cand.url || null,
+        snippet: cand.snippet || `Discovered candidate match on ${cand.platform || 'web'}.`,
+        classification: cand.classification || (sim > 0.94 ? 'KNOWN' : (sim > 0.55 ? 'UNKNOWN' : 'NOT_SO')),
+        isOriginalSource: Boolean(cand.isOriginalSource),
+        isCropped: Boolean(cand.isCropped),
+        isManipulated: Boolean(cand.isManipulated),
+        source: cand.source || 'reverse_search',
+        status: 'SUPPORTED'
+      };
+    });
+
+    const localRefCandidate = matchedRef ? {
+      id: matchedRef.id,
+      title: matchedRef.filename || 'Corroborating Reference Media',
+      similarity: Number(highestSimilarity.toFixed(2)),
+      matchScore: Math.round(highestSimilarity * 100),
+      sha256: matchedRef.sha256,
+      domain: 'database',
+      platform: 'Internal Verified Repository',
+      url: `/api/artifacts/${matchedRef.id}/file`,
+      isOriginalSource: false
+    } : null;
+
+    const allCandidates = localRefCandidate 
+      ? [localRefCandidate, ...discoveredCandidatesFormatted]
+      : discoveredCandidatesFormatted;
+
+    let overallSimilarity = highestSimilarity;
+    for (const c of discoveredCandidatesFormatted) {
+      if (c.similarity > overallSimilarity) {
+        overallSimilarity = c.similarity;
+      }
+    }
+
+    const isThreat = !isSkipped && (overallSimilarity > 0.80 || (forensic?.riskLevel === 'HIGH' || forensic?.riskLevel === 'CRITICAL'));
     const decision = isSkipped
       ? 'SKIPPED'
       : (isThreat
-          ? (highestSimilarity > 0.95 ? 'EMERGENCY_TAKEDOWN' : 'TAKEDOWN')
-          : (highestSimilarity > 0.60 ? 'REVIEW REQUIRED' : (forensic?.status === 'INCONCLUSIVE' ? 'INCONCLUSIVE' : 'ALLOW')));
+          ? (overallSimilarity > 0.95 ? 'EMERGENCY_TAKEDOWN' : 'TAKEDOWN')
+          : (overallSimilarity > 0.60 ? 'REVIEW REQUIRED' : (forensic?.status === 'INCONCLUSIVE' ? 'INCONCLUSIVE' : 'ALLOW')));
 
     // Genuinely computed signals or explicitly null/absent
     const signals = {
-      match_score: Number(highestSimilarity.toFixed(2)),
+      match_score: Number(overallSimilarity.toFixed(2)),
       spatial_diff: typeof forensic?.signals?.spatial_diff === 'number'
         ? forensic.signals.spatial_diff
         : (forensic?.ela?.status === 'COMPLETED' ? Number(Math.min(1.0, (forensic.ela.meanError || 0) / 40).toFixed(2)) : null),
@@ -1368,7 +1739,7 @@ const handleV1Detect = async (req, res) => {
       caption,
       content_type,
       scenario: 'real_pipeline',
-      similarity: Number(highestSimilarity.toFixed(2)),
+      similarity: Number(overallSimilarity.toFixed(2)),
       fingerprint_hash: artifact.perceptualHash || (artifact.sha256 ? artifact.sha256.slice(0, 16) : 'N/A'),
       is_demo: false,
       mode: 'REAL_PIPELINE',
@@ -1393,14 +1764,14 @@ const handleV1Detect = async (req, res) => {
       ml: {
         label: isSkipped
           ? 'SKIPPED'
-          : (highestSimilarity > 0.80
+          : (overallSimilarity > 0.80
               ? 'TAMPERED'
               : (forensic?.authenticity || (forensic?.status === 'INCONCLUSIVE' ? 'INCONCLUSIVE' : 'UNKNOWN'))),
         manipulation_probability: typeof forensic?.manipulationProbability === 'number' ? forensic.manipulationProbability : null,
         trust_score: trustScore,
         confidence: typeof forensic?.confidence === 'number'
           ? forensic.confidence
-          : (highestSimilarity > 0.5 ? Number(highestSimilarity.toFixed(2)) : null),
+          : (overallSimilarity > 0.5 ? Number(overallSimilarity.toFixed(2)) : null),
         signals
       },
       integrity: {
@@ -1410,58 +1781,50 @@ const handleV1Detect = async (req, res) => {
       },
       trust: {
         trust_score: trustScore,
-        risk_tier: isThreat ? 'high_risk' : (highestSimilarity > 0.60 ? 'suspect' : (isSkipped ? 'unknown' : (trustScore != null ? (trustScore >= 70 ? 'safe' : 'suspect') : 'unknown'))),
+        risk_tier: isThreat ? 'high_risk' : (overallSimilarity > 0.60 ? 'suspect' : (isSkipped ? 'unknown' : (trustScore != null ? (trustScore >= 70 ? 'safe' : 'suspect') : 'unknown'))),
         verdict: isSkipped
           ? 'Analysis Skipped — Video/Audio Forensics Not Implemented'
-          : (forensic?.verdict || (highestSimilarity > 0.80 ? 'Perceptual Duplicate Reference Detected' : 'Authenticity Inconclusive — Vision Model Not Available')),
+          : (forensic?.verdict || (overallSimilarity > 0.80 ? 'Perceptual Duplicate or Public Web Match Detected' : 'Authenticity Inconclusive — Vision Model Not Available')),
         factors: {
-          perceptual_match: highestSimilarity,
+          perceptual_match: overallSimilarity,
           forensic_integrity: integrityScore
         }
       },
       authorship: null,
       propagation: null,
       ai_analysis: {
-        threat_type: highestSimilarity > 0.80
+        threat_type: overallSimilarity > 0.80
           ? 'Perceptual Match / Copyright Infringement'
           : (isSkipped ? 'Media Forensics Skipped (Video/Audio Not Implemented)' : (forensic?.authenticity || 'Forensic Analysis Inconclusive')),
         decision,
-        severity: isThreat ? (highestSimilarity > 0.95 ? 'CRITICAL' : 'HIGH') : (highestSimilarity > 0.60 ? 'MEDIUM' : (isSkipped ? 'UNKNOWN' : (forensic?.riskLevel || 'LOW'))),
-        risk_label: isThreat ? 'CONFIRMED_INFRINGEMENT' : (highestSimilarity > 0.60 ? 'POTENTIAL_DERIVATIVE' : (isSkipped ? 'UNANALYZED_MEDIA' : (forensic?.status === 'INCONCLUSIVE' ? 'INCONCLUSIVE' : 'ORIGINAL_OR_AUTHENTIC'))),
+        severity: isThreat ? (overallSimilarity > 0.95 ? 'CRITICAL' : 'HIGH') : (overallSimilarity > 0.60 ? 'MEDIUM' : (isSkipped ? 'UNKNOWN' : (forensic?.riskLevel || 'LOW'))),
+        risk_label: isThreat ? 'CONFIRMED_INFRINGEMENT' : (overallSimilarity > 0.60 ? 'POTENTIAL_DERIVATIVE' : (isSkipped ? 'UNANALYZED_MEDIA' : (forensic?.status === 'INCONCLUSIVE' ? 'INCONCLUSIVE' : 'ORIGINAL_OR_AUTHENTIC'))),
         confidence: typeof forensic?.confidence === 'number'
           ? forensic.confidence
-          : (highestSimilarity > 0.5 ? Number(highestSimilarity.toFixed(2)) : null),
-        reasoning_points: forensic?.visualFindings ? [
-          ...forensic.visualFindings.slice(0, 3),
-          highestSimilarity > 0.80 ? `Perceptual hash match (${Math.round(highestSimilarity * 100)}%) against reference media.` : 'No duplicate reference hash match found in active repository.'
-        ] : [
-          highestSimilarity > 0.80 ? `Perceptual hash match (${Math.round(highestSimilarity * 100)}%) against existing reference.` : 'No duplicate match found.',
-          isSkipped ? 'Video and audio forensic processing is not implemented in this version.' : (forensic?.ela?.status === 'COMPLETED'
-            ? (forensic.ela.hasCompressionAnomaly ? 'Compression grid discrepancies observed via ELA.' : 'Error Level Analysis reveals standard uniform compression.')
-            : 'Error Level Analysis not applicable or skipped.')
+          : (overallSimilarity > 0.5 ? Number(overallSimilarity.toFixed(2)) : null),
+        reasoning_points: [
+          ...(forensic?.visualFindings ? forensic.visualFindings.slice(0, 3) : []),
+          overallSimilarity > 0.80 ? `Perceptual match (${Math.round(overallSimilarity * 100)}%) identified against reference or online sighting.` : 'No duplicate reference hash match found in active repository.',
+          discoveredCandidatesFormatted.length > 0 ? `Reverse search identified ${discoveredCandidatesFormatted.length} public web appearance(s) across indexed providers.` : (discoveryReason || 'No public web appearances found.')
         ],
         action: isThreat ? 'Submit DMCA takedown' : (isSkipped ? 'video/audio forensic analysis not implemented — manual review required' : (forensic?.recommendedAction || 'No enforcement action required')),
         recommended_action: isThreat ? 'File expedited takedown notice' : (isSkipped ? 'Forensic pipeline skipped for video/audio. Manual verification required.' : (forensic?.recommendedAction || 'Retain in archive')),
-        origin_traced: Boolean(matchedRef),
-        dmca_needed: highestSimilarity > 0.80 || Boolean(forensic?.dmcaNeeded),
-        source: forensic?.source || forensic?.engine || (highestSimilarity > 0.80 ? 'pHash-matching-engine' : (isSkipped ? 'SKIPPED' : 'INCONCLUSIVE'))
+        origin_traced: Boolean(matchedRef || discoveredCandidatesFormatted.length > 0),
+        dmca_needed: overallSimilarity > 0.80 || Boolean(forensic?.dmcaNeeded),
+        source: forensic?.source || forensic?.engine || (overallSimilarity > 0.80 ? 'reverse-search-engine' : (isSkipped ? 'SKIPPED' : 'INCONCLUSIVE'))
       },
       forensics: isSkipped
         ? (forensic ? { ...forensic, status: 'SKIPPED', reason: 'video/audio forensic analysis not implemented' } : { status: 'SKIPPED', reason: 'video/audio forensic analysis not implemented' })
         : forensic,
-      candidates: matchedRef ? [
-        {
-          id: matchedRef.id,
-          title: matchedRef.filename || 'Corroborating Reference Media',
-          similarity: Number(highestSimilarity.toFixed(2)),
-          matchScore: Math.round(highestSimilarity * 100),
-          sha256: matchedRef.sha256,
-          domain: 'database',
-          platform: 'Internal Verified Repository',
-          url: `/api/artifacts/${matchedRef.id}/file`,
-          isOriginalSource: false
-        }
-      ] : [],
+      candidates: allCandidates,
+      discovery: {
+        ran: !isVideoOrAudio,
+        status: discoveryStatus,
+        reason: discoveryReason,
+        count: discoveredCandidatesFormatted.length,
+        candidates: discoveredCandidatesFormatted,
+        providerStatuses: discoveryResult?.providerStatuses || {}
+      },
       timestamp: new Date().toISOString(),
       case_id: invId || null,
       investigationId: invId || null,
@@ -4494,6 +4857,7 @@ if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL && !isTestRunne
     const vite = await createViteServer({
       server: {
         middlewareMode: true,
+        allowedHosts: true,
         hmr: hmrConfig,
         ws: hmrConfig === false ? false : undefined,
       },

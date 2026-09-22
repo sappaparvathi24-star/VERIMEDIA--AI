@@ -535,7 +535,7 @@ export function EvidenceReasoningPanel() {
       }
 
       // Try to find investigationId from currentResult
-      let invId = currentResult.case_id || null
+      let invId = currentResult.investigationId || currentResult.case_id || null
 
       // Also try to find the latest real investigation
       if (!invId || invId === 'CASE-2026-089') {
@@ -561,9 +561,15 @@ export function EvidenceReasoningPanel() {
           getInvestigationCandidates(invId).catch(() => null)
         ])
 
+        const candidateSource = (candidatesData?.candidates && candidatesData.candidates.length > 0)
+          ? candidatesData.candidates
+          : (Array.isArray(candidatesData) && candidatesData.length > 0)
+            ? candidatesData
+            : (currentResult as any)?.candidates || (currentResult as any)?.discovery?.candidates || []
+
         const builtCandidates = buildCandidatesFromRealData(
           reasoning,
-          candidatesData?.candidates || candidatesData || []
+          candidateSource
         )
 
         if (builtCandidates.length > 0) {

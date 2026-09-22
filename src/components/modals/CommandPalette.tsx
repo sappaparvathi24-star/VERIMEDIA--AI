@@ -147,7 +147,7 @@ export function CommandPalette() {
       id: 'nav-origin',
       category: 'NAVIGATION',
       title: 'Provenance Lineage & Signature Tree',
-      subtitle: 'C2PA cryptographic claims and origin attribution',
+      subtitle: 'Provenance lineage and origin attribution (C2PA manifest check optional)',
       icon: '🔗',
       shortcut: 'Tab 4',
       action: () => { setActiveTab('origin'); setShowCommandPalette(false) }
@@ -227,7 +227,7 @@ export function CommandPalette() {
       id: 'wf-authentic',
       category: 'WORKFLOWS',
       title: 'Trigger Authentic Source Verification Scan',
-      subtitle: 'Verify original un-tampered broadcast feed with C2PA metadata',
+      subtitle: 'Verify original un-tampered broadcast feed (C2PA manifest check optional)',
       icon: '✅',
       badge: 'PRESET',
       badgeColor: '#22c55e',
@@ -255,7 +255,7 @@ export function CommandPalette() {
       id: 'wf-specs',
       category: 'WORKFLOWS',
       title: 'View Engine Specs & Architecture Overview',
-      subtitle: 'Inspect C2PA specs, 9 ML signals, and database integration',
+      subtitle: 'Inspect engine specs, 9 ML signals, and database integration (optional C2PA)',
       icon: 'ℹ️',
       action: () => { setShowHeroOverlay(true); setShowCommandPalette(false) }
     }
