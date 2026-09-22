@@ -14,12 +14,18 @@ export function DMCAModal() {
   async function handleGenerate() {
     if (!currentResult) return
     setLoading(true)
+    const primaryCandidate = (currentResult as any)?.candidates?.[0] || (currentResult as any)?.discovery?.candidates?.[0]
+    const infringingUrl = primaryCandidate?.url || (currentResult.username && currentResult.username !== 'unknown_user' ? `https://${currentResult.platform.toLowerCase().replace(/[^a-z0-9]/g, '')}.com/@${currentResult.username}` : undefined)
+
     const result = await runDMCA({
-      case_id: currentResult.case_id || `VM-${(currentResult.job_id || '').slice(0, 8).toUpperCase()}`,
+      case_id: currentResult.case_id || (currentResult as any)?.investigationId || `VM-${(currentResult.job_id || '').slice(0, 8).toUpperCase()}`,
       platform: currentResult.platform,
       username: currentResult.username,
       caption: currentResult.caption,
       content_type: currentResult.content_type,
+      infringing_url: infringingUrl,
+      work_title: currentResult.artifact?.filename || currentResult.caption || 'Protected Media Asset',
+      rights_holder: 'VeriMedia Authorized Rights Holder',
       analysis: {
         similarity: currentResult.similarity,
         integrity_score: currentResult.integrity?.score ?? 0,
@@ -29,7 +35,7 @@ export function DMCAModal() {
         severity: currentResult.ai_analysis?.severity ?? 'MEDIUM',
         scenario: currentResult.scenario,
       },
-    })
+    } as any)
     if (result) setNotice(result)
     setLoading(false)
   }

@@ -81,7 +81,9 @@ export async function computeImageStatistics(imageBuffer) {
       entropy: stats.entropy ? Number(stats.entropy.toFixed(2)) : Number((meanVariance / 10).toFixed(2))
     };
   } catch (err) {
-    console.warn('[SharpStats] Failed to compute image statistics:', err.message);
+    if (!err.message || !err.message.includes('unsupported image format')) {
+      console.warn('[SharpStats] Failed to compute image statistics:', err.message);
+    }
     return null;
   }
 }

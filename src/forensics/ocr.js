@@ -4,6 +4,20 @@
  * Always returns a result object — never throws to caller.
  */
 import { createWorker } from 'tesseract.js';
+import sharp from 'sharp';
+
+/**
+ * Validates that a buffer is a readable image before invoking Leptonica / Tesseract.
+ */
+async function isReadableImageBuffer(buffer) {
+  if (!buffer || !Buffer.isBuffer(buffer) || buffer.length === 0) return false;
+  try {
+    const meta = await sharp(buffer).metadata();
+    return Boolean(meta && meta.format && meta.width > 0 && meta.height > 0);
+  } catch (_) {
+    return false;
+  }
+}
 
 /**
  * Perform OCR on an image buffer.
@@ -23,6 +37,18 @@ export async function performOCR(imageBuffer, options = {}) {
       wordCount: 0,
       language,
       error: 'No image buffer provided'
+    };
+  }
+
+  const isValidImage = await isReadableImageBuffer(imageBuffer);
+  if (!isValidImage) {
+    return {
+      supported: false,
+      text: '',
+      confidence: 0,
+      wordCount: 0,
+      language,
+      error: 'Unsupported or non-image media format'
     };
   }
 

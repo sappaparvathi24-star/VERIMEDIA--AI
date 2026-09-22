@@ -191,9 +191,13 @@ class ProvenanceService {
     };
   }
 
-  // ── INVESTIGATION STATUS ──────────────────────────────────────────────────
+  // ── INVESTIGATION STATUS & METADATA ────────────────────────────────────────
   updateInvestigationStatus(investigationId, newStatus) {
     return this.store.updateInvestigationStatus(investigationId, newStatus);
+  }
+
+  updateInvestigationMetadata(investigationId, patch = {}) {
+    return this.store.updateInvestigationMetadata(investigationId, patch);
   }
 
   // ── FINDINGS MANAGEMENT & DECISIONS (PHASE J / PROMPT 1) ────────────────────

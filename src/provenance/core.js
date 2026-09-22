@@ -438,6 +438,18 @@ export class ProvenanceStore {
     return inv;
   }
 
+  updateInvestigationMetadata(id, patch = {}) {
+    const inv = this.getInvestigation(id);
+    if (!inv) return null;
+    inv.metadata = {
+      ...(inv.metadata || {}),
+      ...patch
+    };
+    inv.updatedAt = new Date().toISOString();
+    persistence.saveInvestigation(inv);
+    return inv;
+  }
+
   addNote(investigationId, { author = 'Lead Analyst', text, tags = [] } = {}) {
     const inv = this.getInvestigation(investigationId);
     if (!inv) {

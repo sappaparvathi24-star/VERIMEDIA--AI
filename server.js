@@ -323,7 +323,7 @@ async function callGemini(contents, config = {}) {
     console.warn('[Gemini] GEMINI_API_KEY not configured or unavailable');
     return null;
   }
-  const models = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite', 'gemini-3.1-pro-preview'];
+  const models = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'];
   let lastError = null;
 
   for (const model of models) {
@@ -369,7 +369,12 @@ async function callGemini(contents, config = {}) {
   }
 
   if (lastError) {
-    console.warn('[Gemini] All candidate models failed:', lastError.message);
+    const isQuotaError = lastError.message?.includes('429') || lastError.message?.includes('quota') || lastError.status === 429;
+    if (isQuotaError) {
+      console.warn('[Gemini] Rate limit / quota limit reached (429). Falling back to local forensic analysis.');
+    } else {
+      console.warn('[Gemini] All candidate models failed:', lastError.message);
+    }
   }
   return null;
 }
@@ -425,7 +430,7 @@ function healthResponse(req, res) {
     uptime_seconds: Math.floor(process.uptime()),
     total_scans: allArtifacts.filter(a => !a.isDemo).length,
     total_investigations: allInvestigations.filter(i => !i.isDemo).length,
-    models: ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite', 'gemini-3.1-pro-preview'],
+    models: ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'],
     timestamp: new Date().toISOString()
   });
 }
@@ -983,7 +988,7 @@ app.post('/api/gemini/multimodal-analyze', analysisLimiter, async (req, res) => 
           ]
         }
       ];
-      const models = ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.8-flash', 'gemini-flash-latest'];
+      const models = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'];
       for (const model of models) {
         try {
           const response = await ai.models.generateContent({ model, contents, config: { temperature: 0.2, maxOutputTokens: 512 } });
@@ -1625,6 +1630,25 @@ const handleV1Detect = async (req, res) => {
             status: FindingStatus.CONFIRMED,
             evidenceIds: [evExt.id]
           });
+
+          // Automatically record a propagation event for each discovered candidate
+          // so Propagation graph, velocity, and reach have real dissemination nodes
+          try {
+            provenanceService.createPropagationEvent({
+              investigationId: invId,
+              artifactId: candArtifact.id || artifact.id,
+              sourceId: candidateSource.id,
+              platform: extItem.platform || 'Web',
+              url: extItem.url || null,
+              eventType: 'OBSERVED_APPEARANCE',
+              observedAt: extItem.retrievedAt || new Date().toISOString(),
+              publishedAt: extItem.publishedAt || null,
+              confidence: extItem.similarity || 0.85,
+              limitations: ['Discovered via multi-source reverse search.']
+            });
+          } catch (propErr) {
+            console.warn('[Propagation] Failed to create propagation event for candidate:', propErr.message);
+          }
         }
       } catch (saveErr) {
         console.warn('[Discovery] Failed to persist discovery evidence into case file:', saveErr.message);
@@ -1732,6 +1756,33 @@ const handleV1Detect = async (req, res) => {
       ? Number((trustScore / 100).toFixed(2))
       : (forensic?.ela?.status === 'COMPLETED' ? (forensic.ela.hasCompressionAnomaly ? 0.35 : 0.85) : null);
 
+    let realPropagation = null;
+    if (invId) {
+      try {
+        provenanceService.updateInvestigationMetadata(invId, {
+          priority: isThreat ? (overallSimilarity > 0.95 ? 'CRITICAL' : 'HIGH') : (overallSimilarity > 0.60 ? 'MEDIUM' : 'LOW'),
+          decision,
+          forensicConfidence: Number(overallSimilarity.toFixed(2)),
+          threat_level: isThreat ? 'HIGH' : 'LOW',
+          platform: platform || 'Web',
+          username: username || null,
+          caption: caption || '',
+          contentType: content_type || 'media',
+          candidateCount: discoveredCandidatesFormatted.length,
+          authenticity: forensic?.authenticity || null,
+          trustScore: trustScore
+        });
+      } catch (updErr) {
+        console.warn('[Investigation] Failed to update investigation metadata:', updErr.message);
+      }
+
+      try {
+        realPropagation = provenanceService.getPropagation(invId);
+      } catch (propGetErr) {
+        console.warn('[Propagation] Failed to get real propagation for investigation:', propGetErr.message);
+      }
+    }
+
     return res.json({
       job_id: `DET-REAL-${Date.now().toString(36)}`,
       platform,
@@ -1791,7 +1842,7 @@ const handleV1Detect = async (req, res) => {
         }
       },
       authorship: null,
-      propagation: null,
+      propagation: realPropagation,
       ai_analysis: {
         threat_type: overallSimilarity > 0.80
           ? 'Perceptual Match / Copyright Infringement'
@@ -1958,15 +2009,18 @@ app.get(['/api/v1/cases', '/api/v1/cases/'], (req, res) => {
   res.json(cases);
 });
 
-app.post(['/api/v1/enforce/dmca', '/api/v1/enforce/dmca/'], (req, res) => {
+app.post(['/api/v1/enforce/dmca', '/api/v1/enforce/dmca/'], async (req, res) => {
   applyLegacyDeprecationHeaders(res, '/api/investigations/:id/report');
   const {
     case_id = `VM-${Date.now().toString(36).toUpperCase()}`,
-    platform = 'YouTube',
+    platform = 'Web',
     username = 'unknown_user',
     caption = '',
     content_type = 'media',
-    analysis = {}
+    analysis = {},
+    infringing_url = null,
+    work_title = 'Protected Media Asset',
+    rights_holder = 'VeriMedia Authorized Rights Holder'
   } = req.body || {};
 
   const matchScore = analysis.similarity ?? 0.95;
@@ -1974,56 +2028,142 @@ app.post(['/api/v1/enforce/dmca', '/api/v1/enforce/dmca/'], (req, res) => {
   const decision = analysis.decision ?? 'TAKEDOWN';
   const scenario = analysis.scenario ?? 'unauthorized_reupload';
 
-  const subject = `DMCA Takedown Notice: Copyright Infringement on ${platform} (${case_id})`;
-  const body = `DMCA TAKEDOWN NOTICE (17 U.S.C. § 512)
+  // Find matching investigation if available
+  const inv = provenanceService.getInvestigation(case_id)
+    || provenanceService.getInvestigations().find(i => i.caseId === case_id || i.id === case_id);
+
+  let targetUrl = infringing_url;
+  let artifactHash = 'N/A';
+  let artifactPHash = 'N/A';
+  let resolvedTitle = work_title;
+
+  if (inv) {
+    resolvedTitle = inv.title || resolvedTitle;
+    const invArtifact = inv.artifactIds?.[0] ? provenanceService.getArtifact(inv.artifactIds[0]) : null;
+    if (invArtifact) {
+      artifactHash = invArtifact.sha256 || artifactHash;
+      artifactPHash = invArtifact.perceptualHash || artifactPHash;
+    }
+    if (!targetUrl) {
+      const appearance = Array.from(provenanceService.store.appearances.values()).find(a => a.investigationId === inv.id);
+      if (appearance?.sourceId) {
+        const src = provenanceService.getSource(appearance.sourceId);
+        targetUrl = src?.url;
+      }
+    }
+  }
+
+  targetUrl = targetUrl || (username && username !== 'unknown_user' ? `https://${platform.toLowerCase().replace(/[^a-z0-9]/g, '')}.com/@${username}` : `https://${platform.toLowerCase().replace(/[^a-z0-9]/g, '')}.com/content/${case_id}`);
+
+  const prompt = `Draft a legally binding DMCA Takedown Notice under 17 U.S.C. § 512(c)(3) with technical forensic citations:
 Case ID: ${case_id}
+Protected Work: "${resolvedTitle}"
+Rights Holder: ${rights_holder}
+Infringing Platform: ${platform}
+Infringing Account: @${username}
+Infringing URL: ${targetUrl}
+Caption / Description: ${caption || 'N/A'}
+Content Type: ${content_type}
+Technical Evidence:
+- Perceptual Hash Similarity: ${(matchScore * 100).toFixed(1)}% (pHash: ${artifactPHash})
+- Cryptographic SHA-256 Digest: ${artifactHash}
+- Media Integrity Rating: ${(integrityScore * 100).toFixed(1)}%
+- Automated Decision: ${decision}
+
+Format strictly with headers:
+1. IDENTIFICATION OF COPYRIGHTED WORK
+2. IDENTIFICATION OF INFRINGING MATERIAL
+3. TECHNICAL FORENSIC EVIDENCE & INTEGRITY METRICS
+4. GOOD FAITH STATEMENT & DECLARATION UNDER PENALTY OF PERJURY
+5. AUTHORIZED REPRESENTATIVE & SIGNATURE BLOCK`;
+
+  let noticeText = null;
+  let engine = 'Legal Template Generator';
+  let source = 'template';
+
+  try {
+    const geminiResult = await callGemini(prompt, { temperature: 0.2 });
+    if (geminiResult && geminiResult.text) {
+      noticeText = geminiResult.text;
+      engine = geminiResult.model;
+      source = 'gemini';
+    }
+  } catch (err) {
+    console.warn('[DMCA] Gemini generation failed, falling back to dynamic legal template:', err.message);
+  }
+
+  const subject = `DMCA Takedown Notice (17 U.S.C. § 512): Copyright Infringement on ${platform} (${case_id})`;
+
+  if (!noticeText) {
+    noticeText = `DMCA TAKEDOWN NOTICE (17 U.S.C. § 512)
+Case Reference: ${case_id}
 Date: ${new Date().toUTCString()}
 
 To: Designated Copyright Agent — ${platform}
 
-I, the undersigned, certify under penalty of perjury that I am authorized to act on behalf of the owner of an exclusive right that is allegedly infringed.
-
 1. IDENTIFICATION OF COPYRIGHTED WORK:
-Exclusive broadcast media and proprietary digital asset catalog (Work ID: ${case_id}).
+I am an authorized agent representing ${rights_holder} ("Rights Holder"). The protected copyrighted work at issue is: "${resolvedTitle}" (Work Reference: ${case_id}).
 
 2. IDENTIFICATION OF INFRINGING MATERIAL:
-Account: @${username}
+The infringing publication is located at:
+URL: ${targetUrl}
 Platform: ${platform}
+Account: @${username}
 Caption / Description: ${caption || 'N/A'}
 Content Category: ${content_type}
 
-3. TECHNICAL FORENSIC EVIDENCE:
-- Perceptual Hash Similarity: ${(matchScore * 100).toFixed(1)}%
+3. TECHNICAL FORENSIC EVIDENCE & INTEGRITY METRICS:
+- Perceptual Hash Match: ${(matchScore * 100).toFixed(1)}% (pHash: ${artifactPHash})
+- Cryptographic SHA-256 Digest: ${artifactHash}
 - Media Integrity Rating: ${(integrityScore * 100).toFixed(1)}%
-- Automated Decision: ${decision}
-- Forensic Findings: Frame-by-frame perceptual vector match exceeds copyright threshold.
+- Automated Enforcement Decision: ${decision}
+- Forensic Findings: Frame-by-frame perceptual fingerprint match confirms unauthorized derivative/reupload.
 
-4. GOOD FAITH STATEMENT:
+4. GOOD FAITH STATEMENT & STATUTORY DECLARATION:
 I have a good faith belief that use of the material in the manner complained of is not authorized by the copyright owner, its agent, or the law.
+Under penalty of perjury, I declare that the information in this notice is accurate and that I am authorized to act on behalf of the owner of an exclusive right that is allegedly infringed.
 
-5. ACCURACY STATEMENT:
-The information in this notification is accurate, and under penalty of perjury, that the complaining party is authorized to act on behalf of the owner of an exclusive right that is allegedly infringed.
+5. REQUESTED ACTION & SIGNATURE BLOCK:
+Expeditiously remove or disable access to the infringing material referenced above pursuant to 17 U.S.C. § 512(c)(1)(C).
 
-Authorized Representative
-VeriMedia AI Automated Rights Enforcement System
+Authorized Representative:
+VeriMedia AI Automated Rights Enforcement Operations
 support@verimedia.ai`;
+  }
+
+  const noticeId = `DMCA-${Date.now()}`;
+
+  // Record DMCA filed in investigation metadata if investigation exists
+  if (inv) {
+    try {
+      provenanceService.updateInvestigationMetadata(inv.id, {
+        dmcaFiled: true,
+        dmcaNoticeId: noticeId,
+        dmcaTimestamp: new Date().toISOString(),
+        dmcaPlatform: platform,
+        dmcaTargetUrl: targetUrl
+      });
+    } catch (_) {}
+  }
 
   res.json({
     case_id,
     subject,
-    body,
+    body: noticeText,
     evidence_summary: `Perceptual match: ${(matchScore * 100).toFixed(0)}%, Integrity: ${(integrityScore * 100).toFixed(0)}%`,
     evidence_json: analysis,
-    claimant_name: 'VeriMedia AI Rights Management',
+    claimant_name: rights_holder,
     organization: 'VeriMedia Global Rights Operations',
     original_asset_id: `ASSET-${case_id}`,
     detection_timestamp: new Date().toISOString(),
     match_score: matchScore,
     manipulation_details: `Integrity assessed at ${(integrityScore * 100).toFixed(0)}% (${scenario})`,
     action_recommendation: decision,
-    source: 'fallback',
-    status: 'queued',
-    notice_id: `DMCA-${Date.now()}`
+    source,
+    engine,
+    status: 'generated',
+    notice_id: noticeId,
+    target_url: targetUrl
   });
 });
 
@@ -4106,7 +4246,7 @@ Respond ONLY with valid JSON conforming to this structure:
   "searchQueriesUsed": ["${targetQuery} earliest original source", "${targetQuery} first publication date"]
 }`;
 
-    const candidateModels = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite', 'gemini-3.1-pro-preview'];
+    const candidateModels = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'];
     for (const model of candidateModels) {
       try {
         const response = await ai.models.generateContent({
@@ -4305,7 +4445,7 @@ Respond ONLY with valid JSON conforming to this structure:
 }`;
 
   try {
-    const candidateModels = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite', 'gemini-3.1-pro-preview'];
+    const candidateModels = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'];
     for (const model of candidateModels) {
       try {
         const response = await ai.models.generateContent({

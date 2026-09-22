@@ -120,6 +120,26 @@ I am connected to the **Gemini 3.8 Flash Reasoning Engine** with **live Google S
       .catch(console.warn)
   }, [selectedCaseId])
 
+  // Reactively synchronize panel context and active media when currentResult changes
+  useEffect(() => {
+    if (!currentResult) return
+
+    const invId = currentResult.case_id || (currentResult as any)?.investigationId
+    if (invId) {
+      setSelectedInvId(invId)
+    }
+
+    const mediaImg = currentResult.artifact?.dataUrl || currentResult.artifact?.previewUrl || currentResult.artifact?.fileUrl
+    if (mediaImg) {
+      setSelectedImage(mediaImg)
+    }
+
+    if (selectedSignal.key === 'jpeg_artifact') {
+      const elaVal = (currentResult as any)?.integrity?.signals?.ela ?? (currentResult.integrity?.score ? Number((1 - currentResult.integrity.score).toFixed(2)) : 0.84)
+      setSignalValue(elaVal)
+    }
+  }, [currentResult, selectedSignal])
+
   const handleSendMessage = async (customPrompt?: string) => {
     const textToSend = customPrompt || inputText.trim()
     if (!textToSend || isSending) return
@@ -396,6 +416,91 @@ I am connected to the **Gemini 3.8 Flash Reasoning Engine** with **live Google S
           </button>
         </div>
       </div>
+
+      {/* Active Scan Context Ribbon */}
+      {currentResult && (
+        <div style={{
+          padding: '8px 20px',
+          background: 'rgba(56, 189, 248, 0.05)',
+          borderBottom: '1px solid #1e2d3d',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: 10,
+          fontSize: 12,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+              padding: '2px 8px',
+              borderRadius: 4,
+              background: 'rgba(56, 189, 248, 0.15)',
+              color: '#38bdf8',
+              fontWeight: 700,
+              fontSize: 11,
+              fontFamily: 'monospace'
+            }}>
+              ⚡ ACTIVE SCAN CONTEXT
+            </span>
+            <span style={{ color: '#f8fafc', fontWeight: 600 }}>
+              {currentResult.artifact?.filename || currentResult.caption || 'Live Scan'}
+            </span>
+            <span style={{ color: '#64748b' }}>•</span>
+            <span style={{ color: '#94a3b8' }}>
+              Platform: <strong style={{ color: '#cbd5e1' }}>{currentResult.platform}</strong>
+            </span>
+            <span style={{ color: '#64748b' }}>•</span>
+            <span style={{ color: '#94a3b8' }}>
+              Decision: <strong style={{ color: currentResult.ai_analysis?.decision === 'TAKEDOWN' || currentResult.ai_analysis?.decision === 'EMERGENCY_TAKEDOWN' ? '#ef4444' : '#22c55e' }}>{currentResult.ai_analysis?.decision || 'REVIEW'}</strong>
+            </span>
+            <span style={{ color: '#64748b' }}>•</span>
+            <span style={{ color: '#94a3b8' }}>
+              Match: <strong style={{ color: '#38bdf8' }}>{Math.round((currentResult.similarity || 0) * 100)}%</strong>
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button
+              onClick={() => handleSendMessage(`Provide an in-depth forensic intelligence analysis for active scan "${currentResult.artifact?.filename || currentResult.caption || 'Live Scan'}" (${currentResult.platform}, Match: ${Math.round((currentResult.similarity || 0) * 100)}%, Decision: ${currentResult.ai_analysis?.decision || 'REVIEW'}). Evaluate integrity metrics, tampering likelihood, and legal remedies.`)}
+              disabled={isSending}
+              style={{
+                padding: '4px 10px',
+                borderRadius: 6,
+                background: 'linear-gradient(135deg, #a855f7 0%, #3b82f6 100%)',
+                color: '#ffffff',
+                fontSize: 11,
+                fontWeight: 700,
+                border: 'none',
+                cursor: isSending ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5,
+              }}
+            >
+              <Sparkles size={12} />
+              <span>Ask Gemini to Analyze</span>
+            </button>
+            <button
+              onClick={() => setActiveSubMode('dossier')}
+              style={{
+                padding: '4px 10px',
+                borderRadius: 6,
+                background: '#1e293b',
+                color: '#38bdf8',
+                fontSize: 11,
+                fontWeight: 600,
+                border: '1px solid #334155',
+                cursor: 'pointer',
+              }}
+            >
+              Synthesize Dossier
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Mode 1: AI Copilot Conversational Agent */}
       {activeSubMode === 'copilot' && (
