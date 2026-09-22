@@ -304,6 +304,28 @@ export function HeaderBar() {
           </button>
         </Tooltip>
 
+        {/* Ephemeral Session Notice if Supabase not configured */}
+        {health && health.integrations?.supabase !== 'configured' && (
+          <Tooltip content="Ephemeral session — Supabase not configured. Investigations, findings & evidence are kept in local storage/memory and will reset upon restart." position="bottom">
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              background: 'rgba(245, 158, 11, 0.1)',
+              border: '1px solid rgba(245, 158, 11, 0.3)',
+              padding: '4px 10px',
+              borderRadius: 6,
+              fontSize: 10,
+              fontWeight: 700,
+              color: '#fbbf24',
+              fontFamily: 'monospace'
+            }}>
+              <span>⚡</span>
+              <span>EPHEMERAL SESSION (NO SUPABASE)</span>
+            </div>
+          </Tooltip>
+        )}
+
         {/* Backend Status Indicator */}
         <Tooltip content="5-Engine VeriMedia Engine API: Nominal Operational Status" position="bottom">
           <div style={{

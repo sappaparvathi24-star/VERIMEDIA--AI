@@ -190,10 +190,11 @@ export function ForensicViewer({ result: propResult, compact = false, onClose }:
     if ((result as any)?.comparisonSummary?.reports && Array.isArray((result as any).comparisonSummary.reports) && (result as any).comparisonSummary.reports.length > 0) {
       return (result as any).comparisonSummary.reports
     }
-    if ((result as any)?.candidates && Array.isArray((result as any).candidates) && (result as any).candidates.length > 0) {
+    const cands = (result as any)?.candidates || (result as any)?.discovery?.candidates
+    if (cands && Array.isArray(cands) && cands.length > 0) {
       return generateTenComparisonReports(
         result?.artifact || { filename: (result as any)?.caption || 'Uploaded Reference Asset', title: (result as any)?.caption },
-        (result as any).candidates,
+        cands,
         result?.scenario || 'normal'
       ).reports
     }

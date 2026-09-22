@@ -408,24 +408,75 @@ export function InvestigationFlow() {
                 </button>
               </div>
 
-              {/* Notice that fields are optional */}
-              <div style={{
-                padding: '10px 14px',
-                borderRadius: 8,
-                background: 'rgba(0, 212, 255, 0.06)',
-                border: '1px solid rgba(0, 212, 255, 0.18)',
-                fontSize: 12,
-                color: '#38bdf8',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                marginBottom: 20
-              }}>
-                <Sparkles size={16} />
-                <span>
-                  <strong>Ready for Investigation:</strong> You can start right away. All fields below are 100% optional and only assist targeted discovery.
-                </span>
-              </div>
+              {/* Notice for Video/Audio vs Images */}
+              {selectedFile && (selectedFile.type.startsWith('video/') || selectedFile.type.startsWith('audio/') || /\.(mp4|webm|avi|mov|mkv|mp3|wav|ogg|flac|m4a)$/i.test(selectedFile.name)) ? (
+                <div style={{
+                  padding: '12px 16px',
+                  borderRadius: 8,
+                  background: 'rgba(245, 158, 11, 0.08)',
+                  border: '1px solid rgba(245, 158, 11, 0.3)',
+                  marginBottom: 20,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 10
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#fbbf24', fontSize: 13, fontWeight: 700 }}>
+                    <AlertTriangle size={16} /> Video and audio forensic analysis isn't implemented yet — the file will be registered but not analyzed
+                  </div>
+                  <div style={{ fontSize: 12, color: '#cbd5e1', lineHeight: 1.5 }}>
+                    Pixel forensics (ELA, noise analysis, EXIF extraction) are currently available only for images. Video and audio files are SHA-256 fingerprinted and registered in the provenance record, but deep forensic analysis is skipped.
+                  </div>
+                  <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      style={{
+                        background: 'rgba(0, 212, 255, 0.15)',
+                        border: '1px solid rgba(0, 212, 255, 0.35)',
+                        color: '#38bdf8',
+                        padding: '6px 14px',
+                        borderRadius: 6,
+                        fontSize: 12,
+                        fontWeight: 700,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Choose image instead
+                    </button>
+                    <button
+                      onClick={handleStartInvestigation}
+                      style={{
+                        background: 'transparent',
+                        border: '1px solid #334155',
+                        color: '#94a3b8',
+                        padding: '6px 14px',
+                        borderRadius: 6,
+                        fontSize: 12,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Continue upload
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div style={{
+                  padding: '10px 14px',
+                  borderRadius: 8,
+                  background: 'rgba(0, 212, 255, 0.06)',
+                  border: '1px solid rgba(0, 212, 255, 0.18)',
+                  fontSize: 12,
+                  color: '#38bdf8',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  marginBottom: 20
+                }}>
+                  <Sparkles size={16} />
+                  <span>
+                    <strong>Ready for Investigation:</strong> You can start right away. All fields below are 100% optional and only assist targeted discovery.
+                  </span>
+                </div>
+              )}
 
               {/* Optional Context Controls */}
               <div style={{

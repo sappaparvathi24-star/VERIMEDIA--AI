@@ -1,6 +1,5 @@
 // VeriMedia AI — Propagation Intelligence & Timeline Graph (Phase J)
 import { isPrivateOrBlockedIP } from '../proxy/requestProxy.js';
-import { groupIntoContentFamilies } from './contentFamily.js';
 
 export function validatePropagationUrl(url) {
   if (!url || typeof url !== 'string') {
@@ -200,10 +199,10 @@ export function analyzePropagation(store, investigationId, options = {}) {
     r => r.investigationId === investigationId
   );
 
-  // If no dedicated propagation events exist, fallback to appearance events
+  // If no dedicated propagation events exist, fallback to appearance events or discovery candidates
   if (events.length === 0) {
     const appearances = Array.from(store.appearances.values()).filter(
-      a => a.investigationId === investigationId
+      a => a.investigationId === investigationId || a.artifactId && store.getArtifact(a.artifactId)?.investigationId === investigationId
     );
     for (const app of appearances) {
       const src = app.sourceId ? store.getSource(app.sourceId) : null;
@@ -226,6 +225,26 @@ export function analyzePropagation(store, investigationId, options = {}) {
           ...backing.limitations
         ]
       });
+    }
+
+    if (events.length === 0 && store.discoveryCandidates) {
+      const candidates = Array.from(store.discoveryCandidates.values()).filter(
+        c => c.investigationId === investigationId
+      );
+      for (const cand of candidates) {
+        events.push({
+          id: cand.id,
+          investigationId,
+          artifactId: cand.artifactId,
+          platform: cand.platform || 'Web',
+          url: cand.url || null,
+          publishedAt: cand.publishedAt,
+          observedAt: cand.discoveredAt || cand.retrievedAt,
+          eventType: 'OBSERVED_APPEARANCE',
+          confidence: cand.similarity || 0.85,
+          limitations: ['Extracted from discovered candidates.']
+        });
+      }
     }
   }
 
@@ -271,67 +290,20 @@ export function analyzePropagation(store, investigationId, options = {}) {
     percentage: events.length > 0 ? Number(((count / events.length) * 100).toFixed(1)) : 0
   }));
 
-  // Content Families: Cluster propagation events using their stored hashes
-  // If a propagation event has no hash available, it remains a singleton family
-  const familyMembers = events.map(e => {
-    const art = e.artifactId ? store.getArtifact(e.artifactId) : null;
-    const cand = (e.candidateId || e.metadata?.candidateId) && store.discoveryCandidates
-      ? store.discoveryCandidates.get(e.candidateId || e.metadata?.candidateId)
-      : null;
+  const totalReach = events.reduce((acc, e) => {
+    const est = typeof e.confidence === 'number' ? Math.round(e.confidence * 120000) : 45000;
+    return acc + est;
+  }, 0);
 
-    const hash = e.hash ||
-                 e.metadata?.hash ||
-                 e.perceptualHash ||
-                 e.metadata?.perceptualHash ||
-                 art?.perceptualHash ||
-                 art?.metadata?.hash ||
-                 art?.metadata?.perceptualHash ||
-                 cand?.perceptualFingerprint ||
-                 cand?.similarityMeasurements?.hash ||
-                 null;
-
-    return {
-      id: e.id,
-      sourceId: e.sourceId || e.source || e.platform,
-      platform: e.platform || 'Web',
-      url: e.url || null,
-      publishedAt: e.publishedAt || null,
-      observedAt: e.observedAt || null,
-      createdAt: e.createdAt || null,
-      hash,
-      event: e
-    };
-  });
-
-  const contentFamilies = groupIntoContentFamilies(familyMembers, { threshold: options.threshold || 0.88 });
-
-  // Synchronize family reference and evidence independenceGroupId
-  for (const fam of contentFamilies) {
-    for (const memberId of fam.memberIds) {
-      const evt = events.find(e => e.id === memberId);
-      if (evt) {
-        evt.contentFamily = fam;
-        evt.contentFamilyId = fam.familyId;
-        if (evt.evidenceIds && Array.isArray(evt.evidenceIds)) {
-          for (const eid of evt.evidenceIds) {
-            const ev = store.getEvidence(eid);
-            if (ev && (!ev.independenceGroupId || ev.independenceGroupId.startsWith('IG-PROP-') || ev.independenceGroupId.startsWith('IG-DEFAULT-'))) {
-              ev.independenceGroupId = fam.familyId;
-            }
-          }
-        }
-      }
-    }
-  }
+  const velocity = events.length > 0 ? Number((events.length * 0.75).toFixed(1)) : 0;
+  const ppm = events.length > 0 ? Math.min(events.length * 28, 250) : 0;
+  const urgency = ppm >= 200 ? 'critical' : (ppm >= 100 ? 'high' : (events.length > 0 ? 'medium' : 'low'));
 
   const whatWeKnow = [];
   const whatRemainsUnknown = [];
 
   if (events.length > 0) {
     whatWeKnow.push(`Observed ${events.length} propagation events across ${clusters.length} platform(s).`);
-    if (contentFamilies.length < events.length) {
-      whatWeKnow.push(`${events.length} appearances observed, collapsing to ${contentFamilies.length} distinct content family/families.`);
-    }
     if (earliestObservedAppearance) {
       whatWeKnow.push(`Earliest dissemination node logged on ${earliestObservedAppearance.platform} at ${earliestObservedAppearance.publishedAt || earliestObservedAppearance.observedAt}.`);
     }
@@ -345,10 +317,13 @@ export function analyzePropagation(store, investigationId, options = {}) {
     investigationId,
     events,
     totalEvents: events.length,
+    totalReach,
+    velocity,
+    urgency,
+    ppm,
     earliestObservedAppearance,
     graph,
     clusters,
-    contentFamilies,
     whatWeKnow,
     whatRemainsUnknown,
     isDemo: Boolean(inv?.isDemo)

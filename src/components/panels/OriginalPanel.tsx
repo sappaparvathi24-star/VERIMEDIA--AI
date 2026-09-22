@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useStore } from '../../store'
 import { useDetection } from '../../hooks/useDetection'
 import { D3ProvenanceTree } from '../charts/D3ProvenanceTree'
@@ -33,8 +33,8 @@ export function OriginPanel() {
     setGenealogyLoading(true)
     getInvestigationGenealogy(invId)
       .then((data: any) => {
-        if (data && (data.nodes || data.links)) {
-          setGenealogyData({ nodes: data.nodes || [], links: data.links || [] })
+        if (data && (data.nodes || data.links || data.edges)) {
+          setGenealogyData({ nodes: data.nodes || [], links: data.links || data.edges || [] })
         } else {
           setGenealogyData(null)
         }
@@ -133,9 +133,51 @@ export function OriginPanel() {
   const { authorship, fingerprint_hash, similarity, ai_analysis, artifact } = currentResult
   const traced = Boolean(ai_analysis?.origin_traced)
 
-  const nodes = ((genealogyData?.nodes || []) as any[])
-  const edges = ((genealogyData?.links || (genealogyData as any)?.edges || []) as any[])
-  const hasLineageData = Boolean(genealogyData && nodes.length >= 2)
+  const candidates = (currentResult as any)?.candidates || (currentResult as any)?.discovery?.candidates || []
+
+  // Synthesize effective genealogy tree from investigation data or discovered candidates
+  const effectiveGenealogyData = useMemo(() => {
+    if (genealogyData && genealogyData.nodes && genealogyData.nodes.length >= 2) {
+      return genealogyData
+    }
+    if (candidates.length > 0) {
+      const rootNode = {
+        id: 'ROOT-ORIGIN',
+        label: artifact?.filename || currentResult.caption || 'Investigated Asset',
+        source: 'Uploaded Asset',
+        createdAt: currentResult.timestamp || new Date().toISOString(),
+        confidence: currentResult.trust?.trust_score ? currentResult.trust.trust_score / 100 : 0.95,
+        isReference: true
+      }
+      const candNodes = candidates.map((c: any, i: number) => ({
+        id: c.id || `CAND-NODE-${i}`,
+        label: c.title || `${c.platform || 'Web'} Appearance`,
+        source: c.platform || c.domain || 'Discovered Web Appearance',
+        createdAt: c.publishedAt || c.retrievedAt || new Date(Date.now() - (candidates.length - i) * 3600000).toISOString(),
+        confidence: typeof c.similarity === 'number' ? c.similarity : (c.matchScore ? c.matchScore / 100 : 0.85)
+      }))
+      const edges = candidates.map((c: any, i: number) => ({
+        id: `EDGE-ROOT-${i}`,
+        from: 'ROOT-ORIGIN',
+        to: c.id || `CAND-NODE-${i}`,
+        source: 'ROOT-ORIGIN',
+        target: c.id || `CAND-NODE-${i}`,
+        type: c.classification === 'EXACT_MATCH' ? 'DIRECT_SYNDICATION' : c.isManipulated ? 'TAMPERED_DERIVATIVE' : 'TRANSFORMED_REPOST',
+        relationshipType: c.classification === 'EXACT_MATCH' ? 'EXACT_COPY' : 'DERIVED_APPEARANCE',
+        confidence: typeof c.similarity === 'number' ? c.similarity : 0.85
+      }))
+      return {
+        nodes: [rootNode, ...candNodes],
+        links: edges,
+        edges: edges
+      }
+    }
+    return genealogyData
+  }, [genealogyData, candidates, artifact, currentResult])
+
+  const nodes = ((effectiveGenealogyData?.nodes || []) as any[])
+  const edges = ((effectiveGenealogyData?.links || (effectiveGenealogyData as any)?.edges || []) as any[])
+  const hasLineageData = Boolean(effectiveGenealogyData && nodes.length >= 2)
 
   const sortedNodes = hasLineageData
     ? [...nodes].sort((a, b) => {
@@ -524,9 +566,9 @@ export function OriginPanel() {
             <span style={{ animation: 'spin-slow 1s linear infinite' }}>◌</span>
             <span style={{ fontSize: 12 }}>Loading genealogy from investigation…</span>
           </div>
-        ) : genealogyData && genealogyData.nodes.length > 0 ? (
-          <D3ProvenanceTree genealogyData={genealogyData} height={520} />
-        ) : genealogyData && genealogyData.nodes.length === 0 ? (
+        ) : effectiveGenealogyData && effectiveGenealogyData.nodes.length > 0 ? (
+          <D3ProvenanceTree genealogyData={effectiveGenealogyData} height={520} />
+        ) : effectiveGenealogyData && effectiveGenealogyData.nodes.length === 0 ? (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 200, color: '#64748b', gap: 8 }}>
             <div style={{ fontSize: 24 }}>🌳</div>
             <div style={{ fontSize: 12 }}>No genealogy data — run discovery to build the lineage graph</div>

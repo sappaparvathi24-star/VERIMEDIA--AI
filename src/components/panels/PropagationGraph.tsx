@@ -245,20 +245,6 @@ export function PropagationGraph({ ppm: propPpm, candidates: propCandidates }: P
   const [propLoading, setPropLoading] = useState(false)
   const [selectedNode, setSelectedNode] = useState<CascadeNode | null>(null)
 
-  const contentFamilies: any[] = activePropagation?.contentFamilies || (currentResult?.propagation as any)?.contentFamilies || []
-  const clusters: any[] = activePropagation?.clusters || (currentResult?.propagation as any)?.clusters || []
-  const totalEventsCount = activePropagation?.totalEvents ?? activePropagation?.events?.length ?? 5
-  
-  const distinctSourcesCount = useMemo(() => {
-    if (activePropagation?.events && Array.isArray(activePropagation.events) && activePropagation.events.length > 0) {
-      const s = new Set(activePropagation.events.map((e: any) => e.sourceId || e.source || e.platform || e.url).filter(Boolean))
-      return s.size || 1
-    }
-    return 4
-  }, [activePropagation])
-
-  const familyCount = contentFamilies.length > 0 ? contentFamilies.length : (totalEventsCount > 0 ? 1 : 0)
-
   // Cascade event nodes data
   const cascadeEvents: CascadeNode[] = [
     {
@@ -726,49 +712,6 @@ export function PropagationGraph({ ppm: propPpm, candidates: propCandidates }: P
         </div>
       </div>
 
-      {/* Content Family Summary Banner */}
-      <div id="content-family-summary-banner" style={{
-        padding: '12px 18px',
-        borderRadius: 8,
-        background: 'rgba(56, 189, 248, 0.08)',
-        border: '1px solid rgba(56, 189, 248, 0.25)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        flexWrap: 'wrap',
-        gap: 12
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 18 }}>🧬</span>
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 800, color: '#f1f5f9', fontFamily: 'monospace' }}>
-              {totalEventsCount} appearances across {distinctSourcesCount} sources · {familyCount} distinct content {familyCount === 1 ? 'family' : 'families'}
-            </div>
-            <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
-              Sybil Defense: Near-identical reposts and transcode variations collapsed into perceptual equivalence families (0.88 single-linkage threshold).
-            </div>
-          </div>
-        </div>
-        {contentFamilies.length > 0 && (
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {contentFamilies.slice(0, 3).map((f: any) => (
-              <span key={f.familyId} style={{
-                fontSize: 10,
-                color: '#38bdf8',
-                background: 'rgba(56, 189, 248, 0.15)',
-                border: '1px solid rgba(56, 189, 248, 0.3)',
-                padding: '3px 8px',
-                borderRadius: 4,
-                fontFamily: 'monospace',
-                fontWeight: 700
-              }}>
-                {f.familyId} ({f.appearanceCount} appearances)
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
-
       {/* Real-time Viral Velocity Metrics Cards Grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
         <div style={{ background: '#0d1117', border: '1px solid #1e2d3d', borderRadius: 8, padding: '14px 16px' }}>
@@ -1197,113 +1140,6 @@ export function PropagationGraph({ ppm: propPpm, candidates: propCandidates }: P
           )}
         </div>
       )}
-
-      {/* Content Families & Platform Distribution Card */}
-      <div id="content-families-distribution-card" style={{
-        background: '#0d1117',
-        border: '1px solid #1e2d3d',
-        borderRadius: 10,
-        padding: 20
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
-          <div>
-            <h4 style={{ fontSize: 13, fontWeight: 800, color: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.06em', margin: 0 }}>
-              Content Families & Independence Grouping
-            </h4>
-            <p style={{ fontSize: 11, color: '#94a3b8', margin: '4px 0 0 0' }}>
-              {totalEventsCount} appearances across {distinctSourcesCount} sources · {familyCount} distinct content {familyCount === 1 ? 'family' : 'families'} (0.88 single-linkage perceptual hash clustering)
-            </p>
-          </div>
-          <span style={{
-            fontSize: 10,
-            fontFamily: 'monospace',
-            color: '#38bdf8',
-            background: 'rgba(56,189,248,0.1)',
-            padding: '3px 8px',
-            borderRadius: 4,
-            border: '1px solid rgba(56,189,248,0.25)',
-            fontWeight: 700
-          }}>
-            SYBIL RESISTANT
-          </span>
-        </div>
-
-        {/* Content Families Grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12, marginBottom: clusters.length > 0 ? 16 : 0 }}>
-          {contentFamilies.length > 0 ? (
-            contentFamilies.map((fam: any) => (
-              <div key={fam.familyId} style={{
-                background: '#080c10',
-                border: '1px solid #1e293b',
-                borderRadius: 8,
-                padding: '12px 14px'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: 11, fontWeight: 800, fontFamily: 'monospace', color: '#38bdf8' }}>
-                    {fam.familyId}
-                  </span>
-                  <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, background: '#1e293b', color: '#cbd5e1', fontFamily: 'monospace' }}>
-                    {fam.appearanceCount} appearances
-                  </span>
-                </div>
-                <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 8, display: 'flex', flexDirection: 'column', gap: 3 }}>
-                  <div>Sources: <span style={{ color: '#f1f5f9', fontWeight: 600 }}>{fam.distinctSourceCount} distinct</span></div>
-                  {fam.earliestAt && (
-                    <div>Observed: <span style={{ color: '#cbd5e1' }}>{new Date(fam.earliestAt).toLocaleString()}</span></div>
-                  )}
-                  <div style={{ fontSize: 10, color: '#64748b', wordBreak: 'break-all', fontFamily: 'monospace' }}>
-                    Rep: {fam.representativeId}
-                  </div>
-                </div>
-              </div>
-            ))
-          ) : (
-            <div style={{
-              background: '#080c10',
-              border: '1px dashed #1e293b',
-              borderRadius: 8,
-              padding: 14,
-              color: '#94a3b8',
-              fontSize: 11,
-              fontFamily: 'monospace'
-            }}>
-              Initial content family active for seed artifact. Reposts and mutations collapse automatically upon ingestion.
-            </div>
-          )}
-        </div>
-
-        {/* Platform Clusters Breakdown if available */}
-        {clusters.length > 0 && (
-          <div style={{ borderTop: '1px solid #1e293b', paddingTop: 14, marginTop: 4 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 8 }}>
-              Platform Distribution Breakdown
-            </div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {clusters.map((c: any) => (
-                <div key={c.platform} style={{
-                  background: '#080c10',
-                  border: '1px solid #1e293b',
-                  borderRadius: 6,
-                  padding: '6px 12px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  fontSize: 11
-                }}>
-                  <span style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: '50%',
-                    background: PLATFORM_COLORS[c.platform] || '#94a3b8'
-                  }} />
-                  <span style={{ color: '#f1f5f9', fontWeight: 600 }}>{c.platform}</span>
-                  <span style={{ color: '#94a3b8' }}>{c.count} ({c.percentage}%)</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
     </div>
   )
 }

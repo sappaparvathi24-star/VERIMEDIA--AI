@@ -10,9 +10,20 @@
  */
 
 import { createWorker } from 'tesseract.js';
+import sharp from 'sharp';
 
 let persistentWorkerPromise = null;
 let isInitializingWorker = false;
+
+async function isReadableImageBuffer(buffer) {
+  if (!buffer || !Buffer.isBuffer(buffer) || buffer.length === 0) return false;
+  try {
+    const meta = await sharp(buffer).metadata();
+    return Boolean(meta && meta.format && meta.width > 0 && meta.height > 0);
+  } catch (_) {
+    return false;
+  }
+}
 
 /**
  * Retrieves or initializes the persistent Tesseract worker.
@@ -70,6 +81,18 @@ export async function extractTextFromImage(buffer, options = {}) {
       wordCount: 0,
       hasText: false,
       status: 'EMPTY_INPUT'
+    };
+  }
+
+  const isValidImage = await isReadableImageBuffer(buffer);
+  if (!isValidImage) {
+    return {
+      text: '',
+      confidence: 0.15,
+      wordCount: 0,
+      hasText: false,
+      status: 'UNSUPPORTED_FORMAT',
+      error: 'Non-image or unsupported media buffer'
     };
   }
 
