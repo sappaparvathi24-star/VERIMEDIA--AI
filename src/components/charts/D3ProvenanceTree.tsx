@@ -637,23 +637,22 @@ export function D3ProvenanceTree({ result: propResult, height = 520, genealogyDa
     return buildProvenanceTreeData(activeResult)
   }, [propTreeData, useDemoMode, genealogyData, activeResult])
 
-  // Sequential Node Attachment Animation State
+  // Sequential Node Attachment Animation State (Starts at 1: Source Node, then attaches children sequentially)
   const orderedNodes = useMemo(() => getOrderedNodes(treeData), [treeData])
   const totalSteps = orderedNodes.length
 
-  const [revealedCount, setRevealedCount] = useState<number>(totalSteps)
-  const [isPlaying, setIsPlaying] = useState<boolean>(false)
+  const [revealedCount, setRevealedCount] = useState<number>(1)
+  const [isPlaying, setIsPlaying] = useState<boolean>(true)
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1)
 
-  // Reset to full view whenever tree data changes unless actively playing
+  // Start sequential attachment from source node on data change or initial mount
   useEffect(() => {
-    if (!isPlaying) {
-      setRevealedCount(totalSteps)
-      setSelectedNode(orderedNodes[0] || null)
-    }
-  }, [treeData, totalSteps])
+    setRevealedCount(1)
+    setSelectedNode(orderedNodes[0] || null)
+    setIsPlaying(true)
+  }, [treeData])
 
-  // Playback timer loop
+  // Playback timer loop: reveals nodes one by one attaching to parent
   useEffect(() => {
     if (!isPlaying) return
     const interval = setInterval(() => {
@@ -666,7 +665,7 @@ export function D3ProvenanceTree({ result: propResult, height = 520, genealogyDa
         setSelectedNode(orderedNodes[next - 1] || null)
         return next
       })
-    }, 1300 / playbackSpeed)
+    }, 1200 / playbackSpeed)
 
     return () => clearInterval(interval)
   }, [isPlaying, totalSteps, playbackSpeed, orderedNodes])
