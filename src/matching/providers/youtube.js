@@ -22,12 +22,18 @@ export class YouTubeDiscoveryProvider {
     if (!this.isConfigured()) {
       return {
         status: 'UNAVAILABLE',
-        reason: 'API key not configured on this deployment'
+        confidence: 'UNAVAILABLE',
+        source: this.name,
+        reason: 'API key not configured on this deployment',
+        isSystemAnalysisOnly: true
       };
     }
     return {
       status: 'AVAILABLE',
-      reason: null
+      confidence: 'LIVE',
+      source: this.name,
+      reason: null,
+      isSystemAnalysisOnly: false
     };
   }
 
@@ -50,7 +56,10 @@ export class YouTubeDiscoveryProvider {
       return {
         providerId: this.id,
         status: 'UNAVAILABLE',
+        confidence: 'UNAVAILABLE',
+        source: this.name,
         reason: 'API key not configured on this deployment',
+        isSystemAnalysisOnly: true,
         candidates: []
       };
     }
@@ -59,7 +68,10 @@ export class YouTubeDiscoveryProvider {
       return {
         providerId: this.id,
         status: 'SKIPPED',
+        confidence: 'INSUFFICIENT_DATA',
+        source: this.name,
         reason: 'No search query or extracted visual signal provided',
+        isSystemAnalysisOnly: true,
         candidates: []
       };
     }
@@ -70,7 +82,10 @@ export class YouTubeDiscoveryProvider {
         return {
           providerId: this.id,
           status: 'UNAVAILABLE',
-          reason: response.reason,
+          confidence: 'UNAVAILABLE',
+          source: this.name,
+          reason: response.reason || 'YouTube API quota or service unavailable',
+          isSystemAnalysisOnly: true,
           candidates: []
         };
       }
@@ -100,6 +115,10 @@ export class YouTubeDiscoveryProvider {
       return {
         providerId: this.id,
         status: 'AVAILABLE',
+        confidence: candidates.length > 0 ? 'LIVE' : 'INSUFFICIENT_DATA',
+        source: this.name,
+        reason: candidates.length === 0 ? '0 matching candidates found on YouTube for this item' : null,
+        isSystemAnalysisOnly: false,
         count: candidates.length,
         candidates
       };
@@ -107,7 +126,10 @@ export class YouTubeDiscoveryProvider {
       return {
         providerId: this.id,
         status: 'ERROR',
+        confidence: 'UNAVAILABLE',
+        source: this.name,
         reason: err.message,
+        isSystemAnalysisOnly: true,
         candidates: []
       };
     }

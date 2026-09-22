@@ -15,6 +15,8 @@ import { CasesPanel } from '../components/panels/CasesPanel'
 import { SystemPanel } from '../components/panels/SystemPanel'
 import { GeminiIntelligencePanel } from '../components/panels/GeminiIntelligencePanel'
 import { DebugPanel } from '../components/panels/DebugPanel'
+import { BulkAuditPanel } from '../components/panels/BulkAuditPanel'
+import { BatchComparePanel } from '../components/panels/BatchComparePanel'
 import { EvidenceModal } from '../components/modals/EvidenceModal'
 import { DMCAModal } from '../components/modals/DMCAModal'
 import { MonitoringJobModal } from '../components/modals/MonitoringJobModal'
@@ -113,6 +115,12 @@ export function Dashboard() {
             {activeTab === 'feed' && (
               <div style={{ minHeight: '100%', width: '100%', overflowY: 'auto', padding: 20 }}>
                 <FeedPanel />
+              </div>
+            )}
+
+            {(activeTab === 'batch-compare' || activeTab === 'bulk-audit') && (
+              <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column' }}>
+                <BatchComparePanel />
               </div>
             )}
           </main>

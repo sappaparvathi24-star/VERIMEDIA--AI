@@ -283,6 +283,69 @@ export const uploadArtifactAsync = async (file: File, investigationId?: string) 
   }
 }
 
+export const batchCompareArtifacts = async (reference: File, bundle: File): Promise<{
+  success: boolean
+  status: string
+  jobId: string
+  batchId?: string
+  investigationId?: string
+  pollUrl?: string
+  streamUrl?: string
+  reference?: any
+  candidateCount?: number
+  [key: string]: any
+}> => {
+  const token = await getToken()
+  const formData = new FormData()
+  formData.append('reference', reference)
+  formData.append('bundle', bundle)
+
+  const base = getApiBaseUrl()
+  let res: any
+
+  try {
+    res = await axios.post(`${base}/api/artifacts/batch-compare`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      },
+      validateStatus: () => true
+    })
+  } catch (err) {
+    res = null
+  }
+
+  // If initial request failed or returned HTML, retry relative endpoint
+  if ((!res || typeof res.data === 'string' || res.status >= 400) && base !== '') {
+    try {
+      res = await axios.post('/api/artifacts/batch-compare', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        validateStatus: () => true
+      })
+    } catch {
+      // Ignore
+    }
+  }
+
+  if (res && res.data && typeof res.data === 'object' && res.data.jobId) {
+    return res.data
+  }
+
+  if (res && res.status >= 400) {
+    const errorMsg = res.data?.error || `Batch compare failed with HTTP ${res.status}`
+    throw new Error(errorMsg)
+  }
+
+  if (res && res.data && typeof res.data === 'object') {
+    return res.data
+  }
+
+  throw new Error('Failed to initiate batch comparison with server.')
+}
+
 export const getForensicJob = async (jobId: string) => {
   return axios.get(`${BASE}/api/jobs/${jobId}`).then(r => r.data)
 }

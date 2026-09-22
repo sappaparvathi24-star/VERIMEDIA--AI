@@ -42,6 +42,7 @@ import { ErrorLevelAnalysisInspector } from '../forensics/ErrorLevelAnalysisInsp
 import { CandidateComparisonHub } from './CandidateComparisonHub'
 import { generateTenComparisonReports } from '../../matching/candidateReportsGenerator'
 import { isSimulatedResult } from '../../lib/resultMode'
+import { TermLabel } from '../ui/TermLabel'
 
 interface ForensicViewerProps {
   result?: DetectionResult | null
@@ -1604,8 +1605,8 @@ export function ForensicViewer({ result: propResult, compact = false, onClose }:
                     <>
                       <div className="grid grid-cols-2 gap-2">
                         <div className="p-2.5 bg-[#131b29] rounded border border-slate-800">
-                          <div className="text-[10px] text-slate-500 font-mono">MAKE / MODEL</div>
-                          <div className="font-semibold text-slate-200 truncate">{[exifData.make, exifData.model].filter(Boolean).join(' ') || '—'}</div>
+                          <TermLabel term="exif_make" label="MAKE / MODEL" labelClassName="text-[10px] text-slate-500 font-mono font-semibold" subtextClassName="text-[10px] text-slate-400 font-normal" />
+                          <div className="font-semibold text-slate-200 truncate mt-0.5">{[exifData.make, exifData.model].filter(Boolean).join(' ') || '—'}</div>
                         </div>
                         <div className="p-2.5 bg-[#131b29] rounded border border-slate-800">
                           <div className="text-[10px] text-slate-500 font-mono">LENS ATTACHED</div>
@@ -1623,7 +1624,7 @@ export function ForensicViewer({ result: propResult, compact = false, onClose }:
                         </div>
                       </div>
                       <div className="p-2.5 bg-[#131b29] rounded border border-slate-800 space-y-1">
-                        <div className="text-[10px] text-slate-500 font-mono">SOFTWARE STAMP</div>
+                        <TermLabel term="exif_software" label="SOFTWARE STAMP" labelClassName="text-[10px] text-slate-500 font-mono font-semibold" subtextClassName="text-[10px] text-slate-400 font-normal" />
                         <div className={`font-mono text-xs ${isManipulated ? 'text-rose-400 font-bold' : 'text-slate-300'}`}>
                           {exifData.software || '—'}
                         </div>
@@ -1662,24 +1663,24 @@ export function ForensicViewer({ result: propResult, compact = false, onClose }:
                 <div className="space-y-3 font-mono">
                   <div className="p-2.5 bg-[#131b29] rounded border border-slate-800 space-y-1">
                     <div className="flex items-center justify-between text-[10px] text-slate-500">
-                      <span>SHA-256 BITSTREAM HASH</span>
+                      <TermLabel term="sha256" label="SHA-256 BITSTREAM HASH" labelClassName="text-[10px] text-slate-400 font-mono font-bold uppercase" subtextClassName="text-[10px] text-slate-500 font-normal mt-0.5" />
                       <button
                         onClick={() => sha256 && handleCopyHash(sha256)}
                         disabled={!sha256}
-                        className="text-cyan-400 hover:text-white flex items-center gap-1 disabled:opacity-40"
+                        className="text-cyan-400 hover:text-white flex items-center gap-1 disabled:opacity-40 shrink-0"
                       >
                         {copiedHash ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
                         <span>{copiedHash ? 'Copied' : 'Copy'}</span>
                       </button>
                     </div>
-                    <div className="text-[11px] text-slate-300 break-all">
+                    <div className="text-[11px] text-slate-300 break-all font-mono">
                       {sha256 ?? <span className="text-slate-500 italic">Not available</span>}
                     </div>
                   </div>
 
                   <div className="p-2.5 bg-[#131b29] rounded border border-slate-800 space-y-1">
-                    <div className="text-[10px] text-slate-500">PERCEPTUAL aHASH / pHASH</div>
-                    <div className="text-[11px] text-cyan-400 break-all">
+                    <TermLabel term="phash" label="PERCEPTUAL aHASH / pHASH" labelClassName="text-[10px] text-slate-400 font-mono font-bold uppercase" subtextClassName="text-[10px] text-slate-500 font-normal mt-0.5" />
+                    <div className="text-[11px] text-cyan-400 break-all font-mono">
                       {result?.fingerprint_hash || <span className="text-slate-500 italic">Not available</span>}
                     </div>
                   </div>

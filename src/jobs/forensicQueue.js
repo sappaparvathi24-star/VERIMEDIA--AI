@@ -2,7 +2,11 @@
 // Provides durable SQLite + in-memory task scheduling for non-blocking media analysis
 import crypto from 'crypto';
 import { EventEmitter } from 'events';
+import sharp from 'sharp';
+import exifr from 'exifr';
 import { getDatabase } from '../db/database.js';
+import { computeAverageHash, hashSimilarity } from '../forensics/perceptualHash.js';
+import { storeArtifactMedia } from '../forensics/imageForensics.js';
 
 export const JobStatus = {
   QUEUED: 'QUEUED',
@@ -13,7 +17,8 @@ export const JobStatus = {
 };
 
 export const JobType = {
-  FORENSIC_ANALYSIS: 'FORENSIC_ANALYSIS'
+  FORENSIC_ANALYSIS: 'FORENSIC_ANALYSIS',
+  BATCH_COMPARE: 'BATCH_COMPARE'
 };
 
 export const DEFAULT_PIPELINE_STAGES = [
@@ -338,6 +343,92 @@ export class ForensicJobQueue extends EventEmitter {
     };
   }
 
+  enqueueBatchCompareJob({
+    batchId,
+    investigationId,
+    referenceArtifactId,
+    referenceAnalysis,
+    referenceSha256,
+    referencePHash,
+    validCandidates = [],
+    userEmail = 'analyst@verimedia.ai'
+  }) {
+    const id = `JOB-BATCH-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+    const now = new Date().toISOString();
+
+    const stages = DEFAULT_PIPELINE_STAGES.map((s, idx) => ({
+      ...s,
+      status: idx === 0 ? 'RUNNING' : 'PENDING'
+    }));
+
+    const initialLog = {
+      id: `log-${Date.now()}-0`,
+      timestamp: new Date().toLocaleTimeString(),
+      level: 'info',
+      stage: 'ingest',
+      message: `Batch reference comparison queued: ${validCandidates.length} candidate images against reference ${referenceArtifactId}`
+    };
+
+    const job = {
+      id,
+      type: JobType.BATCH_COMPARE,
+      status: JobStatus.QUEUED,
+      progress: 5,
+      stage: 'ingest',
+      stageIndex: 0,
+      stageTitle: 'Batch Media Ingest & Fingerprinting',
+      stageDetail: `Queued ${validCandidates.length} candidate images for bulk reference audit...`,
+      stages,
+      logs: [initialLog],
+      investigationId,
+      artifactId: referenceArtifactId,
+      filename: `batch_${batchId}.zip`,
+      mimeType: 'application/zip',
+      result: null,
+      error: null,
+      createdAt: now,
+      startedAt: null,
+      completedAt: null
+    };
+
+    this.jobs.set(id, job);
+    this.persistJob(job);
+    this.emitJobEvent(job, 'queued');
+
+    this.queue.push({
+      jobId: id,
+      type: JobType.BATCH_COMPARE,
+      batchId,
+      investigationId,
+      referenceArtifactId,
+      referenceAnalysis,
+      referenceSha256,
+      referencePHash,
+      validCandidates,
+      userEmail
+    });
+
+    setImmediate(() => this.processNext());
+
+    return {
+      jobId: id,
+      id,
+      status: job.status,
+      type: job.type,
+      progress: job.progress,
+      stage: job.stage,
+      stageIndex: job.stageIndex,
+      stages: job.stages,
+      artifactId: referenceArtifactId,
+      investigationId,
+      batchId,
+      candidateCount: validCandidates.length,
+      createdAt: job.createdAt,
+      pollUrl: `/api/jobs/${id}`,
+      streamUrl: `/api/jobs/${id}/stream`
+    };
+  }
+
   getJob(jobId) {
     if (!jobId) return null;
     let job = this.jobs.get(jobId);
@@ -425,6 +516,11 @@ export class ForensicJobQueue extends EventEmitter {
     this.emitJobEvent(job, 'started');
 
     try {
+      if (task.type === JobType.BATCH_COMPARE) {
+        await this.processBatchCompare(task, job);
+        return;
+      }
+
       if (this.provenanceService && task.buffer) {
         const forensicOutcome = await this.provenanceService.runUnifiedForensicAnalysis({
           investigationId: task.investigationId,
@@ -504,6 +600,224 @@ export class ForensicJobQueue extends EventEmitter {
         setImmediate(() => this.processNext());
       }
     }
+  }
+
+  async processBatchCompare(task, job) {
+    const {
+      batchId,
+      investigationId,
+      referenceArtifactId,
+      referenceAnalysis,
+      referenceSha256,
+      referencePHash,
+      validCandidates = [],
+      userEmail = 'analyst@verimedia.ai'
+    } = task;
+
+    const candidatesResult = [];
+    let identicalCount = 0;
+    let nearIdenticalCount = 0;
+    let derivativeCount = 0;
+    let unrelatedCount = 0;
+    const total = validCandidates.length;
+
+    for (let i = 0; i < total; i++) {
+      const candidate = validCandidates[i];
+      const currentIdx = i + 1;
+
+      // 1. Fingerprint candidate
+      const candSha256 = crypto.createHash('sha256').update(candidate.buffer).digest('hex');
+      let candPHash = null;
+      let candDimensions = null;
+      let candExif = null;
+
+      try {
+        candPHash = await computeAverageHash(candidate.buffer);
+      } catch (_) {}
+
+      try {
+        const meta = await sharp(candidate.buffer).metadata();
+        if (meta.width && meta.height) {
+          candDimensions = { width: meta.width, height: meta.height };
+        }
+      } catch (_) {}
+
+      try {
+        candExif = await exifr.parse(candidate.buffer);
+      } catch (_) {}
+
+      // 2. Create Candidate Artifact
+      const candArtifact = this.provenanceService.createArtifact({
+        investigationId,
+        filename: candidate.filename,
+        mimeType: candidate.mimeType,
+        byteSize: candidate.byteSize,
+        sha256: candSha256,
+        perceptualHash: candPHash,
+        dimensions: candDimensions || null,
+        metadata: {
+          ...(candExif ? { exif: candExif } : {}),
+          originalName: candidate.filename,
+          uploadedAt: new Date().toISOString(),
+          uploadedBy: userEmail,
+          batchId,
+          isBatchCandidate: true
+        }
+      });
+
+      // 3. Store in media store for preview / retrieval
+      storeArtifactMedia(candArtifact.id, {
+        buffer: candidate.buffer,
+        mimeType: candidate.mimeType,
+        filename: candidate.filename,
+        originalName: candidate.filename
+      });
+
+      // 4. Update job progress & emit event
+      const baseProgress = Math.round(5 + (i / total) * 90);
+      job.progress = baseProgress;
+      job.stage = 'batch_candidate';
+      job.stageIndex = Math.min(5, Math.floor((i / total) * 6));
+      job.stageTitle = `Analyzing Candidate ${currentIdx} of ${total}`;
+      job.stageDetail = `Analyzing candidate ${currentIdx} of ${total}: ${candidate.filename}...`;
+
+      job.logs = [
+        ...(job.logs || []).slice(-99),
+        {
+          id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          timestamp: new Date().toLocaleTimeString(),
+          level: 'info',
+          stage: 'batch_compare',
+          message: `[${currentIdx}/${total}] Processing ${candidate.filename}. Running physical and multimodal forensic pipeline...`
+        }
+      ];
+      this.persistJob(job);
+      this.emitJobEvent(job, 'stage');
+
+      // 5. Run runImageForensicAnalysis on candidate
+      let candForensicOutcome = null;
+      try {
+        candForensicOutcome = await this.provenanceService.runImageForensicAnalysis({
+          investigationId,
+          artifactId: candArtifact.id,
+          buffer: candidate.buffer,
+          mimeType: candidate.mimeType,
+          exif: candExif,
+          callGeminiFn: this.callGeminiFn,
+          onStageChange: (stageData) => {
+            job.stageDetail = `Analyzing candidate ${currentIdx} of ${total} (${candidate.filename}): ${stageData.stageDetail || stageData.stageTitle}`;
+            if (stageData.log) {
+              job.logs = [
+                ...(job.logs || []).slice(-99),
+                {
+                  id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                  timestamp: new Date().toLocaleTimeString(),
+                  level: 'info',
+                  stage: 'batch_compare',
+                  message: `[Candidate ${currentIdx}/${total}] ${candidate.filename}: ${stageData.log}`
+                }
+              ];
+            }
+            this.persistJob(job);
+            this.emitJobEvent(job, 'stage');
+          }
+        });
+      } catch (candErr) {
+        console.warn(`[ForensicQueue] Candidate ${candidate.filename} analysis error:`, candErr.message);
+      }
+
+      // 6. Compute relationship to reference
+      let relation = 'UNRELATED';
+      let similarity = 0.0;
+
+      if (candSha256 && referenceSha256 && candSha256 === referenceSha256) {
+        relation = 'IDENTICAL_COPY';
+        similarity = 1.0;
+      } else {
+        const sim = hashSimilarity(candPHash, referencePHash);
+        similarity = sim != null ? sim : 0.0;
+        if (similarity > 0.95) {
+          relation = 'NEAR_IDENTICAL';
+        } else if (similarity >= 0.80 && similarity <= 0.95) {
+          relation = 'DERIVATIVE';
+        } else {
+          relation = 'UNRELATED';
+        }
+      }
+
+      if (relation === 'IDENTICAL_COPY') identicalCount++;
+      else if (relation === 'NEAR_IDENTICAL') nearIdenticalCount++;
+      else if (relation === 'DERIVATIVE') derivativeCount++;
+      else unrelatedCount++;
+
+      // 7. Store relation alongside forensicAnalysis
+      const candAnalysis = candForensicOutcome?.forensicAnalysis || candArtifact.metadata?.forensicAnalysis || {
+        status: 'COMPLETED',
+        isAnalyzed: true,
+        analyzedAt: new Date().toISOString()
+      };
+      candAnalysis.relation = relation;
+      candAnalysis.similarity = similarity;
+
+      candArtifact.metadata = {
+        ...(candArtifact.metadata || {}),
+        forensicAnalysis: candAnalysis,
+        relation,
+        similarity
+      };
+
+      // Record Relationship in store
+      try {
+        if (this.provenanceService.store?.createRelationship) {
+          this.provenanceService.store.createRelationship({
+            investigationId,
+            fromArtifactId: referenceArtifactId,
+            toArtifactId: candArtifact.id,
+            relationshipType: relation,
+            confidence: similarity,
+            metadata: { similarity, relation, candidateFilename: candidate.filename }
+          });
+        }
+      } catch (_) {}
+
+      candidatesResult.push({
+        artifactId: candArtifact.id,
+        filename: candidate.filename,
+        similarity,
+        relation,
+        forensicAnalysis: candAnalysis
+      });
+    }
+
+    // 8. Build final batch result
+    const finalResult = {
+      batchId,
+      investigationId,
+      reference: {
+        artifactId: referenceArtifactId,
+        forensicAnalysis: referenceAnalysis
+      },
+      candidates: candidatesResult,
+      summary: {
+        totalCandidates: total,
+        identicalCount,
+        nearIdenticalCount,
+        derivativeCount,
+        unrelatedCount
+      }
+    };
+
+    job.status = JobStatus.COMPLETED;
+    job.progress = 100;
+    job.stage = 'fusion';
+    job.stageIndex = 5;
+    job.stageTitle = 'Batch Audit Complete';
+    job.stageDetail = `Analyzed ${total} candidate images against reference. Identical: ${identicalCount}, Near-Identical: ${nearIdenticalCount}, Derivative: ${derivativeCount}, Unrelated: ${unrelatedCount}.`;
+    job.stages = job.stages.map(s => ({ ...s, status: 'COMPLETED' }));
+    job.result = finalResult;
+    job.completedAt = new Date().toISOString();
+    this.persistJob(job);
+    this.emitJobEvent(job, 'completed');
   }
 }
 

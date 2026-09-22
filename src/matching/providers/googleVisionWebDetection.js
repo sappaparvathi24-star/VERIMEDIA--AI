@@ -39,12 +39,18 @@ export class GoogleVisionWebDetectionProvider {
     if (!this.isConfigured()) {
       return {
         status: 'UNAVAILABLE',
-        reason: 'GOOGLE_VISION_API_KEY not configured on this deployment'
+        confidence: 'UNAVAILABLE',
+        source: this.name,
+        reason: 'GOOGLE_VISION_API_KEY not configured on this deployment',
+        isSystemAnalysisOnly: true
       };
     }
     return {
       status: 'AVAILABLE',
-      reason: null
+      confidence: 'LIVE',
+      source: this.name,
+      reason: null,
+      isSystemAnalysisOnly: false
     };
   }
 
@@ -58,7 +64,10 @@ export class GoogleVisionWebDetectionProvider {
       return {
         providerId: this.id,
         status: 'UNAVAILABLE',
+        confidence: 'UNAVAILABLE',
+        source: this.name,
         reason: 'GOOGLE_VISION_API_KEY not configured on this deployment',
+        isSystemAnalysisOnly: true,
         candidates: []
       };
     }
@@ -69,7 +78,10 @@ export class GoogleVisionWebDetectionProvider {
       return {
         providerId: this.id,
         status: 'QUOTA_EXCEEDED',
+        confidence: 'DEGRADED',
+        source: this.name,
         reason: `Monthly free-tier limit (${limit} requests) reached — Vision API disabled to avoid charges. Resets next calendar month, or raise GOOGLE_VISION_MONTHLY_LIMIT if you want to allow paid usage.`,
+        isSystemAnalysisOnly: true,
         candidates: []
       };
     }
@@ -118,7 +130,10 @@ export class GoogleVisionWebDetectionProvider {
       return {
         providerId: this.id,
         status: 'SKIPPED',
+        confidence: 'INSUFFICIENT_DATA',
+        source: this.name,
         reason: 'No image bytes or image URI provided for reverse image search',
+        isSystemAnalysisOnly: true,
         candidates: []
       };
     }
@@ -152,7 +167,15 @@ export class GoogleVisionWebDetectionProvider {
         body: JSON.stringify(requestBody)
       });
     } catch (netErr) {
-      throw new Error(`Google Cloud Vision API network failure: ${netErr.message}`);
+      return {
+        providerId: this.id,
+        status: 'ERROR',
+        confidence: 'UNAVAILABLE',
+        source: this.name,
+        reason: `Network failure connecting to Google Cloud Vision API: ${netErr.message}`,
+        isSystemAnalysisOnly: true,
+        candidates: []
+      };
     }
 
     if (!res.ok) {
@@ -163,7 +186,16 @@ export class GoogleVisionWebDetectionProvider {
         errBody = { error: { message: `HTTP ${res.status} ${res.statusText}` } };
       }
       const errMsg = errBody?.error?.message || `HTTP ${res.status} ${res.statusText}`;
-      throw new Error(`Google Cloud Vision API error (${res.status}): ${errMsg}`);
+      const isQuota = res.status === 429 || errMsg.toLowerCase().includes('quota');
+      return {
+        providerId: this.id,
+        status: isQuota ? 'QUOTA_EXCEEDED' : 'ERROR',
+        confidence: isQuota ? 'DEGRADED' : 'UNAVAILABLE',
+        source: this.name,
+        reason: isQuota ? 'Google Cloud Vision API quota limit exceeded' : `Google Cloud Vision API error (${res.status}): ${errMsg}`,
+        isSystemAnalysisOnly: true,
+        candidates: []
+      };
     }
 
     const data = await res.json();
@@ -340,6 +372,10 @@ export class GoogleVisionWebDetectionProvider {
     return {
       providerId: this.id,
       status: 'AVAILABLE',
+      confidence: candidates.length > 0 ? 'LIVE' : 'INSUFFICIENT_DATA',
+      source: this.name,
+      reason: candidates.length === 0 ? '0 reverse visual matches discovered by Google Cloud Vision' : null,
+      isSystemAnalysisOnly: false,
       count: candidates.length,
       bestGuessLabels,
       webEntities: webDetection.webEntities || [],

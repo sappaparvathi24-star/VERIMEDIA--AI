@@ -65,6 +65,13 @@ const WORKSPACE_TOOLS: NavItem[] = [
     badge: 'AI',
   },
   {
+    id: 'batch-compare',
+    label: 'Bulk Reference Compare',
+    icon: '🗂️',
+    description: 'Bulk Reference Comparison: Ingest candidate zip and run multi-spectral pHash comparison',
+    badge: 'LIVE',
+  },
+  {
     id: 'scanner',
     label: 'Media Scanner',
     icon: '⚡',

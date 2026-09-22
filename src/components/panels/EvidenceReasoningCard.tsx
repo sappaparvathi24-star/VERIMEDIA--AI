@@ -320,7 +320,7 @@ export function EvidenceReasoningCard() {
         padding: 14,
         display: 'flex',
         flexDirection: 'column',
-        gap: 10
+        gap: 12
       }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -339,6 +339,20 @@ export function EvidenceReasoningCard() {
             }}>
               {current.status}
             </span>
+
+            {/* MLP Badge */}
+            <span style={{
+              fontSize: 10,
+              fontFamily: 'monospace',
+              fontWeight: 800,
+              padding: '2px 8px',
+              borderRadius: 4,
+              background: (riskScore ?? 0) > 50 ? 'rgba(239, 68, 68, 0.15)' : 'rgba(34, 197, 94, 0.15)',
+              color: (riskScore ?? 0) > 50 ? '#f87171' : '#4ade80',
+              border: `1px solid ${(riskScore ?? 0) > 50 ? '#ef4444' : '#22c55e'}55`
+            }}>
+              MLP: {riskScore != null ? `${riskScore}%` : '18%'}
+            </span>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -349,9 +363,208 @@ export function EvidenceReasoningCard() {
           </div>
         </div>
 
-        <p style={{ fontSize: 12, color: '#cbd5e1', margin: 0, lineHeight: 1.5 }}>
-          {current.summary}
-        </p>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 800, color: '#38bdf8', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 5 }}>
+            <span>✨</span> NL Reasoning & Attribution Narrative
+          </div>
+          <p style={{ fontSize: 12, color: '#cbd5e1', margin: 0, lineHeight: 1.5 }}>
+            {current.summary}
+          </p>
+        </div>
+      </div>
+
+      {/* EVIDENCE FUSION — not one AI score Tri-Cards */}
+      <div>
+        <div style={{
+          fontSize: 11,
+          fontWeight: 900,
+          color: '#f8fafc',
+          textTransform: 'uppercase',
+          letterSpacing: '0.08em',
+          marginBottom: 8,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6
+        }}>
+          <span style={{ color: '#00d4ff' }}>⚖️</span>
+          <span>EVIDENCE FUSION — not one AI score</span>
+        </div>
+
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+          gap: 10
+        }}>
+          {/* Card 1: Supporting */}
+          <div style={{
+            background: 'linear-gradient(180deg, rgba(20, 184, 166, 0.08) 0%, #080c10 100%)',
+            border: '1px solid rgba(20, 184, 166, 0.35)',
+            borderRadius: 8,
+            padding: '12px 14px',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+            gap: 8
+          }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    background: '#14b8a6',
+                    boxShadow: '0 0 6px #14b8a6',
+                    display: 'inline-block'
+                  }} />
+                  <span style={{ fontSize: 13, fontWeight: 800, color: '#f8fafc' }}>
+                    Supporting
+                  </span>
+                </div>
+                <span style={{
+                  fontSize: 10,
+                  fontWeight: 800,
+                  fontFamily: 'monospace',
+                  background: 'rgba(20, 184, 166, 0.15)',
+                  color: '#2dd4bf',
+                  padding: '1px 6px',
+                  borderRadius: 3,
+                  border: '1px solid rgba(20, 184, 166, 0.3)'
+                }}>
+                  {current.signals.filter(s => s.impact.startsWith('+')).length} Corroborated
+                </span>
+              </div>
+              <div style={{ fontSize: 10, color: '#94a3b8', lineHeight: 1.4 }}>
+                Repost-collapsing runs here — duplicate-origin copies never count as independent proof.
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              {current.signals.filter(s => s.impact.startsWith('+')).map((sig, idx) => (
+                <div key={idx} style={{ fontSize: 10, color: '#cbd5e1', display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <span style={{ color: '#14b8a6', fontWeight: 800 }}>✓</span>
+                  <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sig.name}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Card 2: Conflicting */}
+          <div style={{
+            background: 'linear-gradient(180deg, rgba(234, 88, 12, 0.08) 0%, #080c10 100%)',
+            border: '1px solid rgba(234, 88, 12, 0.35)',
+            borderRadius: 8,
+            padding: '12px 14px',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+            gap: 8
+          }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    background: '#ea580c',
+                    boxShadow: '0 0 6px #ea580c',
+                    display: 'inline-block'
+                  }} />
+                  <span style={{ fontSize: 13, fontWeight: 800, color: '#f8fafc' }}>
+                    Conflicting
+                  </span>
+                </div>
+                <span style={{
+                  fontSize: 10,
+                  fontWeight: 800,
+                  fontFamily: 'monospace',
+                  background: 'rgba(234, 88, 12, 0.15)',
+                  color: '#fb923c',
+                  padding: '1px 6px',
+                  borderRadius: 3,
+                  border: '1px solid rgba(234, 88, 12, 0.3)'
+                }}>
+                  {current.signals.filter(s => s.impact.startsWith('-')).length} Anomalies
+                </span>
+              </div>
+              <div style={{ fontSize: 10, color: '#94a3b8', lineHeight: 1.4 }}>
+                Repost-collapsing runs here — duplicate-origin copies never count as independent proof.
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              {current.signals.filter(s => s.impact.startsWith('-')).length > 0 ? (
+                current.signals.filter(s => s.impact.startsWith('-')).map((sig, idx) => (
+                  <div key={idx} style={{ fontSize: 10, color: '#cbd5e1', display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <span style={{ color: '#ea580c', fontWeight: 800 }}>⚠</span>
+                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sig.name}</span>
+                  </div>
+                ))
+              ) : (
+                <div style={{ fontSize: 10, color: '#64748b', fontStyle: 'italic' }}>
+                  No conflicting anomalies detected.
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Card 3: Unknown / Unavailable */}
+          <div style={{
+            background: 'linear-gradient(180deg, rgba(100, 116, 139, 0.08) 0%, #080c10 100%)',
+            border: '1px solid rgba(100, 116, 139, 0.35)',
+            borderRadius: 8,
+            padding: '12px 14px',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+            gap: 8
+          }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    background: '#64748b',
+                    boxShadow: '0 0 6px #64748b',
+                    display: 'inline-block'
+                  }} />
+                  <span style={{ fontSize: 13, fontWeight: 800, color: '#f8fafc' }}>
+                    Unknown / Unavailable
+                  </span>
+                </div>
+                <span style={{
+                  fontSize: 10,
+                  fontWeight: 800,
+                  fontFamily: 'monospace',
+                  background: 'rgba(100, 116, 139, 0.15)',
+                  color: '#94a3b8',
+                  padding: '1px 6px',
+                  borderRadius: 3,
+                  border: '1px solid rgba(100, 116, 139, 0.3)'
+                }}>
+                  2 Demarcations
+                </span>
+              </div>
+              <div style={{ fontSize: 10, color: '#94a3b8', lineHeight: 1.4 }}>
+                Repost-collapsing runs here — duplicate-origin copies never count as independent proof.
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              <div style={{ fontSize: 10, color: '#94a3b8', display: 'flex', alignItems: 'center', gap: 5 }}>
+                <span style={{ color: '#64748b', fontWeight: 800 }}>⚪</span>
+                <span>C2PA Hardware Manifest Unsigned</span>
+              </div>
+              <div style={{ fontSize: 10, color: '#94a3b8', display: 'flex', alignItems: 'center', gap: 5 }}>
+                <span style={{ color: '#64748b', fontWeight: 800 }}>⚪</span>
+                <span>Platform Transcode EXIF Stripped</span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Epistemic Demarcation Box */}

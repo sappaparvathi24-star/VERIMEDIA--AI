@@ -66,6 +66,16 @@ const PAGE_TITLES: Record<TabId, { title: string; subtitle: string; icon: string
     title: 'API Network Traffic & Backend Fidelity Inspector',
     subtitle: 'Real-time HTTP traffic debugger, binary forensic verification & cURL inspector',
     icon: '🪲'
+  },
+  'bulk-audit': {
+    title: 'Bulk Case File Audit Engine',
+    subtitle: 'Automated batch comparison of master reference vs suspect case files',
+    icon: '📦'
+  },
+  'batch-compare': {
+    title: 'Bulk Reference Comparison Pipeline',
+    subtitle: 'Audit master image against zip bundle with multi-spectral local pHash forensics',
+    icon: '🗂️'
   }
 }
 

@@ -27,12 +27,18 @@ export class GoogleImagesDiscoveryProvider {
     if (!this.isConfigured()) {
       return {
         status: 'UNAVAILABLE',
-        reason: 'Google Programmable Search key/cx not configured on this deployment'
+        confidence: 'UNAVAILABLE',
+        source: this.name,
+        reason: 'Google Programmable Search key/cx not configured on this deployment',
+        isSystemAnalysisOnly: true
       };
     }
     return {
       status: 'AVAILABLE',
-      reason: null
+      confidence: 'LIVE',
+      source: this.name,
+      reason: null,
+      isSystemAnalysisOnly: false
     };
   }
 
@@ -49,7 +55,10 @@ export class GoogleImagesDiscoveryProvider {
       return {
         providerId: this.id,
         status: 'UNAVAILABLE',
+        confidence: 'UNAVAILABLE',
+        source: this.name,
         reason: 'Google Programmable Search key/cx not configured on this deployment',
+        isSystemAnalysisOnly: true,
         candidates: []
       };
     }
@@ -58,7 +67,10 @@ export class GoogleImagesDiscoveryProvider {
       return {
         providerId: this.id,
         status: 'SKIPPED',
+        confidence: 'INSUFFICIENT_DATA',
+        source: this.name,
         reason: 'No search query or visual signal provided',
+        isSystemAnalysisOnly: true,
         candidates: []
       };
     }
@@ -69,8 +81,11 @@ export class GoogleImagesDiscoveryProvider {
         return {
           providerId: this.id,
           status: 'UNAVAILABLE',
-          reason: response.reason,
+          confidence: response.quotaReached ? 'DEGRADED' : 'UNAVAILABLE',
+          source: this.name,
+          reason: response.reason || 'Google Programmable Search unavailable',
           quotaReached: response.quotaReached,
+          isSystemAnalysisOnly: true,
           candidates: []
         };
       }
@@ -101,6 +116,10 @@ export class GoogleImagesDiscoveryProvider {
       return {
         providerId: this.id,
         status: 'AVAILABLE',
+        confidence: candidates.length > 0 ? 'LIVE' : 'INSUFFICIENT_DATA',
+        source: this.name,
+        reason: candidates.length === 0 ? '0 matching images found via Google Programmable Search' : null,
+        isSystemAnalysisOnly: false,
         count: candidates.length,
         candidates
       };
@@ -108,7 +127,10 @@ export class GoogleImagesDiscoveryProvider {
       return {
         providerId: this.id,
         status: 'ERROR',
+        confidence: 'UNAVAILABLE',
+        source: this.name,
         reason: err.message,
+        isSystemAnalysisOnly: true,
         candidates: []
       };
     }

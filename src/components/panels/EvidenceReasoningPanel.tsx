@@ -3,6 +3,7 @@ import { useStore } from '../../store'
 import { Tooltip } from '../ui/Tooltip'
 import { getInvestigationReasoning, getInvestigationCandidates, listInvestigations } from '../../services/api'
 import { isSimulatedResult } from '../../lib/resultMode'
+import { TermLabel } from '../ui/TermLabel'
 
 interface ForensicSignalItem {
   id: string
@@ -631,19 +632,7 @@ export function EvidenceReasoningPanel() {
     loadRealReasoning()
   }, [currentResult])
 
-  if (!currentResult) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', background: '#080c10' }}>
-        <div style={{ textAlign: 'center', color: '#4a5568' }}>
-          <div style={{ fontSize: 36, marginBottom: 10 }}>⚖️</div>
-          <p style={{ fontSize: 13, fontWeight: 700, color: '#f8fafc' }}>No Investigation Reasoning Loaded</p>
-          <p style={{ fontSize: 11 }}>Execute a scan to generate explainable AI origin assessments and governance dossiers</p>
-        </div>
-      </div>
-    )
-  }
-
-  const isScenario = isSimulatedResult(currentResult)
+  const isScenario = currentResult ? isSimulatedResult(currentResult) : true
 
   // Use real candidates if available, otherwise if scenario use benchmark candidates, otherwise build honest scan candidate
   const activeCandidates = usingRealData && realCandidates.length > 0
@@ -660,9 +649,17 @@ export function EvidenceReasoningPanel() {
     return true
   })
 
-  const supportingCount = candidate.signals.filter(s => s.type === 'SUPPORTING').length
-  const contradictingCount = candidate.signals.filter(s => s.type === 'CONTRADICTING').length
-  const unknownCount = candidate.signals.filter(s => s.type === 'UNKNOWN').length
+  const supportingSignals = candidate.signals.filter(s => s.type === 'SUPPORTING')
+  const contradictingSignals = candidate.signals.filter(s => s.type === 'CONTRADICTING')
+  const unknownSignals = candidate.signals.filter(s => s.type === 'UNKNOWN')
+
+  const supportingCount = supportingSignals.length
+  const contradictingCount = contradictingSignals.length
+  const unknownCount = unknownSignals.length
+
+  // Calculate MLP and Confidence for candidate
+  const candidateMLP = (candidate as any).mlp ?? (candidate.status === 'DERIVED_MUTATION' ? 86 : (candidate.status === 'LIKELY_EARLIEST_ORIGIN' ? 8 : 42))
+  const candidateConfidence = Math.round(candidate.confidence * 100)
 
   // Fix 3: Repost-collapsing & independent evidence cluster calculation
   const evidenceClusters = activeCandidates.map((cand, idx) => {
@@ -719,8 +716,8 @@ export function EvidenceReasoningPanel() {
       flexDirection: 'column',
       gap: 18
     }}>
-      {/* High-Contrast Simulation Disclaimer Banner (Requirement 5) */}
-      {isScenario && (
+      {/* Simulation / Benchmark Disclaimer Banner */}
+      {(!currentResult || isScenario) && (
         <div
           id="reasoning-simulated-scenario-banner"
           style={{
@@ -737,13 +734,15 @@ export function EvidenceReasoningPanel() {
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ fontSize: 20, lineHeight: 1 }}>⚠️</span>
+            <span style={{ fontSize: 20, lineHeight: 1 }}>⚖️</span>
             <div>
               <div style={{ fontSize: 13, fontWeight: 900, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#fef08a' }}>
-                SIMULATED TEST SCENARIO
+                {currentResult ? 'SIMULATED TEST SCENARIO' : 'BENCHMARK INVESTIGATION REASONING'}
               </div>
               <div style={{ fontSize: 11, color: '#fde68a', marginTop: 1 }}>
-                Data below is synthetic/pre-configured for demonstration and does not reflect a live forensic scan.
+                {currentResult
+                  ? 'Data below is synthetic/pre-configured for demonstration and does not reflect a live forensic scan.'
+                  : 'Demonstration reasoning corpus loaded with 4 syndicated origin candidates. Upload custom media anytime to evaluate live files.'}
               </div>
             </div>
           </div>
@@ -758,7 +757,7 @@ export function EvidenceReasoningPanel() {
             border: '1px solid #d97706',
             whiteSpace: 'nowrap'
           }}>
-            PRESET: {currentResult?.scenario?.toUpperCase() || 'DEMO'}
+            PRESET: {currentResult?.scenario?.toUpperCase() || 'DEMO INVESTIGATION'}
           </div>
         </div>
       )}
@@ -881,7 +880,7 @@ export function EvidenceReasoningPanel() {
           }
         </div>
       )}
-      {!usingRealData && !reasoningLoading && currentResult.is_demo && (
+      {!usingRealData && !reasoningLoading && (currentResult?.is_demo ?? true) && (
         <div style={{
           padding: '6px 12px', borderRadius: 5, fontSize: 11,
           background: 'rgba(245,158,11,0.08)', border: '1px solid #f59e0b30',
@@ -927,7 +926,7 @@ export function EvidenceReasoningPanel() {
         })}
       </div>
 
-      {/* 2. SECTION 1: ASSESSMENT SUMMARY */}
+      {/* 2. SECTION 1: ASSESSMENT SUMMARY & EVIDENCE FUSION */}
       <div style={{
         background: '#0d1117',
         border: '1px solid #1e2d3d',
@@ -935,17 +934,23 @@ export function EvidenceReasoningPanel() {
         padding: 20,
         display: 'flex',
         flexDirection: 'column',
-        gap: 14,
+        gap: 16,
         boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #1e2d3d', paddingBottom: 10, flexWrap: 'wrap', gap: 10 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 16 }}>📋</span>
-            <h3 style={{ fontSize: 13, fontWeight: 800, color: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>
-              Assessment Summary
-            </h3>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 18 }}>📋</span>
+            <div>
+              <h3 style={{ fontSize: 14, fontWeight: 900, color: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>
+                Assessment Summary & Explainable AI Reasoning
+              </h3>
+              <div style={{ fontSize: 11, color: '#64748b' }}>
+                Multimodal provenance calculus, natural language synthesis, and calibrated signal decomposition.
+              </div>
+            </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <span style={{
               padding: '4px 10px',
               borderRadius: 5,
@@ -958,16 +963,250 @@ export function EvidenceReasoningPanel() {
             }}>
               {candidate.statusLabel}
             </span>
+
+            {/* MLP Badge */}
+            <span style={{
+              padding: '4px 10px',
+              borderRadius: 5,
+              background: candidateMLP > 50 ? 'rgba(239, 68, 68, 0.15)' : 'rgba(34, 197, 94, 0.15)',
+              border: `1px solid ${candidateMLP > 50 ? '#ef4444' : '#22c55e'}60`,
+              color: candidateMLP > 50 ? '#f87171' : '#4ade80',
+              fontWeight: 800,
+              fontSize: 11,
+              fontFamily: 'monospace'
+            }}>
+              MLP: {candidateMLP}% {candidateMLP > 50 ? '(HIGH RISK)' : '(LOW RISK)'}
+            </span>
+
+            {/* Confidence Badge */}
+            <span style={{
+              padding: '4px 10px',
+              borderRadius: 5,
+              background: 'rgba(0, 212, 255, 0.12)',
+              border: '1px solid rgba(0, 212, 255, 0.4)',
+              color: '#38bdf8',
+              fontWeight: 800,
+              fontSize: 11,
+              fontFamily: 'monospace'
+            }}>
+              Confidence: {candidateConfidence}%
+            </span>
+
             <span style={{ fontSize: 11, color: '#64748b', fontFamily: 'monospace' }}>
-              ID: {candidate.id.toUpperCase()} · OBSERVED: {candidate.timestamp}
+              ID: {candidate.id.toUpperCase()} · {candidate.timestamp}
             </span>
           </div>
         </div>
 
-        {/* Executive Summary Body */}
-        <p style={{ fontSize: 13, color: '#e2e8f0', lineHeight: 1.6, margin: 0 }}>
-          {candidate.assessmentSummary}
-        </p>
+        {/* Natural Language (NL) Summary Body */}
+        <div style={{
+          background: '#080c10',
+          border: '1px solid #1e2d3d',
+          borderRadius: 8,
+          padding: '14px 16px'
+        }}>
+          <div style={{ fontSize: 12, fontWeight: 800, color: '#38bdf8', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span>✨</span> NL Reasoning & Attribution Narrative
+          </div>
+          <p style={{ fontSize: 13, color: '#e2e8f0', lineHeight: 1.6, margin: 0, fontWeight: 500 }}>
+            {candidate.assessmentSummary}
+          </p>
+        </div>
+
+        {/* EVIDENCE FUSION — not one AI score Tri-Card Module */}
+        <div>
+          <div style={{
+            fontSize: 12,
+            fontWeight: 900,
+            color: '#f8fafc',
+            textTransform: 'uppercase',
+            letterSpacing: '0.08em',
+            marginBottom: 10,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8
+          }}>
+            <span style={{ color: '#00d4ff' }}>⚖️</span>
+            <span>EVIDENCE FUSION — not one AI score</span>
+          </div>
+
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+            gap: 12
+          }}>
+            {/* Card 1: Supporting */}
+            <div style={{
+              background: 'linear-gradient(180deg, rgba(20, 184, 166, 0.08) 0%, #080c10 100%)',
+              border: '1px solid rgba(20, 184, 166, 0.35)',
+              borderRadius: 8,
+              padding: '14px 16px',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              gap: 10
+            }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{
+                      width: 10,
+                      height: 10,
+                      borderRadius: '50%',
+                      background: '#14b8a6',
+                      boxShadow: '0 0 8px #14b8a6',
+                      display: 'inline-block'
+                    }} />
+                    <span style={{ fontSize: 14, fontWeight: 800, color: '#f8fafc' }}>
+                      Supporting
+                    </span>
+                  </div>
+                  <span style={{
+                    fontSize: 11,
+                    fontWeight: 800,
+                    fontFamily: 'monospace',
+                    background: 'rgba(20, 184, 166, 0.15)',
+                    color: '#2dd4bf',
+                    padding: '2px 8px',
+                    borderRadius: 4,
+                    border: '1px solid rgba(20, 184, 166, 0.3)'
+                  }}>
+                    {supportingCount} Corroborated
+                  </span>
+                </div>
+                <div style={{ fontSize: 11, color: '#94a3b8', lineHeight: 1.4, marginBottom: 8 }}>
+                  Repost-collapsing runs here — duplicate-origin copies never count as independent proof.
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {supportingSignals.slice(0, 3).map((sig, idx) => (
+                  <div key={idx} style={{ fontSize: 11, color: '#cbd5e1', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ color: '#14b8a6', fontWeight: 800 }}>✓</span>
+                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sig.name} ({sig.impact > 0 ? `+${sig.impact}%` : `${sig.impact}%`})</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Card 2: Conflicting */}
+            <div style={{
+              background: 'linear-gradient(180deg, rgba(234, 88, 12, 0.08) 0%, #080c10 100%)',
+              border: '1px solid rgba(234, 88, 12, 0.35)',
+              borderRadius: 8,
+              padding: '14px 16px',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              gap: 10
+            }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{
+                      width: 10,
+                      height: 10,
+                      borderRadius: '50%',
+                      background: '#ea580c',
+                      boxShadow: '0 0 8px #ea580c',
+                      display: 'inline-block'
+                    }} />
+                    <span style={{ fontSize: 14, fontWeight: 800, color: '#f8fafc' }}>
+                      Conflicting
+                    </span>
+                  </div>
+                  <span style={{
+                    fontSize: 11,
+                    fontWeight: 800,
+                    fontFamily: 'monospace',
+                    background: 'rgba(234, 88, 12, 0.15)',
+                    color: '#fb923c',
+                    padding: '2px 8px',
+                    borderRadius: 4,
+                    border: '1px solid rgba(234, 88, 12, 0.3)'
+                  }}>
+                    {contradictingCount} Anomalies
+                  </span>
+                </div>
+                <div style={{ fontSize: 11, color: '#94a3b8', lineHeight: 1.4, marginBottom: 8 }}>
+                  Repost-collapsing runs here — duplicate-origin copies never count as independent proof.
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {contradictingSignals.length > 0 ? contradictingSignals.slice(0, 3).map((sig, idx) => (
+                  <div key={idx} style={{ fontSize: 11, color: '#cbd5e1', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ color: '#ea580c', fontWeight: 800 }}>⚠</span>
+                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sig.name} ({sig.impact}%)</span>
+                  </div>
+                )) : (
+                  <div style={{ fontSize: 11, color: '#64748b', fontStyle: 'italic' }}>
+                    No contradicting anomalies detected for this candidate.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Card 3: Unknown / Unavailable */}
+            <div style={{
+              background: 'linear-gradient(180deg, rgba(100, 116, 139, 0.08) 0%, #080c10 100%)',
+              border: '1px solid rgba(100, 116, 139, 0.35)',
+              borderRadius: 8,
+              padding: '14px 16px',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              gap: 10
+            }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{
+                      width: 10,
+                      height: 10,
+                      borderRadius: '50%',
+                      background: '#64748b',
+                      boxShadow: '0 0 8px #64748b',
+                      display: 'inline-block'
+                    }} />
+                    <span style={{ fontSize: 14, fontWeight: 800, color: '#f8fafc' }}>
+                      Unknown / Unavailable
+                    </span>
+                  </div>
+                  <span style={{
+                    fontSize: 11,
+                    fontWeight: 800,
+                    fontFamily: 'monospace',
+                    background: 'rgba(100, 116, 139, 0.15)',
+                    color: '#94a3b8',
+                    padding: '2px 8px',
+                    borderRadius: 4,
+                    border: '1px solid rgba(100, 116, 139, 0.3)'
+                  }}>
+                    {unknownCount} Demarcations
+                  </span>
+                </div>
+                <div style={{ fontSize: 11, color: '#94a3b8', lineHeight: 1.4, marginBottom: 8 }}>
+                  Repost-collapsing runs here — duplicate-origin copies never count as independent proof.
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {unknownSignals.length > 0 ? unknownSignals.slice(0, 3).map((sig, idx) => (
+                  <div key={idx} style={{ fontSize: 11, color: '#94a3b8', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ color: '#64748b', fontWeight: 800 }}>⚪</span>
+                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sig.name}</span>
+                  </div>
+                )) : (
+                  <div style={{ fontSize: 11, color: '#94a3b8', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ color: '#64748b', fontWeight: 800 }}>⚪</span>
+                    <span>C2PA Hardware Manifest Demarcation</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
 
         {/* Epistemic Facts vs Epistemic Limitations Split */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 4 }}>
@@ -1349,13 +1588,18 @@ export function EvidenceReasoningPanel() {
                   >
                     {/* Signal Name */}
                     <td style={{ padding: '10px 12px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span style={{ color: iconColor, fontSize: 13, fontWeight: 800 }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                        <span style={{ color: iconColor, fontSize: 13, fontWeight: 800, marginTop: 2 }}>
                           {icon}
                         </span>
                         <div>
-                          <div style={{ fontWeight: 700, color: '#f8fafc' }}>{sig.name}</div>
-                          <div style={{ fontSize: 10, color: '#64748b', fontFamily: 'monospace' }}>{sig.rawValue}</div>
+                          <TermLabel
+                            term={sig.name.toLowerCase()}
+                            label={sig.name}
+                            labelClassName="font-bold text-slate-100 text-[12px]"
+                            subtextClassName="text-[10px] text-slate-400 font-normal leading-tight mt-0.5"
+                          />
+                          <div style={{ fontSize: 10, color: '#64748b', fontFamily: 'monospace', marginTop: 2 }}>{sig.rawValue}</div>
                         </div>
                       </div>
                     </td>

@@ -1,5 +1,14 @@
 // VeriMedia AI — Complete TypeScript Type Definitions
 
+export type DataConfidence = 'LIVE' | 'DEGRADED' | 'UNAVAILABLE' | 'INSUFFICIENT_DATA'
+
+export interface ApiResultMeta {
+  confidence: DataConfidence
+  source: string           // e.g. 'gemini-3.5-flash', 'rule-based-fallback', 'youtube-api'
+  reason?: string          // e.g. 'Rate limit reached', 'API key not configured'
+  isSystemAnalysisOnly: boolean  // true whenever the result did NOT come from live API and is instead computed locally
+}
+
 export type Platform = 'YouTube' | 'Instagram' | 'TikTok' | 'X / Twitter' | 'Facebook' | 'Reddit'
 export type ContentType = 'sports' | 'news' | 'entertainment' | 'education' | 'unknown'
 export type Scenario = 'normal' | 'crop' | 'blur' | 'manipulated' | 'deepfake' | 'adversarial' | 'news' | 'entertainment' | 'education' | 'scam' | 'insufficient'
@@ -93,6 +102,7 @@ export interface DetectionResult {
   platform: Platform
   username: string
   caption: string
+  url?: string | null
   content_type: ContentType
   scenario: string
   similarity: number
@@ -323,7 +333,7 @@ export interface GraphEdge {
   width: number
 }
 
-export type TabId = 'scanner' | 'propagation' | 'forensic' | 'origin' | 'discovery' | 'reasoning' | 'cases' | 'trends' | 'system' | 'feed' | 'intelligence' | 'debug'
+export type TabId = 'scanner' | 'propagation' | 'forensic' | 'origin' | 'discovery' | 'reasoning' | 'cases' | 'trends' | 'system' | 'feed' | 'intelligence' | 'debug' | 'bulk-audit' | 'batch-compare'
 export type ScenarioKey = Scenario
 
 export type ForensicStageStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'SKIPPED' | 'FAILED'

@@ -27,6 +27,8 @@ import {
   Globe,
   ExternalLink,
 } from 'lucide-react'
+import { DataConfidenceBanner } from '../ui/DataConfidenceBanner'
+import type { DataConfidence } from '../../types'
 
 interface Message {
   id: string
@@ -34,6 +36,10 @@ interface Message {
   content: string
   timestamp: string
   model?: string
+  confidence?: DataConfidence
+  source?: string
+  degradationReason?: string
+  isSystemAnalysisOnly?: boolean
   groundingSources?: Array<{ uri: string; title: string }>
 }
 
@@ -87,12 +93,14 @@ I am connected to the **Gemini 3.8 Flash Reasoning Engine** with **live Google S
   const [selectedInvId, setSelectedInvId] = useState<string>('INV-VM-2026-CHAMP')
   const [dossierNotes, setDossierNotes] = useState('')
   const [dossierResult, setDossierResult] = useState<string | null>(null)
+  const [dossierMeta, setDossierMeta] = useState<{ confidence?: DataConfidence; source?: string; degradationReason?: string; isSystemAnalysisOnly?: boolean } | null>(null)
   const [isGeneratingDossier, setIsGeneratingDossier] = useState(false)
 
   // Multimodal Vision State
   const [selectedImage, setSelectedImage] = useState<string | null>(null)
   const [visionPrompt, setVisionPrompt] = useState('Inspect this media for AI generation, boundary warping, and deepfake artifacts.')
   const [visionResult, setVisionResult] = useState<string | null>(null)
+  const [visionMeta, setVisionMeta] = useState<{ confidence?: DataConfidence; source?: string; degradationReason?: string; isSystemAnalysisOnly?: boolean } | null>(null)
   const [isAnalyzingVision, setIsAnalyzingVision] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -100,6 +108,7 @@ I am connected to the **Gemini 3.8 Flash Reasoning Engine** with **live Google S
   const [selectedSignal, setSelectedSignal] = useState(SIGNALS_CATALOG[0])
   const [signalValue, setSignalValue] = useState<number | string>(0.84)
   const [signalExplanation, setSignalExplanation] = useState<string | null>(null)
+  const [signalMeta, setSignalMeta] = useState<{ confidence?: DataConfidence; source?: string; degradationReason?: string; isSystemAnalysisOnly?: boolean } | null>(null)
   const [isExplainingSignal, setIsExplainingSignal] = useState(false)
 
   // Copied state
@@ -168,6 +177,15 @@ I am connected to the **Gemini 3.8 Flash Reasoning Engine** with **live Google S
       const response = await askGeminiCopilot(contextPrefix + textToSend, history)
       const assistantText = response?.reply || response?.text || 'Analysis completed.'
       const groundingSources = response?.groundingSources || []
+      const source = response?.source || 'gemini-3.1-flash-lite'
+      const confidence: DataConfidence = (response?.confidence as DataConfidence) ||
+        (source === 'rule-based-fallback' || source === 'safety-fallback' ? 'INSUFFICIENT_DATA' : 'LIVE')
+      const degradationReason = response?.degradationReason
+      const isSystemAnalysisOnly = Boolean(
+        response?.isSystemAnalysisOnly ||
+        source === 'rule-based-fallback' ||
+        source === 'safety-fallback'
+      )
 
       setMessages(prev => [
         ...prev,
@@ -176,7 +194,11 @@ I am connected to the **Gemini 3.8 Flash Reasoning Engine** with **live Google S
           role: 'assistant',
           content: assistantText,
           timestamp: new Date().toLocaleTimeString(),
-          model: response?.source || 'gemini-3.5-flash',
+          model: source,
+          source,
+          confidence,
+          degradationReason,
+          isSystemAnalysisOnly,
           groundingSources: groundingSources.length > 0 ? groundingSources : undefined,
         },
       ])
@@ -187,9 +209,13 @@ I am connected to the **Gemini 3.8 Flash Reasoning Engine** with **live Google S
         {
           id: `ai-${Date.now()}`,
           role: 'assistant',
-          content: `⚠️ Failed to receive Gemini response: ${err.message || 'Check server connection'}. Operating in offline analytical mode.`,
+          content: 'VeriMedia Assistant is operating in local analytical mode. Live API connection could not be established.',
           timestamp: new Date().toLocaleTimeString(),
-          model: 'fallback',
+          model: 'rule-based-fallback',
+          source: 'rule-based-fallback',
+          confidence: 'UNAVAILABLE',
+          degradationReason: err?.message || 'Check server connection or API quota',
+          isSystemAnalysisOnly: true,
         },
       ])
     } finally {
@@ -200,15 +226,28 @@ I am connected to the **Gemini 3.8 Flash Reasoning Engine** with **live Google S
   const handleGenerateDossier = async () => {
     setIsGeneratingDossier(true)
     setDossierResult(null)
+    setDossierMeta(null)
     try {
       const res = await generateInvestigationBriefGemini({
         investigationId: selectedInvId,
         userNotes: dossierNotes,
       })
       setDossierResult(res?.dossier || 'Intelligence brief synthesized.')
+      setDossierMeta({
+        confidence: res?.confidence || 'LIVE',
+        source: res?.source || 'gemini-3.8-flash',
+        degradationReason: res?.degradationReason,
+        isSystemAnalysisOnly: Boolean(res?.isSystemAnalysisOnly || res?.source === 'rule-based-fallback'),
+      })
     } catch (err: any) {
       console.error('Failed to generate dossier:', err)
       setDossierResult(`Error: ${err.message || 'Failed to generate brief'}`)
+      setDossierMeta({
+        confidence: 'UNAVAILABLE',
+        source: 'rule-based-fallback',
+        degradationReason: err.message,
+        isSystemAnalysisOnly: true,
+      })
     } finally {
       setIsGeneratingDossier(false)
     }
@@ -219,6 +258,7 @@ I am connected to the **Gemini 3.8 Flash Reasoning Engine** with **live Google S
     reader.onload = (e) => {
       setSelectedImage(e.target?.result as string)
       setVisionResult(null)
+      setVisionMeta(null)
     }
     reader.readAsDataURL(file)
   }
@@ -227,6 +267,7 @@ I am connected to the **Gemini 3.8 Flash Reasoning Engine** with **live Google S
     if (!selectedImage || isAnalyzingVision) return
     setIsAnalyzingVision(true)
     setVisionResult(null)
+    setVisionMeta(null)
     try {
       const res = await analyzeMultimodalGemini({
         imageBase64: selectedImage,
@@ -234,9 +275,21 @@ I am connected to the **Gemini 3.8 Flash Reasoning Engine** with **live Google S
         filename: 'evidence_sample.jpg',
       })
       setVisionResult(res?.analysis || 'Visual inspection complete.')
+      setVisionMeta({
+        confidence: res?.confidence || 'LIVE',
+        source: res?.source || 'gemini-3.8-flash',
+        degradationReason: res?.degradationReason,
+        isSystemAnalysisOnly: Boolean(res?.isSystemAnalysisOnly || res?.source === 'unavailable-fallback'),
+      })
     } catch (err: any) {
       console.error('Vision analysis error:', err)
       setVisionResult(`Error: ${err.message || 'Vision analysis failed'}`)
+      setVisionMeta({
+        confidence: 'UNAVAILABLE',
+        source: 'unavailable-fallback',
+        degradationReason: err.message,
+        isSystemAnalysisOnly: true,
+      })
     } finally {
       setIsAnalyzingVision(false)
     }
@@ -245,6 +298,7 @@ I am connected to the **Gemini 3.8 Flash Reasoning Engine** with **live Google S
   const handleExplainSignal = async () => {
     setIsExplainingSignal(true)
     setSignalExplanation(null)
+    setSignalMeta(null)
     try {
       const res = await explainForensicSignalGemini({
         signalKey: selectedSignal.key,
@@ -253,9 +307,21 @@ I am connected to the **Gemini 3.8 Flash Reasoning Engine** with **live Google S
         context: currentResult?.caption || 'Active forensic scan',
       })
       setSignalExplanation(res?.explanation || 'Explanation retrieved.')
+      setSignalMeta({
+        confidence: res?.confidence || 'LIVE',
+        source: res?.source || 'gemini-3.8-flash',
+        degradationReason: res?.degradationReason,
+        isSystemAnalysisOnly: Boolean(res?.isSystemAnalysisOnly || res?.source === 'rule-based-fallback'),
+      })
     } catch (err: any) {
       console.error('Signal explain error:', err)
       setSignalExplanation(`Error: ${err.message || 'Explanation failed'}`)
+      setSignalMeta({
+        confidence: 'UNAVAILABLE',
+        source: 'rule-based-fallback',
+        degradationReason: err.message,
+        isSystemAnalysisOnly: true,
+      })
     } finally {
       setIsExplainingSignal(false)
     }
@@ -508,96 +574,178 @@ I am connected to the **Gemini 3.8 Flash Reasoning Engine** with **live Google S
           {/* Main Chat Stream */}
           <div style={{ display: 'flex', flexDirection: 'column', flex: 1, borderRight: '1px solid #1e2d3d' }}>
             <div style={{ flex: 1, overflowY: 'auto', padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
-              {messages.map((m) => (
-                <div
-                  key={m.id}
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
-                    maxWidth: '85%',
-                  }}
-                >
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    marginBottom: 4,
-                    alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
-                  }}>
-                    <span style={{ fontSize: 10, color: '#64748b', fontWeight: 700 }}>
-                      {m.role === 'user' ? 'ANALYST' : `VERIMEDIA ASSISTANT (${m.model || 'gemini-3.8-flash'})`}
-                    </span>
-                    <span style={{ fontSize: 10, color: '#475569' }}>{m.timestamp}</span>
-                  </div>
+              {messages.map((m) => {
+                const isAssistant = m.role === 'assistant'
+                const isFallback = Boolean(
+                  m.source === 'rule-based-fallback' ||
+                  m.source === 'safety-fallback' ||
+                  m.isSystemAnalysisOnly
+                )
 
-                  <div style={{
-                    padding: '12px 16px',
-                    borderRadius: 10,
-                    background: m.role === 'user' ? '#1e293b' : '#0d1117',
-                    border: `1px solid ${m.role === 'user' ? '#334155' : '#1e2d3d'}`,
-                    color: '#f8fafc',
-                    fontSize: 13,
-                    lineHeight: 1.55,
-                    whiteSpace: 'pre-wrap',
-                    position: 'relative',
-                  }}>
-                    {m.content}
-                    {m.groundingSources && m.groundingSources.length > 0 && (
-                      <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #1e293b', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 700, color: '#38bdf8' }}>
-                          <Globe size={12} />
-                          <span>Google Search Grounded Sources:</span>
-                        </div>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                          {m.groundingSources.map((source, sIdx) => (
-                            <a
-                              key={sIdx}
-                              href={source.uri}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: 4,
-                                fontSize: 11,
-                                color: '#7dd3fc',
-                                background: 'rgba(56, 189, 248, 0.1)',
-                                border: '1px solid rgba(56, 189, 248, 0.25)',
-                                padding: '3px 8px',
-                                borderRadius: 4,
-                                textDecoration: 'none',
-                              }}
-                            >
-                              <ExternalLink size={10} />
-                              <span style={{ maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {source.title || source.uri}
-                              </span>
-                            </a>
-                          ))}
-                        </div>
+                return (
+                  <div
+                    key={m.id}
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
+                      maxWidth: '85%',
+                      width: isAssistant && (isFallback || m.confidence === 'DEGRADED') ? '85%' : undefined,
+                    }}
+                  >
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      marginBottom: 4,
+                      alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
+                    }}>
+                      <span style={{ fontSize: 10, color: '#64748b', fontWeight: 700 }}>
+                        {m.role === 'user' ? 'ANALYST' : 'VERIMEDIA ASSISTANT'}
+                      </span>
+                      {isAssistant && (
+                        isFallback ? (
+                          <span style={{
+                            padding: '2px 6px',
+                            borderRadius: 4,
+                            background: 'rgba(245, 158, 11, 0.15)',
+                            border: '1px dashed rgba(245, 158, 11, 0.4)',
+                            color: '#fbbf24',
+                            fontSize: 10,
+                            fontWeight: 700,
+                            letterSpacing: '0.04em',
+                          }}>
+                            SYSTEM HEURISTIC (OFFLINE FALLBACK)
+                          </span>
+                        ) : m.confidence === 'DEGRADED' ? (
+                          <span style={{
+                            padding: '2px 6px',
+                            borderRadius: 4,
+                            background: 'rgba(56, 189, 248, 0.15)',
+                            border: '1px solid rgba(56, 189, 248, 0.35)',
+                            color: '#38bdf8',
+                            fontSize: 10,
+                            fontWeight: 700,
+                          }}>
+                            ● LIVE GEMINI ({m.model}) · DEGRADED GROUNDING
+                          </span>
+                        ) : (
+                          <span style={{
+                            padding: '2px 6px',
+                            borderRadius: 4,
+                            background: 'rgba(34, 197, 94, 0.15)',
+                            border: '1px solid rgba(34, 197, 94, 0.35)',
+                            color: '#4ade80',
+                            fontSize: 10,
+                            fontWeight: 700,
+                          }}>
+                            ● LIVE GEMINI ({m.model || 'gemini-3.1-flash-lite'})
+                          </span>
+                        )
+                      )}
+                      <span style={{ fontSize: 10, color: '#475569' }}>{m.timestamp}</span>
+                    </div>
+
+                    {/* Data Confidence Banner above degraded or fallback assistant replies */}
+                    {isAssistant && (isFallback || m.confidence === 'UNAVAILABLE' || m.confidence === 'INSUFFICIENT_DATA') && (
+                      <div style={{ marginBottom: 8, width: '100%' }}>
+                        <DataConfidenceBanner
+                          confidence={m.confidence || 'UNAVAILABLE'}
+                          source={m.source || 'rule-based-fallback'}
+                          reason={m.degradationReason || 'Gemini is unavailable right now — showing general system response, not a live AI answer.'}
+                          isSystemAnalysisOnly={true}
+                        />
                       </div>
                     )}
-                    {m.role === 'assistant' && (
-                      <button
-                        onClick={() => handleCopy(m.content, m.id)}
-                        title="Copy markdown text"
-                        style={{
-                          position: 'absolute',
-                          top: 8,
-                          right: 8,
-                          background: 'transparent',
-                          border: 'none',
-                          color: '#64748b',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        {copiedId === m.id ? <Check size={14} color="#22c55e" /> : <Copy size={14} />}
-                      </button>
+
+                    {isAssistant && !isFallback && m.confidence === 'DEGRADED' && (
+                      <div style={{ marginBottom: 8, width: '100%' }}>
+                        <DataConfidenceBanner
+                          confidence="DEGRADED"
+                          source={m.source || 'gemini-3.1-flash-lite'}
+                          reason={m.degradationReason || 'Google Search grounding unavailable due to quota — synthesized via direct neural reasoning'}
+                          isSystemAnalysisOnly={false}
+                        />
+                      </div>
                     )}
+
+                    <div style={{
+                      padding: '14px 16px',
+                      borderRadius: 10,
+                      background: m.role === 'user'
+                        ? '#1e293b'
+                        : isFallback
+                        ? 'rgba(30, 41, 59, 0.45)'
+                        : '#0d1117',
+                      border: m.role === 'user'
+                        ? '1px solid #334155'
+                        : isFallback
+                        ? '1px dashed rgba(245, 158, 11, 0.45)'
+                        : '1px solid #1e2d3d',
+                      boxShadow: isFallback ? 'inset 0 0 16px rgba(245, 158, 11, 0.04)' : undefined,
+                      color: isFallback ? '#cbd5e1' : '#f8fafc',
+                      fontSize: 13,
+                      lineHeight: 1.55,
+                      whiteSpace: 'pre-wrap',
+                      position: 'relative',
+                    }}>
+                      {m.content}
+                      {m.groundingSources && m.groundingSources.length > 0 && (
+                        <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #1e293b', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 700, color: '#38bdf8' }}>
+                            <Globe size={12} />
+                            <span>Google Search Grounded Sources:</span>
+                          </div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                            {m.groundingSources.map((source, sIdx) => (
+                              <a
+                                key={sIdx}
+                                href={source.uri}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: 4,
+                                  fontSize: 11,
+                                  color: '#7dd3fc',
+                                  background: 'rgba(56, 189, 248, 0.1)',
+                                  border: '1px solid rgba(56, 189, 248, 0.25)',
+                                  padding: '3px 8px',
+                                  borderRadius: 4,
+                                  textDecoration: 'none',
+                                }}
+                              >
+                                <ExternalLink size={10} />
+                                <span style={{ maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {source.title || source.uri}
+                                </span>
+                              </a>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {m.role === 'assistant' && (
+                        <button
+                          onClick={() => handleCopy(m.content, m.id)}
+                          title="Copy markdown text"
+                          style={{
+                            position: 'absolute',
+                            top: 8,
+                            right: 8,
+                            background: 'transparent',
+                            border: 'none',
+                            color: '#64748b',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {copiedId === m.id ? <Check size={14} color="#22c55e" /> : <Copy size={14} />}
+                        </button>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
               {isSending && (
                 <div style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: 8, color: '#a855f7', fontSize: 12, padding: '8px 12px' }}>
                   <RefreshCw size={14} className="animate-spin" />
@@ -808,6 +956,16 @@ I am connected to the **Gemini 3.8 Flash Reasoning Engine** with **live Google S
 
           {dossierResult && (
             <div style={{ background: '#0d1117', border: '1px solid #1e2d3d', borderRadius: 10, padding: 22, position: 'relative' }}>
+              {dossierMeta && (dossierMeta.isSystemAnalysisOnly || dossierMeta.confidence !== 'LIVE') && (
+                <div style={{ marginBottom: 14 }}>
+                  <DataConfidenceBanner
+                    confidence={dossierMeta.confidence || 'INSUFFICIENT_DATA'}
+                    source={dossierMeta.source || 'rule-based-fallback'}
+                    reason={dossierMeta.degradationReason || 'Offline / rule-based fallback active — live Gemini model unreachable'}
+                    isSystemAnalysisOnly={true}
+                  />
+                </div>
+              )}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #1e2d3d', paddingBottom: 12, marginBottom: 16 }}>
                 <div>
                   <span style={{ fontSize: 11, color: '#38bdf8', fontWeight: 800, textTransform: 'uppercase', fontFamily: 'monospace' }}>
@@ -963,6 +1121,16 @@ I am connected to the **Gemini 3.8 Flash Reasoning Engine** with **live Google S
 
           {visionResult && (
             <div style={{ background: '#0d1117', border: '1px solid #1e2d3d', borderRadius: 10, padding: 22 }}>
+              {visionMeta && (visionMeta.isSystemAnalysisOnly || visionMeta.confidence !== 'LIVE') && (
+                <div style={{ marginBottom: 14 }}>
+                  <DataConfidenceBanner
+                    confidence={visionMeta.confidence || 'UNAVAILABLE'}
+                    source={visionMeta.source || 'unavailable-fallback'}
+                    reason={visionMeta.degradationReason || 'Offline / rule-based fallback active — Gemini Vision unreachable'}
+                    isSystemAnalysisOnly={true}
+                  />
+                </div>
+              )}
               <div style={{ fontSize: 11, color: '#fbbf24', fontWeight: 800, textTransform: 'uppercase', fontFamily: 'monospace', marginBottom: 12 }}>
                 GEMINI VISION FORENSIC INSPECTION REPORT
               </div>
@@ -1057,6 +1225,16 @@ I am connected to the **Gemini 3.8 Flash Reasoning Engine** with **live Google S
 
           {signalExplanation && (
             <div style={{ background: '#0d1117', border: '1px solid #1e2d3d', borderRadius: 10, padding: 22 }}>
+              {signalMeta && (signalMeta.isSystemAnalysisOnly || signalMeta.confidence !== 'LIVE') && (
+                <div style={{ marginBottom: 14 }}>
+                  <DataConfidenceBanner
+                    confidence={signalMeta.confidence || 'INSUFFICIENT_DATA'}
+                    source={signalMeta.source || 'rule-based-fallback'}
+                    reason={signalMeta.degradationReason || 'Offline / rule-based fallback active — live Gemini model unreachable'}
+                    isSystemAnalysisOnly={true}
+                  />
+                </div>
+              )}
               <div style={{ fontSize: 11, color: '#4ade80', fontWeight: 800, textTransform: 'uppercase', fontFamily: 'monospace', marginBottom: 12 }}>
                 FORENSIC SIGNAL TECHNICAL SPECIFICATION & MECHANICS
               </div>

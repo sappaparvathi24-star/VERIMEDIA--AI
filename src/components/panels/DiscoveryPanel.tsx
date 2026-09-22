@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useStore } from '../../store'
 import { getProviders, getSearchTransparency, searchMultiSource, getInvestigationCandidates, fetchGroundedSearch, GroundedSearchResult } from '../../services/api'
+import { DataConfidenceBanner } from '../ui/DataConfidenceBanner'
 
 interface ProviderInfo {
   id: string
@@ -252,7 +253,9 @@ export function DiscoveryPanel() {
     setLastExecutedQuery(isManualText ? testQuery.trim() : 'Image-First Visual Search')
 
     try {
-      const platformsToQuery = selectedProvider === 'ALL_PROVIDERS' ? undefined : [selectedProvider]
+      const platformsToQuery = isManualText
+        ? ['google_custom_search', 'youtube_data_api', 'google_vision', 'google_images']
+        : (selectedProvider === 'ALL_PROVIDERS' ? undefined : [selectedProvider])
       const invId = (currentResult?.investigationId || currentResult?.case_id) || undefined
       const artId = (currentResult as any)?.artifact?.id || ((currentResult as any)?.id || (currentResult as any)?.artifactId) || undefined
 
@@ -410,6 +413,272 @@ export function DiscoveryPanel() {
     return p.available ? 'AVAILABLE' : 'CONFIG REQUIRED'
   }
 
+  function renderCandidateCard(cand: DiscoveredCandidate, idx: number) {
+    const sim = typeof cand.similarity === 'number' ? cand.similarity : (cand.matchScore ? cand.matchScore / 100 : 0.85)
+    const simPct = Math.round(sim * 100)
+    const classification = cand.classification || (simPct >= 98 ? 'EXACT_MATCH' : simPct >= 88 ? 'NEAR_DUPLICATE' : simPct >= 70 ? 'MODIFIED_DERIVATIVE' : 'UNRELATED')
+    const isExact = classification === 'EXACT_MATCH'
+    const isNear = classification === 'NEAR_DUPLICATE'
+    const isDerivative = classification === 'MODIFIED_DERIVATIVE' || cand.isPartialMatch
+    const isVisualMatch = cand.matchType === 'visual_match'
+    const provBadge = getProviderBadge(cand)
+
+    const phashVal = cand.phashSimilarity ?? cand.similarityMeasurements?.phashSimilarity
+    const visionVal = cand.visionScore ?? cand.similarityMeasurements?.visionScore
+
+    return (
+      <div
+        key={cand.id || idx}
+        style={{
+          background: '#0d1117',
+          border: isExact 
+            ? '1.5px solid rgba(34, 197, 94, 0.6)' 
+            : isDerivative 
+              ? '1.5px solid rgba(245, 158, 11, 0.6)' 
+              : isNear 
+                ? '1.5px solid rgba(56, 189, 248, 0.4)' 
+                : '1px solid #1e2d3d',
+          borderRadius: 8,
+          padding: '16px 18px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 12,
+          boxShadow: isExact ? '0 2px 14px rgba(34, 197, 94, 0.08)' : isDerivative ? '0 2px 14px rgba(245, 158, 11, 0.08)' : 'none'
+        }}
+      >
+        {/* Top Bar: Title, Provider, Classification, and Match Type Badges */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <h4 style={{ fontSize: 14, fontWeight: 800, color: '#f8fafc', margin: 0 }}>
+                {cand.title}
+              </h4>
+
+              {/* Classification Badge */}
+              <span style={{
+                fontSize: 10,
+                fontWeight: 800,
+                padding: '2px 8px',
+                borderRadius: 4,
+                fontFamily: 'monospace',
+                background: isExact ? 'rgba(34, 197, 94, 0.2)' : isDerivative ? 'rgba(245, 158, 11, 0.2)' : 'rgba(56, 189, 248, 0.15)',
+                color: isExact ? '#4ade80' : isDerivative ? '#fbbf24' : '#38bdf8',
+                border: `1px solid ${isExact ? '#22c55e44' : isDerivative ? '#f59e0b44' : '#38bdf844'}`
+              }}>
+                {isExact ? '👑 EXACT_MATCH' : isDerivative ? '⚠ MODIFIED_DERIVATIVE' : '⚡ NEAR_DUPLICATE'}
+              </span>
+
+              {/* Match Type Badge (VISUAL MATCH vs TEXT-INFERRED) */}
+              <span style={{
+                fontSize: 10,
+                fontWeight: 800,
+                padding: '2px 8px',
+                borderRadius: 4,
+                fontFamily: 'monospace',
+                background: isVisualMatch ? 'rgba(168, 85, 247, 0.2)' : 'rgba(249, 115, 22, 0.15)',
+                color: isVisualMatch ? '#c084fc' : '#fb923c',
+                border: `1px solid ${isVisualMatch ? '#a855f744' : '#f9731644'}`
+              }}>
+                {isVisualMatch ? '🎯 VISUAL MATCH' : '📝 TEXT-INFERRED (OCR/Labels)'}
+              </span>
+
+              {/* Provider Badge */}
+              <span style={{
+                fontSize: 10,
+                fontWeight: 800,
+                padding: '2px 6px',
+                borderRadius: 4,
+                background: provBadge.bg,
+                color: provBadge.text,
+                border: `1px solid ${provBadge.border}`
+              }}>
+                {provBadge.name}
+              </span>
+            </div>
+
+            {cand.author && (
+              <div style={{ fontSize: 11, color: '#94a3b8' }}>by @{cand.author} • Platform: {cand.platform || 'Web'}</div>
+            )}
+          </div>
+
+          {/* Similarity Score Display */}
+          <div style={{
+            textAlign: 'right',
+            background: '#080c10',
+            padding: '6px 12px',
+            borderRadius: 6,
+            border: '1px solid #1e2d3d',
+            flexShrink: 0
+          }}>
+            <div style={{
+              fontSize: 18,
+              fontWeight: 900,
+              color: isExact ? '#4ade80' : isDerivative ? '#fbbf24' : '#38bdf8',
+              fontFamily: 'monospace'
+            }}>
+              {simPct}% visual similarity
+            </div>
+            <div style={{ fontSize: 9, color: '#64748b', fontFamily: 'monospace' }}>
+              {phashVal != null ? `pHash: ${(phashVal).toFixed(2)}` : 'pHash: N/A'}
+              {visionVal != null ? `, Vision: ${(visionVal).toFixed(2)}` : ''}
+              {cand.hammingDistance != null ? `, Dist: ${cand.hammingDistance}` : ''}
+            </div>
+          </div>
+        </div>
+
+        {/* SIDE-BY-SIDE VISUAL COMPARISON CONTAINER */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 16,
+          background: '#080c10',
+          border: '1px solid #161f2e',
+          borderRadius: 8,
+          padding: 12,
+          flexWrap: 'wrap'
+        }}>
+          {/* Left: Uploaded Media Reference */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{
+              width: 56,
+              height: 56,
+              borderRadius: 6,
+              background: '#161b22',
+              border: '1px solid #334155',
+              overflow: 'hidden',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0
+            }}>
+              {referenceThumbnail ? (
+                <img
+                  src={referenceThumbnail}
+                  alt="Uploaded Reference"
+                  referrerPolicy="no-referrer"
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                />
+              ) : (
+                <span style={{ fontSize: 20 }}>🖼️</span>
+              )}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <span style={{ fontSize: 9, color: '#64748b', fontWeight: 800, textTransform: 'uppercase' }}>Reference Media</span>
+              <span style={{ fontSize: 11, color: '#e2e8f0', fontWeight: 700 }}>Uploaded Asset</span>
+            </div>
+          </div>
+
+          <div style={{ color: '#64748b', fontSize: 16, fontWeight: 800 }}>➔</div>
+
+          {/* Right: Discovered Candidate */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1 }}>
+            <div style={{
+              width: 56,
+              height: 56,
+              borderRadius: 6,
+              background: isExact ? 'rgba(34,197,94,0.1)' : 'rgba(0,212,255,0.08)',
+              border: `1px solid ${isExact ? '#22c55e44' : '#00d4ff44'}`,
+              overflow: 'hidden',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0
+            }}>
+              {cand.thumbnailUrl ? (
+                <img
+                  src={cand.thumbnailUrl}
+                  alt={cand.title || 'Discovered candidate'}
+                  referrerPolicy="no-referrer"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                  }}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                />
+              ) : (
+                <span style={{ fontSize: 20 }}>
+                  {cand.platform?.includes('YouTube') ? '▶️' : cand.platform?.includes('Instagram') ? '📸' : cand.platform?.includes('X') ? '𝕏' : '🌐'}
+                </span>
+              )}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <span style={{ fontSize: 9, color: '#64748b', fontWeight: 800, textTransform: 'uppercase' }}>Candidate Appearance</span>
+              <span style={{ fontSize: 11, color: '#38bdf8', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {cand.platform || 'External Web'}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Forensic Alert: Derivative / Tampered match */}
+        {cand.isPartialMatch && (
+          <div style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '4px 10px',
+            borderRadius: 4,
+            background: 'rgba(239, 68, 68, 0.12)',
+            border: '1px solid rgba(239, 68, 68, 0.3)',
+            color: '#f87171',
+            fontSize: 11,
+            fontWeight: 700,
+            width: 'fit-content'
+          }}>
+            <span>⚠ High Priority Lead:</span>
+            <span>{cand.tamperedIndicator || 'Potential partial crop, altered background, or tampered derivative match'}</span>
+          </div>
+        )}
+
+        <p style={{ fontSize: 12, color: '#cbd5e1', margin: '0', lineHeight: 1.4 }}>
+          {cand.snippet}
+        </p>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, fontSize: 11, color: '#64748b' }}>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span>Published: {cand.publishedAt ? new Date(cand.publishedAt).toLocaleString() : 'N/A'}</span>
+            <span>•</span>
+            <a href={cand.url} target="_blank" rel="noreferrer" style={{ color: '#38bdf8', textDecoration: 'none' }}>
+              🔗 {cand.url.length > 55 ? `${cand.url.slice(0, 55)}…` : cand.url}
+            </a>
+          </div>
+
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button
+              onClick={() => setActiveTab('origin')}
+              style={{
+                background: 'rgba(56, 189, 248, 0.1)',
+                border: '1px solid rgba(56, 189, 248, 0.3)',
+                color: '#38bdf8',
+                padding: '4px 8px',
+                borderRadius: 4,
+                fontSize: 10,
+                fontWeight: 700,
+                cursor: 'pointer'
+              }}
+            >
+              🌳 Trace in E3
+            </button>
+            <button
+              onClick={() => setActiveTab('propagation')}
+              style={{
+                background: 'rgba(168, 85, 247, 0.1)',
+                border: '1px solid rgba(168, 85, 247, 0.3)',
+                color: '#c084fc',
+                padding: '4px 8px',
+                borderRadius: 4,
+                fontSize: 10,
+                fontWeight: 700,
+                cursor: 'pointer'
+              }}
+            >
+              📡 View in E4
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div style={{ padding: '20px 24px', width: '100%', minHeight: '100%', background: '#080c10', color: '#f8fafc', display: 'flex', flexDirection: 'column', gap: 18 }}>
 
@@ -541,76 +810,7 @@ export function DiscoveryPanel() {
         </div>
       </div>
 
-      {/* Live Search Transparency Matrix Section */}
-      {transparencySources.length > 0 && (
-        <div style={{ background: '#0d1117', border: '1px solid #1e2d3d', borderRadius: 10, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ fontSize: 12, fontWeight: 800, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span>📡 Live Search Transparency Matrix</span>
-              <span style={{ fontSize: 10, color: '#00d4ff', background: 'rgba(0,212,255,0.15)', padding: '2px 6px', borderRadius: 4, fontFamily: 'monospace' }}>
-                getSearchTransparency()
-              </span>
-            </div>
-            <span style={{ fontSize: 10, color: '#64748b' }}>
-              {transparencySources.length} Platform Sources Audited
-            </span>
-          </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 10 }}>
-            {transparencySources.map((src) => {
-              const isAvailable = src.status === 'AVAILABLE'
-              const isUnavail = src.isPermanentUnavailable || src.status === 'UNAVAILABLE'
-              return (
-                <div
-                  key={src.id}
-                  style={{
-                    background: '#080c10',
-                    border: '1px solid #1e2d3d',
-                    borderRadius: 8,
-                    padding: '10px 12px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 4
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: 12, fontWeight: 800, color: '#e2e8f0' }}>{src.name}</span>
-                    <span style={{
-                      fontSize: 9,
-                      fontWeight: 800,
-                      padding: '2px 6px',
-                      borderRadius: 4,
-                      fontFamily: 'monospace',
-                      background: isAvailable ? 'rgba(34,197,94,0.15)' : isUnavail ? 'rgba(100,116,139,0.2)' : 'rgba(245,158,11,0.15)',
-                      color: isAvailable ? '#4ade80' : isUnavail ? '#64748b' : '#fbbf24'
-                    }}>
-                      {src.status}
-                    </span>
-                  </div>
-                  <div style={{ fontSize: 10, color: '#38bdf8', fontFamily: 'monospace' }}>
-                    {src.category}
-                  </div>
-                  <p style={{ fontSize: 11, color: '#94a3b8', margin: 0, lineHeight: 1.3 }}>
-                    {src.description}
-                  </p>
-                  {src.reason && (
-                    <div style={{ fontSize: 10, color: '#f59e0b', marginTop: 2, fontStyle: 'italic' }}>
-                      Note: {src.reason}
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-
-          {transparencyNotice && (
-            <div style={{ padding: '8px 12px', borderRadius: 6, background: 'rgba(15,23,42,0.8)', border: '1px solid #1e2d3d', fontSize: 11, color: '#94a3b8', display: 'flex', gap: 6, alignItems: 'center' }}>
-              <span>🔒</span>
-              <span><strong>Compliance Notice:</strong> {transparencyNotice}</span>
-            </div>
-          )}
-        </div>
-      )}
 
       {/* GOOGLE SEARCH GROUNDING DISCOVERY CARD (gemini-3.5-flash + googleSearch) */}
       <div style={{
@@ -855,36 +1055,38 @@ export function DiscoveryPanel() {
         </div>
       </div>
 
-      {/* SECONDARY MANUAL KEYWORD SEARCH (EXPLICIT FALLBACK) */}
+      {/* PRIMARY KEYWORD / NAME SEARCH CARD */}
       <div style={{
         background: '#0d1117',
-        border: '1px solid #1e2d3d',
+        border: '1.5px solid rgba(56, 189, 248, 0.4)',
         borderRadius: 10,
-        padding: 16,
+        padding: 18,
         display: 'flex',
         flexDirection: 'column',
-        gap: 12
+        gap: 14,
+        boxShadow: '0 4px 20px rgba(56, 189, 248, 0.05)'
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 12, fontWeight: 800, color: '#94a3b8' }}>
-              Manual keyword search (secondary fallback)
+            <span style={{ fontSize: 16 }}>🔎</span>
+            <span style={{ fontSize: 13, fontWeight: 900, color: '#f8fafc' }}>
+              Search by Name / Keyword
             </span>
             <span style={{
-              fontSize: 9,
+              fontSize: 10,
               fontWeight: 800,
-              padding: '2px 6px',
+              padding: '2px 8px',
               borderRadius: 4,
-              background: 'rgba(245, 158, 11, 0.15)',
-              color: '#fbbf24',
+              background: 'rgba(56, 189, 248, 0.15)',
+              color: '#38bdf8',
               fontFamily: 'monospace'
             }}>
-              SECONDARY OVERRIDE ONLY
+              MULTI-SOURCE CROSS SEARCH
             </span>
           </div>
 
-          <span style={{ fontSize: 11, color: '#64748b' }}>
-            Visual reverse search is primary; use manual text keywords only as a fallback
+          <span style={{ fontSize: 11, color: '#94a3b8' }}>
+            Queries YouTube Data API, Google Custom Search, Vision, & Web Repositories
           </span>
         </div>
 
@@ -894,7 +1096,7 @@ export function DiscoveryPanel() {
             value={testQuery}
             onChange={e => setTestQuery(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && !isQuerying && executeDiscovery(true, 1)}
-            placeholder="Enter manual keywords for secondary fallback search…"
+            placeholder="Search by subject name, event title, or keywords (e.g. Biden, Trump, Modi, White House)..."
             style={{
               flex: 1,
               background: '#080c10',
@@ -910,37 +1112,39 @@ export function DiscoveryPanel() {
             onClick={() => executeDiscovery(true, 1)}
             disabled={isQuerying || !testQuery.trim()}
             style={{
-              background: testQuery.trim() ? '#1e293b' : '#0f172a',
-              color: testQuery.trim() ? '#e2e8f0' : '#475569',
-              border: '1px solid #334155',
+              background: testQuery.trim() ? 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)' : '#0f172a',
+              color: testQuery.trim() ? '#f8fafc' : '#475569',
+              border: 'none',
               borderRadius: 6,
-              padding: '0 18px',
+              padding: '0 20px',
               fontSize: 12,
-              fontWeight: 700,
+              fontWeight: 800,
               cursor: testQuery.trim() && !isQuerying ? 'pointer' : 'not-allowed',
               display: 'flex',
               alignItems: 'center',
-              gap: 6
+              gap: 8,
+              boxShadow: testQuery.trim() ? '0 2px 10px rgba(2, 132, 199, 0.3)' : 'none'
             }}
           >
-            {isQuerying && searchMode === 'MANUAL_TEXT' ? '◌ Searching…' : '🔍 Search via Manual Keywords (Fallback)'}
+            {isQuerying && searchMode === 'MANUAL_TEXT' ? '◌ Searching All Sources…' : '🔍 Search Name / Keyword'}
           </button>
         </div>
 
-        {/* Quick Presets */}
+        {/* Quick Name / Keyword Presets */}
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 10, color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Text Presets:</span>
-          {['Visual Web Detection', 'OCR Extracted Text', 'Caption Semantics', 'Reverse Media Check'].map((preset) => (
+          <span style={{ fontSize: 10, color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Quick Presets:</span>
+          {['Biden', 'Trump', 'Modi', 'White House Briefing', 'Deepfake Speech'].map((preset) => (
             <button
               key={preset}
               onClick={() => { setTestQuery(preset); }}
               style={{
                 background: '#080c10',
                 border: '1px solid #1e2d3d',
-                color: '#94a3b8',
-                padding: '3px 8px',
+                color: '#38bdf8',
+                padding: '4px 10px',
                 borderRadius: 4,
-                fontSize: 10,
+                fontSize: 11,
+                fontWeight: 600,
                 cursor: 'pointer'
               }}
             >
@@ -949,15 +1153,26 @@ export function DiscoveryPanel() {
           ))}
         </div>
 
+        {/* YouTube API Key Notice if missing */}
+        {(!providers.youtube_data_api?.available || providerStatuses.youtube_data_api?.status === 'NOT_CONFIGURED' || providerStatuses.youtube?.status === 'NOT_CONFIGURED') && (
+          <div style={{ padding: '8px 12px', borderRadius: 6, background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.3)', fontSize: 11, color: '#fbbf24', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span>⚠️</span>
+            <span><strong>YouTube search unavailable:</strong> set <code>YOUTUBE_API_KEY</code> in <code>.env</code> to enable video platform discovery.</span>
+          </div>
+        )}
+
         {statusMsg && (
           <div style={{ padding: '8px 12px', borderRadius: 6, background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.2)', fontSize: 11, color: '#4ade80' }}>
             ✓ {statusMsg}
           </div>
         )}
         {queryError && (
-          <div style={{ padding: '8px 12px', borderRadius: 6, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', fontSize: 11, color: '#f87171' }}>
-            ⚠ {queryError}
-          </div>
+          <DataConfidenceBanner
+            confidence="UNAVAILABLE"
+            source={selectedProvider === 'ALL_PROVIDERS' ? 'Multi-Source Search' : selectedProvider}
+            reason={queryError}
+            isSystemAnalysisOnly={true}
+          />
         )}
       </div>
 
@@ -1003,20 +1218,13 @@ export function DiscoveryPanel() {
         {Object.entries(providerStatuses)
           .filter(([id, p]) => (p.status === 'ERROR' || p.status === 'AUTHENTICATED_ERROR' || p.status === 'UNAVAILABLE' || p.status === 'NOT_CONFIGURED' || p.status === 'QUOTA_REACHED') && id !== 'instagram' && id !== 'x')
           .map(([id, p]) => (
-            <div key={id} style={{
-              padding: '8px 12px',
-              borderRadius: 6,
-              background: p.status === 'ERROR' ? 'rgba(239, 68, 68, 0.08)' : 'rgba(245, 158, 11, 0.08)',
-              border: `1px solid ${p.status === 'ERROR' ? 'rgba(239, 68, 68, 0.3)' : 'rgba(245, 158, 11, 0.3)'}`,
-              fontSize: 11,
-              color: p.status === 'ERROR' ? '#f87171' : '#fbbf24',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8
-            }}>
-              <span>{p.status === 'ERROR' ? '❌' : '⚠️'}</span>
-              <span><strong>Provider Status ({p.name || id}):</strong> {p.reason || (p.status === 'NOT_CONFIGURED' || p.status === 'UNAVAILABLE' ? 'API credentials not configured on this deployment. Set provider environment variable in deployment settings.' : 'Provider status: ' + p.status)}</span>
-            </div>
+            <DataConfidenceBanner
+              key={id}
+              confidence={p.status === 'NOT_CONFIGURED' || p.status === 'UNAVAILABLE' ? 'UNAVAILABLE' : 'DEGRADED'}
+              source={p.name || id}
+              reason={p.reason || (p.status === 'NOT_CONFIGURED' ? 'API key / credentials not configured on server' : `Provider status: ${p.status}`)}
+              isSystemAnalysisOnly={true}
+            />
           ))
         }
       </div>
@@ -1040,15 +1248,23 @@ export function DiscoveryPanel() {
             background: '#0d1117',
             border: '1px dashed #1e2d3d',
             borderRadius: 8,
-            padding: '36px 20px',
+            padding: '24px 20px',
             textAlign: 'center',
             color: '#64748b',
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
-            gap: 8
+            gap: 12
           }}>
-            <div style={{ fontSize: 28, marginBottom: 4 }}>🔎</div>
+            {hasSearched && (
+              <DataConfidenceBanner
+                confidence="INSUFFICIENT_DATA"
+                source={selectedProvider === 'ALL_PROVIDERS' ? 'Discovery Pipeline' : selectedProvider}
+                reason="0 visual or keyword matches returned across active providers"
+                isSystemAnalysisOnly={true}
+              />
+            )}
+            <div style={{ fontSize: 28, marginBottom: 2 }}>🔎</div>
             <div style={{ color: '#94a3b8', fontWeight: 800, fontSize: 14 }}>
               {hasSearched ? 'No Matching Appearances Found' : 'No Live Candidates Ingested Yet'}
             </div>
@@ -1059,272 +1275,78 @@ export function DiscoveryPanel() {
             </div>
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {candidatesList.map((cand, idx) => {
-              const sim = typeof cand.similarity === 'number' ? cand.similarity : (cand.matchScore ? cand.matchScore / 100 : 0.85)
-              const simPct = Math.round(sim * 100)
-              const classification = cand.classification || (simPct >= 98 ? 'EXACT_MATCH' : simPct >= 88 ? 'NEAR_DUPLICATE' : simPct >= 70 ? 'MODIFIED_DERIVATIVE' : 'UNRELATED')
-              const isExact = classification === 'EXACT_MATCH'
-              const isNear = classification === 'NEAR_DUPLICATE'
-              const isDerivative = classification === 'MODIFIED_DERIVATIVE' || cand.isPartialMatch
-              const isVisualMatch = cand.matchType === 'visual_match'
-              const provBadge = getProviderBadge(cand)
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {(() => {
+          const videoWebMentions = candidatesList.filter(c => {
+            const src = (c.source || c.platform || '').toLowerCase()
+            return (
+              src.includes('youtube') ||
+              src.includes('custom_search') ||
+              src.includes('reddit') ||
+              src.includes('x') ||
+              c.matchType === 'text_inferred' ||
+              c.sourceType === 'TEXT_SEARCH' ||
+              (!src.includes('vision') && !src.includes('images') && c.matchType !== 'visual_match')
+            )
+          })
 
-              const phashVal = cand.phashSimilarity ?? cand.similarityMeasurements?.phashSimilarity
-              const visionVal = cand.visionScore ?? cand.similarityMeasurements?.visionScore
+          const visualMatches = candidatesList.filter(c => {
+            const src = (c.source || c.platform || '').toLowerCase()
+            return (
+              src.includes('vision') ||
+              src.includes('images') ||
+              c.matchType === 'visual_match' ||
+              c.sourceType === 'VISUAL_SEARCH'
+            )
+          })
 
-              return (
-                <div
-                  key={cand.id || idx}
-                  style={{
-                    background: '#0d1117',
-                    border: isExact 
-                      ? '1.5px solid rgba(34, 197, 94, 0.6)' 
-                      : isDerivative 
-                        ? '1.5px solid rgba(245, 158, 11, 0.6)' 
-                        : isNear 
-                          ? '1.5px solid rgba(56, 189, 248, 0.4)' 
-                          : '1px solid #1e2d3d',
-                    borderRadius: 8,
-                    padding: '16px 18px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 12,
-                    boxShadow: isExact ? '0 2px 14px rgba(34, 197, 94, 0.08)' : isDerivative ? '0 2px 14px rgba(245, 158, 11, 0.08)' : 'none'
-                  }}
-                >
-                  {/* Top Bar: Title, Provider, Classification, and Match Type Badges */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                        <h4 style={{ fontSize: 14, fontWeight: 800, color: '#f8fafc', margin: 0 }}>
-                          {cand.title}
-                        </h4>
-
-                        {/* Classification Badge */}
-                        <span style={{
-                          fontSize: 10,
-                          fontWeight: 800,
-                          padding: '2px 8px',
-                          borderRadius: 4,
-                          fontFamily: 'monospace',
-                          background: isExact ? 'rgba(34, 197, 94, 0.2)' : isDerivative ? 'rgba(245, 158, 11, 0.2)' : 'rgba(56, 189, 248, 0.15)',
-                          color: isExact ? '#4ade80' : isDerivative ? '#fbbf24' : '#38bdf8',
-                          border: `1px solid ${isExact ? '#22c55e44' : isDerivative ? '#f59e0b44' : '#38bdf844'}`
-                        }}>
-                          {isExact ? '👑 EXACT_MATCH' : isDerivative ? '⚠ MODIFIED_DERIVATIVE' : '⚡ NEAR_DUPLICATE'}
-                        </span>
-
-                        {/* Match Type Badge (VISUAL MATCH vs TEXT-INFERRED) */}
-                        <span style={{
-                          fontSize: 10,
-                          fontWeight: 800,
-                          padding: '2px 8px',
-                          borderRadius: 4,
-                          fontFamily: 'monospace',
-                          background: isVisualMatch ? 'rgba(168, 85, 247, 0.2)' : 'rgba(249, 115, 22, 0.15)',
-                          color: isVisualMatch ? '#c084fc' : '#fb923c',
-                          border: `1px solid ${isVisualMatch ? '#a855f744' : '#f9731644'}`
-                        }}>
-                          {isVisualMatch ? '🎯 VISUAL MATCH' : '📝 TEXT-INFERRED (OCR/Labels)'}
-                        </span>
-
-                        {/* Provider Badge */}
-                        <span style={{
-                          fontSize: 10,
-                          fontWeight: 800,
-                          padding: '2px 6px',
-                          borderRadius: 4,
-                          background: provBadge.bg,
-                          color: provBadge.text,
-                          border: `1px solid ${provBadge.border}`
-                        }}>
-                          {provBadge.name}
-                        </span>
-                      </div>
-
-                      {cand.author && (
-                        <div style={{ fontSize: 11, color: '#94a3b8' }}>by @{cand.author} • Platform: {cand.platform || 'Web'}</div>
-                      )}
-                    </div>
-
-                    {/* Similarity Score Display */}
-                    <div style={{
-                      textAlign: 'right',
-                      background: '#080c10',
-                      padding: '6px 12px',
-                      borderRadius: 6,
-                      border: '1px solid #1e2d3d',
-                      flexShrink: 0
-                    }}>
-                      <div style={{
-                        fontSize: 18,
-                        fontWeight: 900,
-                        color: isExact ? '#4ade80' : isDerivative ? '#fbbf24' : '#38bdf8',
-                        fontFamily: 'monospace'
-                      }}>
-                        {simPct}% visual similarity
-                      </div>
-                      <div style={{ fontSize: 9, color: '#64748b', fontFamily: 'monospace' }}>
-                        {phashVal != null ? `pHash: ${(phashVal).toFixed(2)}` : 'pHash: N/A'}
-                        {visionVal != null ? `, Vision: ${(visionVal).toFixed(2)}` : ''}
-                        {cand.hammingDistance != null ? `, Dist: ${cand.hammingDistance}` : ''}
-                      </div>
-                    </div>
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              {/* SUB-SECTION 1: Video / Web Mentions */}
+              {videoWebMentions.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingBottom: 6, borderBottom: '1px solid #1e2d3d' }}>
+                    <span style={{ fontSize: 16 }}>📺</span>
+                    <h3 style={{ fontSize: 13, fontWeight: 800, color: '#38bdf8', margin: 0, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      Video / Web Mentions ({videoWebMentions.length})
+                    </h3>
+                    <span style={{ fontSize: 11, color: '#64748b' }}>
+                      YouTube Data API, Google Custom Search text hits, & web discussions
+                    </span>
                   </div>
-
-                  {/* SIDE-BY-SIDE VISUAL COMPARISON CONTAINER */}
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 16,
-                    background: '#080c10',
-                    border: '1px solid #161f2e',
-                    borderRadius: 8,
-                    padding: 12,
-                    flexWrap: 'wrap'
-                  }}>
-                    {/* Left: Uploaded Media Reference */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <div style={{
-                        width: 56,
-                        height: 56,
-                        borderRadius: 6,
-                        background: '#161b22',
-                        border: '1px solid #334155',
-                        overflow: 'hidden',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexShrink: 0
-                      }}>
-                        {referenceThumbnail ? (
-                          <img
-                            src={referenceThumbnail}
-                            alt="Uploaded Reference"
-                            referrerPolicy="no-referrer"
-                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                          />
-                        ) : (
-                          <span style={{ fontSize: 20 }}>🖼️</span>
-                        )}
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column' }}>
-                        <span style={{ fontSize: 9, color: '#64748b', fontWeight: 800, textTransform: 'uppercase' }}>Reference Media</span>
-                        <span style={{ fontSize: 11, color: '#e2e8f0', fontWeight: 700 }}>Uploaded Asset</span>
-                      </div>
-                    </div>
-
-                    <div style={{ color: '#64748b', fontSize: 16, fontWeight: 800 }}>➔</div>
-
-                    {/* Right: Discovered Candidate */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1 }}>
-                      <div style={{
-                        width: 56,
-                        height: 56,
-                        borderRadius: 6,
-                        background: isExact ? 'rgba(34,197,94,0.1)' : 'rgba(0,212,255,0.08)',
-                        border: `1px solid ${isExact ? '#22c55e44' : '#00d4ff44'}`,
-                        overflow: 'hidden',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexShrink: 0
-                      }}>
-                        {cand.thumbnailUrl ? (
-                          <img
-                            src={cand.thumbnailUrl}
-                            alt={cand.title || 'Discovered candidate'}
-                            referrerPolicy="no-referrer"
-                            onError={(e) => {
-                              e.currentTarget.style.display = 'none';
-                            }}
-                            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                          />
-                        ) : (
-                          <span style={{ fontSize: 20 }}>
-                            {cand.platform?.includes('YouTube') ? '▶️' : cand.platform?.includes('Instagram') ? '📸' : cand.platform?.includes('X') ? '𝕏' : '🌐'}
-                          </span>
-                        )}
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                        <span style={{ fontSize: 9, color: '#64748b', fontWeight: 800, textTransform: 'uppercase' }}>Candidate Appearance</span>
-                        <span style={{ fontSize: 11, color: '#38bdf8', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          {cand.platform || 'External Web'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Forensic Alert: Derivative / Tampered match */}
-                  {cand.isPartialMatch && (
-                    <div style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 6,
-                      padding: '4px 10px',
-                      borderRadius: 4,
-                      background: 'rgba(239, 68, 68, 0.12)',
-                      border: '1px solid rgba(239, 68, 68, 0.3)',
-                      color: '#f87171',
-                      fontSize: 11,
-                      fontWeight: 700,
-                      width: 'fit-content'
-                    }}>
-                      <span>⚠ High Priority Lead:</span>
-                      <span>{cand.tamperedIndicator || 'Potential partial crop, altered background, or tampered derivative match'}</span>
-                    </div>
-                  )}
-
-                  <p style={{ fontSize: 12, color: '#cbd5e1', margin: '0', lineHeight: 1.4 }}>
-                    {cand.snippet}
-                  </p>
-
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, fontSize: 11, color: '#64748b' }}>
-                    <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-                      <span>Published: {cand.publishedAt ? new Date(cand.publishedAt).toLocaleString() : 'N/A'}</span>
-                      <span>•</span>
-                      <a href={cand.url} target="_blank" rel="noreferrer" style={{ color: '#38bdf8', textDecoration: 'none' }}>
-                        🔗 {cand.url.length > 55 ? `${cand.url.slice(0, 55)}…` : cand.url}
-                      </a>
-                    </div>
-
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <button
-                        onClick={() => setActiveTab('origin')}
-                        style={{
-                          background: 'rgba(56, 189, 248, 0.1)',
-                          border: '1px solid rgba(56, 189, 248, 0.3)',
-                          color: '#38bdf8',
-                          padding: '4px 8px',
-                          borderRadius: 4,
-                          fontSize: 10,
-                          fontWeight: 700,
-                          cursor: 'pointer'
-                        }}
-                      >
-                        🌳 Trace in E3
-                      </button>
-                      <button
-                        onClick={() => setActiveTab('propagation')}
-                        style={{
-                          background: 'rgba(168, 85, 247, 0.1)',
-                          border: '1px solid rgba(168, 85, 247, 0.3)',
-                          color: '#c084fc',
-                          padding: '4px 8px',
-                          borderRadius: 4,
-                          fontSize: 10,
-                          fontWeight: 700,
-                          cursor: 'pointer'
-                        }}
-                      >
-                        📡 View in E4
-                      </button>
-                    </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {videoWebMentions.map((cand, idx) => renderCandidateCard(cand, idx))}
                   </div>
                 </div>
-              )
-            })}
+              )}
+
+              {/* SUB-SECTION 2: Visual Matches */}
+              {visualMatches.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingBottom: 6, borderBottom: '1px solid #1e2d3d' }}>
+                    <span style={{ fontSize: 16 }}>🎯</span>
+                    <h3 style={{ fontSize: 13, fontWeight: 800, color: '#c084fc', margin: 0, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      Visual Matches ({visualMatches.length})
+                    </h3>
+                    <span style={{ fontSize: 11, color: '#64748b' }}>
+                      Google Vision Web Detection, perceptual image hash, & visual search hits
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {visualMatches.map((cand, idx) => renderCandidateCard(cand, idx))}
+                  </div>
+                </div>
+              )}
+
+              {/* Fallback if candidates exist but didn't separate into either */}
+              {videoWebMentions.length === 0 && visualMatches.length === 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {candidatesList.map((cand, idx) => renderCandidateCard(cand, idx))}
+                </div>
+              )}
+            </div>
+          )
+        })()}
 
             {/* Pagination & Load 10 More Controls */}
             <div style={{

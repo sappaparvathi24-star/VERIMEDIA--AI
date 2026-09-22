@@ -6,6 +6,8 @@ import { uploadArtifactAsync, pollForensicJob } from '../../services/api'
 import { ForensicViewer } from './ForensicViewer'
 import type { Scenario } from '../../types'
 import { Columns2, Activity, ShieldCheck, Sparkles, RefreshCw } from 'lucide-react'
+import { TermLabel } from '../ui/TermLabel'
+import { DataConfidenceBanner } from '../ui/DataConfidenceBanner'
 
 const PRESETS: { key: Scenario; label: string; icon: string }[] = [
   { key: 'deepfake', label: 'AI Deepfake', icon: '🤖' },
@@ -16,15 +18,15 @@ const PRESETS: { key: Scenario; label: string; icon: string }[] = [
 ]
 
 const SIGNALS = [
-  { key: 'jpeg_artifact',      label: 'Error Level Analysis (ELA)', invert: false, desc: 'Compression grid residual variance' },
-  { key: 'noise_pattern',      label: 'Sensor Noise PRNU',           invert: false, desc: 'Photo-response non-uniformity' },
-  { key: 'edge_consistency',   label: 'Edge & Boundary Coherence',   invert: true,  desc: 'Boundary gradient continuity & cloning' },
-  { key: 'metadata_coherence', label: 'EXIF & Header Integrity',     invert: true,  desc: 'EXIF hardware and timestamp match' },
-  { key: 'color_histogram',    label: 'Color Space & Gamut',         invert: false, desc: 'Chroma sub-sampling & gamut distribution' },
-  { key: 'face_landmark',      label: 'Facial Landmark Mesh',        invert: false, desc: 'Facial symmetry & neural synthesis cues' },
-  { key: 'lipsync',            label: 'Audio/Video Sync',            invert: false, desc: 'Acoustic-viseme alignment' },
-  { key: 'temporal_mismatch',  label: 'Frame & Optical Flow',        invert: false, desc: 'Inter-frame motion vector continuity' },
-  { key: 'watermark_presence', label: 'Watermark & Signature',       invert: true,  desc: 'Broadcast bug or steganographic tag' },
+  { key: 'jpeg_artifact',      termKey: 'ela', label: 'Error Level Analysis (ELA)', invert: false },
+  { key: 'noise_pattern',      termKey: 'prnu', label: 'Sensor Noise (PRNU)',       invert: false },
+  { key: 'edge_consistency',   termKey: 'ssim', label: 'Edge & Boundary Coherence', invert: true  },
+  { key: 'metadata_coherence', termKey: 'exif', label: 'EXIF & Header Integrity', flexTerm: 'exif', invert: true  },
+  { key: 'color_histogram',    termKey: 'chroma_subsampling', label: 'Color Space & Gamut', invert: false },
+  { key: 'face_landmark',      termKey: 'clip_similarity', label: 'Facial Landmark Mesh', invert: false },
+  { key: 'lipsync',            termKey: 'bitrate', label: 'Audio/Video Sync', invert: false },
+  { key: 'temporal_mismatch',  termKey: 'psnr', label: 'Frame & Optical Flow', invert: false },
+  { key: 'watermark_presence', termKey: 'c2pa', label: 'Watermark & Signature', invert: true  },
 ]
 
 function getSignalColor(anomaly: number): string {
@@ -179,6 +181,14 @@ export function ForensicPanel() {
       color: '#f8fafc',
       gap: 16
     }}>
+      {((currentResult as any)?.disclaimer || (currentResult as any)?.ai_analysis?.source === 'fallback' || forensicStatus === 'SKIPPED') && (
+        <DataConfidenceBanner
+          confidence="DEGRADED"
+          source="Forensic Signal Pipeline"
+          reason={(currentResult as any)?.disclaimer || 'Partial media stream or fallback signal model active — heuristic baselines applied.'}
+          isSystemAnalysisOnly={true}
+        />
+      )}
       {/* Top Status Banner */}
       <div style={{
         padding: '12px 16px',
@@ -271,25 +281,12 @@ export function ForensicPanel() {
           AI vision step didn't run (missing GEMINI_API_KEY, model failure, etc.)
           so an INCONCLUSIVE verdict is never mistaken for a completed audit. */}
       {isReal && forensics && forensics.status !== 'COMPLETED' && (
-        <div style={{
-          padding: '10px 14px',
-          borderRadius: 8,
-          background: 'rgba(245, 158, 11, 0.08)',
-          border: '1px solid rgba(245, 158, 11, 0.35)',
-          display: 'flex',
-          alignItems: 'flex-start',
-          gap: 10
-        }}>
-          <span style={{ fontSize: 16, lineHeight: 1 }}>⚠️</span>
-          <div>
-            <div style={{ fontSize: 12, fontWeight: 800, color: '#fbbf24' }}>
-              AI Vision Audit Incomplete — Verdict Based on Physical Signals Only
-            </div>
-            <p style={{ fontSize: 11, color: '#cbd5e1', margin: '4px 0 0' }}>
-              {forensics.reason || 'Multimodal AI vision analysis did not complete for this asset.'}
-            </p>
-          </div>
-        </div>
+        <DataConfidenceBanner
+          confidence={forensics.status === 'FAILED' ? 'UNAVAILABLE' : 'DEGRADED'}
+          source="AI Vision Forensic Audit"
+          reason={forensics.reason || 'Multimodal AI vision analysis did not complete for this asset. Verdict based on physical signals only.'}
+          isSystemAnalysisOnly={true}
+        />
       )}
 
       {/* Distinct Informational Banner for SKIPPED Forensic Status */}
@@ -516,17 +513,16 @@ export function ForensicPanel() {
                 overflow: 'hidden',
               }}>
                 <div style={{ position: 'relative' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: '#f8fafc' }}>
-                      {sig.label}
-                    </div>
-                    <div style={{ fontSize: 14, fontWeight: 800, color, fontFamily: 'monospace' }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
+                    <TermLabel
+                      term={sig.termKey}
+                      label={sig.label}
+                      labelClassName="text-[12px] font-bold text-slate-100"
+                      subtextClassName="text-[10px] text-slate-400 font-normal leading-snug mt-0.5"
+                    />
+                    <div style={{ fontSize: 14, fontWeight: 800, color, fontFamily: 'monospace', flexShrink: 0 }}>
                       {pct}%
                     </div>
-                  </div>
-
-                  <div style={{ fontSize: 10, color: '#64748b', marginBottom: 6 }}>
-                    {sig.desc}
                   </div>
 
                   <div style={{ height: 4, background: '#1e2d3d', borderRadius: 2, overflow: 'hidden' }}>
