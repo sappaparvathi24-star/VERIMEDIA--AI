@@ -183,7 +183,6 @@ export function ForensicPanel() {
   const anomalies = currentResult?.detected_anomalies || forensics?.detectedAnomalies || currentResult?.integrity?.flags || []
 
   const isReal = currentResult.mode === 'REAL_PIPELINE' || Boolean(artifact)
-  const forensicStatus = forensics?.status || (currentResult as any)?.forensic_status
 
   return (
     <div style={{
@@ -283,65 +282,6 @@ export function ForensicPanel() {
           </button>
         </div>
       </div>
-
-      {/* Honest degraded-analysis banner — surfaces backend's real reason when the
-          AI vision step didn't run (missing GEMINI_API_KEY, model failure, etc.)
-          so an INCONCLUSIVE verdict is never mistaken for a completed audit. */}
-      {isReal && forensics && forensics.status !== 'COMPLETED' && (
-        <div style={{
-          padding: '10px 14px',
-          borderRadius: 8,
-          background: 'rgba(245, 158, 11, 0.08)',
-          border: '1px solid rgba(245, 158, 11, 0.35)',
-          display: 'flex',
-          alignItems: 'flex-start',
-          gap: 10
-        }}>
-          <span style={{ fontSize: 16, lineHeight: 1 }}>⚠️</span>
-          <div>
-            <div style={{ fontSize: 12, fontWeight: 800, color: '#fbbf24' }}>
-              AI Vision Audit Incomplete — Verdict Based on Physical Signals Only
-            </div>
-            <p style={{ fontSize: 11, color: '#cbd5e1', margin: '4px 0 0' }}>
-              {forensics.reason || 'Multimodal AI vision analysis did not complete for this asset.'}
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* Distinct Informational Banner for SKIPPED Forensic Status */}
-      {forensicStatus === 'SKIPPED' && (
-        <div style={{
-          padding: '12px 16px',
-          borderRadius: 8,
-          background: 'rgba(56, 189, 248, 0.08)',
-          border: '1px solid rgba(56, 189, 248, 0.3)',
-          display: 'flex',
-          alignItems: 'flex-start',
-          gap: 12
-        }}>
-          <span style={{ fontSize: 18, marginTop: 1 }}>ℹ️</span>
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: '#38bdf8', marginBottom: 2, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span>Forensic Analysis Skipped for this Media Type</span>
-              <span style={{
-                fontSize: 10,
-                fontWeight: 800,
-                fontFamily: 'monospace',
-                padding: '2px 6px',
-                borderRadius: 4,
-                background: 'rgba(56, 189, 248, 0.2)',
-                color: '#38bdf8'
-              }}>
-                STATUS: SKIPPED
-              </span>
-            </div>
-            <div style={{ fontSize: 12, color: '#cbd5e1', lineHeight: 1.5 }}>
-              This media type has no forensic analyzers registered in the current pipeline. The file was fingerprinted and registered in the provenance record, but visual forensic algorithms (Error Level Analysis, PRNU sensor noise, and facial landmark meshes) are only available for image assets.
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* View Mode Sub-tabs */}
       <div style={{
@@ -597,62 +537,26 @@ export function ForensicPanel() {
       {/* C2PA Content Authenticity */}
       {forensics?.c2pa && (
         <div style={{ background: '#0d1117', border: '1px solid #1e2d3d', borderRadius: 8, padding: '12px 14px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: '#8899aa', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Content Authenticity (C2PA)
-              </div>
-              <span style={{
-                fontSize: 10, fontWeight: 800, fontFamily: 'monospace', padding: '2px 7px', borderRadius: 4,
-                background: forensics.c2pa.status === 'C2PA_PRESENT' ? 'rgba(34,197,94,0.15)'
-                  : forensics.c2pa.status === 'C2PA_NOT_DETECTED' ? 'rgba(100,116,139,0.2)'
-                  : 'rgba(245,158,11,0.15)',
-                color: forensics.c2pa.status === 'C2PA_PRESENT' ? '#4ade80'
-                  : forensics.c2pa.status === 'C2PA_NOT_DETECTED' ? '#94a3b8'
-                  : '#fbbf24',
-              }}>
-                {forensics.c2pa.status}
-              </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#8899aa', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Content Authenticity (C2PA)
             </div>
-            {forensics.c2pa.detectionMethod && (
-              <span style={{ fontSize: 9, color: '#64748b', fontFamily: 'monospace' }}>
-                Engine: {forensics.c2pa.detectionMethod}
-              </span>
-            )}
-          </div>
-          
-          <div style={{ fontSize: 11, color: '#cbd5e1', lineHeight: 1.4, marginBottom: forensics.c2pa.manifest ? 8 : 0 }}>
-            {forensics.c2pa.message}
-          </div>
-
-          {forensics.c2pa.manifest && (
-            <div style={{
-              background: '#080c10',
-              border: '1px solid #1e293b',
-              borderRadius: 6,
-              padding: '8px 12px',
-              fontSize: 11,
-              fontFamily: 'monospace',
-              display: 'grid',
-              gridTemplateColumns: 'repeat(2, 1fr)',
-              gap: 6
+            <span style={{
+              fontSize: 10, fontWeight: 800, fontFamily: 'monospace', padding: '2px 7px', borderRadius: 4,
+              background: forensics.c2pa.status === 'C2PA_PRESENT' ? 'rgba(34,197,94,0.15)'
+                : forensics.c2pa.status === 'C2PA_NOT_DETECTED' ? 'rgba(100,116,139,0.2)'
+                : 'rgba(245,158,11,0.15)',
+              color: forensics.c2pa.status === 'C2PA_PRESENT' ? '#4ade80'
+                : forensics.c2pa.status === 'C2PA_NOT_DETECTED' ? '#64748b'
+                : '#fbbf24',
             }}>
-              <div>
-                <span style={{ color: '#64748b' }}>Claim Generator: </span>
-                <span style={{ color: '#38bdf8', fontWeight: 600 }}>{forensics.c2pa.manifest.claim_generator || 'Standard C2PA'}</span>
-              </div>
-              <div>
-                <span style={{ color: '#64748b' }}>Title / Asset: </span>
-                <span style={{ color: '#e2e8f0' }}>{forensics.c2pa.manifest.title || 'Attached Media'}</span>
-              </div>
-              <div>
-                <span style={{ color: '#64748b' }}>Assertions: </span>
-                <span style={{ color: '#e2e8f0' }}>{forensics.c2pa.manifest.assertions ?? 0}</span>
-              </div>
-              <div>
-                <span style={{ color: '#64748b' }}>Ingredients: </span>
-                <span style={{ color: '#e2e8f0' }}>{forensics.c2pa.manifest.ingredients ?? 0}</span>
-              </div>
+              {forensics.c2pa.status}
+            </span>
+          </div>
+          <div style={{ fontSize: 11, color: '#64748b' }}>{forensics.c2pa.message}</div>
+          {forensics.c2pa.manifest && (
+            <div style={{ marginTop: 6, fontSize: 10, color: '#94a3b8', fontFamily: 'monospace' }}>
+              Generator: {forensics.c2pa.manifest.claim_generator || '—'} · Assertions: {forensics.c2pa.manifest.assertions ?? 0}
             </div>
           )}
         </div>

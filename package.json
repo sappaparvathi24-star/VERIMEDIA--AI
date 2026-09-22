@@ -7,7 +7,7 @@
     "dev": "node server.js",
     "start": "node server.js",
     "lint": "tsc --noEmit",
-    "test": "node test/test_phase_f.js && node test/test_phase_h.js && node test/test_phase_j_human_review.js && node test/test_phase_15.js && node test/test_phase_16_security_threats.js && node test/test_phase_17_discovery_independence.js && node test/test_phase_18_performance.js && node test/test_persistence_durability.js && node test/test_non_fabrication.js && node test/test_video_audio_and_jobs.js && node test/test_route_security.js && node test/test_google_vision_quota.js && node test/test_workflow_and_vision.js && node test/test_multimodal_forensics.js",
+    "test": "node test/test_phase_f.js && node test/test_phase_h.js && node test/test_phase_j_human_review.js && node test/test_phase_15.js && node test/test_phase_16_security_threats.js && node test/test_phase_17_discovery_independence.js && node test/test_phase_18_performance.js && node test/test_persistence_durability.js && node test/test_non_fabrication.js && node test/test_video_audio_and_jobs.js && node test/test_route_security.js && node test/test_google_vision_quota.js && node test/test_workflow_and_vision.js && node test/test_multimodal_forensics.js && node test/test_content_family.js",
     "build": "vite build && tsc --noEmit"
   },
   "dependencies": {
@@ -17,7 +17,6 @@
     "@xenova/transformers": "^2.17.2",
     "axios": "^1.20.0",
     "better-sqlite3": "^13.0.3",
-    "c2pa-node": "^0.5.26",
     "clsx": "^2.1.1",
     "cors": "^2.8.5",
     "d3": "^7.9.0",

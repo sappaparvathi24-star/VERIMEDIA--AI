@@ -173,7 +173,6 @@ export interface DetectionResult {
       } | null
       message?: string
       isRealAnalysis?: boolean
-      detectionMethod?: string
     }
     videoMetadata?: {
       supported?: boolean
@@ -269,8 +268,6 @@ export interface HealthStatus {
   status: string
   version: string
   services: Record<string, string>
-  integrations?: Record<string, string>
-  storage?: Record<string, unknown>
   uptime_seconds: number
   total_scans: number
 }

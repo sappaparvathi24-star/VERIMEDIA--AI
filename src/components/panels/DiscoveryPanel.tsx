@@ -125,28 +125,18 @@ export function DiscoveryPanel() {
       setTestQuery('')
     }
 
-    // 1. Immediately hydrate candidates if currentResult already has them
-    const existing = (currentResult as any)?.candidates || (currentResult as any)?.discovery?.candidates || []
-    if (existing.length > 0) {
-      const formatted = existing.map((c: any, i: number) => formatCandidate(c, i))
-      setCandidatesList(formatted)
-      setTotalDiscoveredCount(formatted.length)
-      setHasSearched(true)
-      setStatusMsg(`Loaded ${formatted.length} discovered appearance(s) from media investigation pipeline.`)
-    }
-
     const invId = currentResult?.investigationId || currentResult?.case_id
     if (invId) {
       loadInvestigationCandidates(invId)
     }
 
-    // Auto-trigger image-first visual discovery when media artifact is present ONLY if no candidates exist yet
+    // Auto-trigger image-first visual discovery when media artifact is present
     const artId = (currentResult as any)?.artifact?.id || ((currentResult as any)?.id || (currentResult as any)?.artifactId)
     const hasMedia = Boolean(artId || referenceThumbnail)
-    if (hasMedia && !hasSearched && existing.length === 0) {
+    if (hasMedia && !hasSearched) {
       executeDiscovery(false, 1)
     }
-  }, [(currentResult as any)?.artifact?.id, (currentResult as any)?.id, (currentResult as any)?.artifactId, currentResult?.investigationId, (currentResult as any)?.candidates])
+  }, [(currentResult as any)?.artifact?.id, (currentResult as any)?.id, (currentResult as any)?.artifactId, currentResult?.investigationId])
 
   async function fetchProvidersAndTransparency() {
     setProvidersLoading(true)
@@ -186,21 +176,18 @@ export function DiscoveryPanel() {
   async function loadInvestigationCandidates(invId: string) {
     try {
       const res = await getInvestigationCandidates(invId)
-      const rawList = Array.isArray(res) ? res : (res?.candidates || res?.results || [])
-      if (rawList.length > 0) {
-        const formatted = rawList.map((c: any, i: number) => formatCandidate(c, i))
-        setCandidatesList(formatted)
-        setTotalDiscoveredCount(formatted.length)
-        setHasSearched(true)
+      const list = Array.isArray(res) ? res : (res?.candidates || res?.results || [])
+      if (list.length > 0) {
+        setCandidatesList(list)
         if (currentResult) {
           setCurrentResult({
             ...currentResult,
-            candidates: formatted,
-            comparisonReports: formatted,
+            candidates: list,
+            comparisonReports: list,
             discovery: {
               ...(currentResult as any)?.discovery,
-              candidates: formatted,
-              totalDiscovered: formatted.length
+              candidates: list,
+              totalDiscovered: list.length
             }
           } as any)
         }
@@ -294,9 +281,8 @@ export function DiscoveryPanel() {
           setStatusMsg(`Zero visual appearances returned across ${providerName} for uploaded media. Zero fabricated results.`)
         }
 
-        // Keep state honest: only clear currentResult candidates if no prior candidates existed
-        const hasExisting = Boolean((currentResult as any)?.candidates && (currentResult as any).candidates.length > 0)
-        if (currentResult && !hasExisting) {
+        // Keep state honest without fake fallbacks
+        if (currentResult) {
           setCurrentResult({
             ...currentResult,
             candidates: [],
@@ -307,8 +293,6 @@ export function DiscoveryPanel() {
               totalDiscovered: 0
             }
           } as any)
-        } else if (hasExisting) {
-          setStatusMsg(prev => `${prev || ''} (Retained ${(currentResult as any)?.candidates?.length} confirmed appearance(s) from overall investigation).`)
         }
       }
 

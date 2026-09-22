@@ -10,7 +10,7 @@ import { InstagramDiscoveryProvider } from './instagram.js';
 import { GoogleVisionDiscoveryProvider } from './googleVision.js';
 import { getDiscoveryHealth } from '../../proxy/searchProxy.js';
 import { getArtifactMedia } from '../../forensics/imageForensics.js';
-import { computePhash } from '../../forensics/perceptualHash.js';
+import { computeAverageHash } from '../../forensics/perceptualHash.js';
 import { 
   evaluateCandidateVisualSimilarity, 
   SIMILARITY_THRESHOLDS, 
@@ -63,18 +63,21 @@ export class MultiSourceDiscoveryManager {
   constructor(config = {}) {
     this.providers = new Map();
     
-    // Register the 6 core discovery platforms
+    // Register the discovery platforms
     this.registerProvider(new RedditDiscoveryProvider(config.reddit));
     this.registerProvider(new YouTubeDiscoveryProvider(config.youtube));
     this.registerProvider(new MastodonDiscoveryProvider(config.mastodon));
     this.registerProvider(new ArchiveOrgDiscoveryProvider(config.archiveOrg));
     this.registerProvider(new GoogleImagesDiscoveryProvider(config.googleImages));
     this.registerProvider(new GoogleVisionWebDetectionProvider(config.googleVision || config.googleVisionWebDetection));
-
-    if (config.includeAll || config.enableVisionAndSocial || config.includeSocial) {
-      this.registerProvider(new InstagramDiscoveryProvider(config.instagram));
-      this.registerProvider(new XDiscoveryProvider(config.x));
+    if (config.includeAll || config.enableVisionAndSocial) {
       this.registerProvider(new GoogleVisionDiscoveryProvider(config.googleVision));
+    }
+    if (config.instagram || config.includeAll || config.enableVisionAndSocial) {
+      this.registerProvider(new InstagramDiscoveryProvider(config.instagram));
+    }
+    if (config.x || config.includeAll || config.enableVisionAndSocial) {
+      this.registerProvider(new XDiscoveryProvider(config.x));
     }
   }
 
@@ -121,9 +124,7 @@ export class MultiSourceDiscoveryManager {
     let uploadedHash = opts.perceptualHash || null;
     if (!uploadedHash && imageBuffer) {
       try {
-        // Uses the DCT-based pHash (not aHash) so it matches the discriminative
-        // hash now used in evaluateCandidateVisualSimilarity() below.
-        uploadedHash = await computePhash(imageBuffer);
+        uploadedHash = await computeAverageHash(imageBuffer);
       } catch (_) {}
     }
 

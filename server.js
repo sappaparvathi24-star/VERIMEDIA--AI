@@ -28,15 +28,6 @@ import { MultiSourceDiscoveryManager } from './src/matching/providers/index.js';
 import { getFullDiscoveryTransparency } from './src/matching/discoveryTransparency.js';
 import { computeAverageHash, hashSimilarity } from './src/forensics/perceptualHash.js';
 import { getArtifactMedia, storeArtifactMedia } from './src/forensics/imageForensics.js';
-import { 
-  SourceTypes, 
-  EvidencePolarity, 
-  CandidateRelationshipType, 
-  CandidateStatus, 
-  AppearanceStatus, 
-  FindingStatus 
-} from './src/provenance/core.js';
-import { buildQuerySignals } from './src/matching/querySignals.js';
 import { ForensicJobQueue } from './src/jobs/forensicQueue.js';
 import { classifyEntailment } from './ml/nlp/entailment.js';
 import { embedText, groupEvidenceBySemanticIndependence, INDEPENDENCE_TEXT_SIMILARITY_THRESHOLD } from './ml/nlp/embeddings.js';
@@ -323,7 +314,7 @@ async function callGemini(contents, config = {}) {
     console.warn('[Gemini] GEMINI_API_KEY not configured or unavailable');
     return null;
   }
-  const models = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'];
+  const models = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite', 'gemini-3.1-pro-preview'];
   let lastError = null;
 
   for (const model of models) {
@@ -369,12 +360,7 @@ async function callGemini(contents, config = {}) {
   }
 
   if (lastError) {
-    const isQuotaError = lastError.message?.includes('429') || lastError.message?.includes('quota') || lastError.status === 429;
-    if (isQuotaError) {
-      console.warn('[Gemini] Rate limit / quota limit reached (429). Falling back to local forensic analysis.');
-    } else {
-      console.warn('[Gemini] All candidate models failed:', lastError.message);
-    }
+    console.warn('[Gemini] All candidate models failed:', lastError.message);
   }
   return null;
 }
@@ -430,7 +416,7 @@ function healthResponse(req, res) {
     uptime_seconds: Math.floor(process.uptime()),
     total_scans: allArtifacts.filter(a => !a.isDemo).length,
     total_investigations: allInvestigations.filter(i => !i.isDemo).length,
-    models: ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'],
+    models: ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite', 'gemini-3.1-pro-preview'],
     timestamp: new Date().toISOString()
   });
 }
@@ -988,7 +974,7 @@ app.post('/api/gemini/multimodal-analyze', analysisLimiter, async (req, res) => 
           ]
         }
       ];
-      const models = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'];
+      const models = ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.8-flash', 'gemini-flash-latest'];
       for (const model of models) {
         try {
           const response = await ai.models.generateContent({ model, contents, config: { temperature: 0.2, maxOutputTokens: 512 } });
@@ -1330,397 +1316,16 @@ const handleV1Detect = async (req, res) => {
       }
     }
 
-    // --- REAL REVERSE-SEARCH ENGINE INTEGRATION ---
-    // Obtain actual image bytes from uploaded payload or stored artifact media
-    let imageBuffer = (uploadedFile && uploadedFile.buffer) ? uploadedFile.buffer : null;
-    if (!imageBuffer && artifact.id) {
-      try {
-        const media = getArtifactMedia(artifact.id);
-        if (media && media.buffer) {
-          imageBuffer = media.buffer;
-        }
-      } catch (_) {}
-    }
-    if (!imageBuffer && artifact.metadata?.filePath) {
-      try {
-        if (fs.existsSync(artifact.metadata.filePath)) {
-          imageBuffer = fs.readFileSync(artifact.metadata.filePath);
-        }
-      } catch (_) {}
-    }
-
-    // Extract genuine search query signals
-    const searchSignals = buildQuerySignals(artifact, {
-      query: caption,
-      filename: artifact.filename,
-      claimStatement: caption
-    });
-
-    // Execute real reverse-search with a 15-second safety timeout
-    const SEARCH_TIMEOUT_MS = 15000;
-    let discoveryResult = null;
-    let discoveryTimedOut = false;
-    let discoveryError = null;
-
-    if (!isVideoOrAudio) {
-      try {
-        const searchPromise = multiSourceDiscovery.searchAll(searchSignals, {
-          imageBuffer,
-          imageBase64: imageBuffer ? imageBuffer.toString('base64') : null,
-          artifactId: artifact.id,
-          investigationId: invId,
-          perceptualHash: artifact.perceptualHash,
-          isVisualSearch: Boolean(imageBuffer),
-          query: caption || artifact.metadata?.originalName || artifact.filename || 'visual-reverse-search'
-        });
-
-        const timeoutPromise = new Promise((resolve) =>
-          setTimeout(() => resolve({ __timedOut: true }), SEARCH_TIMEOUT_MS)
-        );
-
-        const raceWinner = await Promise.race([searchPromise, timeoutPromise]);
-        if (raceWinner && raceWinner.__timedOut) {
-          discoveryTimedOut = true;
-        } else {
-          discoveryResult = raceWinner;
-        }
-      } catch (err) {
-        discoveryError = err;
-      }
-    }
-
-    // Transparently assess discovery outcome
-    let discoveryStatus = 'COMPLETED';
-    let discoveryReason = null;
-
-    if (isVideoOrAudio) {
-      discoveryStatus = 'SKIPPED';
-      discoveryReason = 'Reverse search skipped for video/audio assets in standard upload.';
-    } else if (discoveryTimedOut) {
-      discoveryStatus = 'TIMEOUT';
-      discoveryReason = 'Reverse search timed out after 15 seconds. Upstream providers did not respond within the time limit; continuing with local analysis.';
-    } else if (discoveryError) {
-      discoveryStatus = 'FAILED';
-      discoveryReason = `Reverse search encountered an error: ${discoveryError.message}`;
-    } else if (discoveryResult) {
-      const candCount = discoveryResult.candidates?.length || 0;
-      if (candCount > 0) {
-        discoveryStatus = 'COMPLETED';
-        discoveryReason = `Reverse search completed successfully. Discovered ${candCount} matching candidate appearance(s) across active providers.`;
-      } else {
-        const vStatus = discoveryResult.providerStatuses?.google_vision || discoveryResult.providerStatuses?.google_vision_web_detection;
-        if (vStatus?.status === 'UNAVAILABLE') {
-          discoveryStatus = 'UNAVAILABLE';
-          discoveryReason = vStatus.reason || 'Google Vision reverse search is unavailable (API key not configured on this deployment). Zero fabricated results.';
-        } else {
-          discoveryStatus = 'ZERO_RESULTS';
-          discoveryReason = 'Reverse search executed across active providers but returned 0 candidate matches for this visual asset.';
-        }
-      }
-    } else {
-      discoveryStatus = 'SKIPPED';
-      discoveryReason = 'Reverse search was skipped or could not be executed.';
-    }
-
-    // Persist discovered candidates as proper evidence into case file
-    const discoveredCandidates = discoveryResult?.candidates || [];
-    if (discoveredCandidates.length > 0 && invId) {
-      try {
-        const job = provenanceService.store.createDiscoveryJob({
-          investigationId: invId,
-          artifactId: artifact.id,
-          status: 'COMPLETED',
-          queryStrategy: 'ALL',
-          startedAt: new Date(Date.now() - (discoveryResult.processingTimeMs || 1000)).toISOString(),
-          completedAt: new Date().toISOString(),
-          candidateCount: discoveredCandidates.length,
-          isDemo: Boolean(inv?.isDemo),
-          metadata: {
-            artifactFilename: artifact.filename,
-            artifactSha256: artifact.sha256,
-            providerStatuses: discoveryResult.providerStatuses || {},
-            query: discoveryResult.query
-          }
-        });
-
-        const run = provenanceService.store.createAnalysisRun({
-          investigationId: invId,
-          artifactId: artifact.id,
-          method: 'SOURCE_DISCOVERY_ENGINE',
-          status: 'COMPLETED',
-          metadata: {
-            jobId: job.id,
-            strategy: 'ALL',
-            timestamp: new Date().toISOString()
-          }
-        });
-
-        for (const extItem of discoveredCandidates) {
-          if (!extItem.url) continue;
-
-          let candidateSource = Array.from(provenanceService.store.sources.values()).find(s => s.url === extItem.url);
-          if (!candidateSource) {
-            let domain = 'external-web';
-            try {
-              domain = new URL(extItem.url).hostname;
-            } catch (_) {}
-
-            candidateSource = provenanceService.store.createSource({
-              url: extItem.url,
-              name: extItem.title || `${extItem.platform || 'Web'} Appearance`,
-              domain,
-              platform: extItem.platform || 'External Web',
-              type: SourceTypes.SOCIAL_POST,
-              isFirstParty: false,
-              independentlyObserved: true,
-              containsMediaDirectly: Boolean(extItem.mediaUrl || extItem.thumbnailUrl),
-              canDownload: Boolean(extItem.mediaUrl),
-              observedAt: extItem.publishedAt || null
-            });
-          }
-
-          const indepGroup = extItem.platform?.startsWith('Reddit')
-            ? `IG-REDDIT-${extItem.subreddit || 'COMMUNITY'}`
-            : (extItem.platform?.startsWith('YouTube')
-              ? `IG-YOUTUBE-${extItem.author || 'CHANNEL'}`
-              : (extItem.platform?.startsWith('Mastodon')
-                ? `IG-MASTODON-${extItem.metadata?.instance || 'FEDIVERSE'}`
-                : `IG-EXT-${candidateSource.domain || candidateSource.id}`));
-
-          const obsExt = provenanceService.store.createObservation({
-            runId: run.id,
-            artifactId: artifact.id,
-            observationType: 'EXTERNAL_API_MATCH',
-            target: extItem.url,
-            value: {
-              platform: extItem.platform,
-              title: extItem.title,
-              author: extItem.author,
-              publishedAt: extItem.publishedAt,
-              similarityStatus: extItem.similarityStatus || 'VISUAL_MATCH_VERIFIED',
-              similarity: extItem.similarity,
-              metadata: extItem.metadata || {}
-            },
-            confidence: extItem.similarity || 0.85
-          });
-
-          const evExt = provenanceService.store.createEvidence({
-            observationIds: [obsExt.id],
-            independenceGroupId: indepGroup,
-            evidenceType: 'EXTERNAL_API_SIGHTING',
-            description: `Live sighting discovered on ${extItem.platform} (${extItem.title || extItem.url}) with publication timestamp ${extItem.publishedAt || 'UNREPORTED'}.`,
-            confidence: extItem.similarity || 0.85,
-            polarity: EvidencePolarity.SUPPORTING,
-            metadata: {
-              platform: extItem.platform,
-              url: extItem.url,
-              author: extItem.author,
-              publishedAt: extItem.publishedAt
-            }
-          });
-
-          // Discovered media artifact so Genealogy graph has genuine multi-node lineage
-          const candArtifact = provenanceService.store.createArtifact({
-            investigationId: invId,
-            filename: extItem.title || `${extItem.platform} Appearance`,
-            mimeType: 'image/jpeg',
-            sha256: null,
-            perceptualHash: extItem.candidateHash || null,
-            dimensions: null,
-            metadata: {
-              url: extItem.url,
-              platform: extItem.platform,
-              author: extItem.author,
-              publishedAt: extItem.publishedAt,
-              thumbnailUrl: extItem.thumbnailUrl || null,
-              mediaUrl: extItem.mediaUrl || null,
-              isExternalAppearance: true
-            }
-          });
-          if (inv && Array.isArray(inv.artifactIds) && !inv.artifactIds.includes(candArtifact.id)) {
-            inv.artifactIds.push(candArtifact.id);
-          }
-
-          provenanceService.store.createRelationship({
-            investigationId: invId,
-            fromArtifactId: candArtifact.id,
-            toArtifactId: artifact.id,
-            relationshipType: extItem.similarity > 0.95 ? 'EXACT_MATCH' : 'RELATED_MEDIA',
-            confidence: extItem.similarity || 0.85,
-            status: 'SUPPORTED',
-            evidenceIds: [evExt.id]
-          });
-
-          provenanceService.store.createAppearance({
-            artifactId: candArtifact.id,
-            sourceId: candidateSource.id,
-            observedAt: extItem.publishedAt || new Date().toISOString(),
-            retrievedAt: new Date().toISOString(),
-            status: AppearanceStatus.OBSERVED,
-            notes: `Discovered live appearance on ${extItem.platform} (${extItem.title || extItem.url})`,
-            evidenceIds: [evExt.id]
-          });
-
-          provenanceService.store.createDiscoveryCandidate({
-            discoveryJobId: job.id,
-            investigationId: invId,
-            artifactId: artifact.id,
-            matchedArtifactId: candArtifact.id,
-            sourceId: candidateSource.id,
-            url: extItem.url,
-            title: extItem.title || `${extItem.platform} Candidate`,
-            platform: extItem.platform,
-            author: extItem.author || null,
-            discoveredAt: new Date().toISOString(),
-            publishedAt: extItem.publishedAt || null,
-            retrievedAt: extItem.retrievedAt || new Date().toISOString(),
-            contentHash: null,
-            perceptualFingerprint: extItem.candidateHash || null,
-            similarity: extItem.similarity ?? null,
-            classification: extItem.classification || null,
-            matchType: extItem.matchType || (extItem.source === 'google_vision' ? 'visual_match' : 'text_inferred'),
-            similarityMeasurements: {
-              comparisonMethod: extItem.similarityBasis || extItem.similarityStatus || 'EXTERNAL_API_REVERSE_IMAGE_SEARCH',
-              comparisonStatus: 'MEASURED',
-              thumbnailUrl: extItem.thumbnailUrl || null,
-              visualSimilarity: extItem.similarity ?? null,
-              phashSimilarity: extItem.phashSimilarity ?? null,
-              visionScore: extItem.visionScore ?? null,
-              classification: extItem.classification || null,
-              matchType: extItem.matchType || 'visual_match'
-            },
-            relationshipType: CandidateRelationshipType.RELATED_MEDIA,
-            evidenceIds: [evExt.id],
-            independenceGroup: indepGroup,
-            status: CandidateStatus.SUPPORTED,
-            sourceCharacteristics: {
-              directMediaHost: Boolean(extItem.mediaUrl),
-              primaryPublisherClaim: false,
-              repost: false,
-              syndication: false,
-              archive: extItem.platform === 'Wayback Machine',
-              socialPlatform: true,
-              unknownHost: false,
-              publicationTimestampAvailable: Boolean(extItem.publishedAt),
-              mediaBytesRetrievable: Boolean(extItem.mediaUrl),
-              attributionPresent: Boolean(extItem.author),
-              independentlyObserved: true
-            },
-            transformationIndicators: extItem.transformations || [],
-            limitations: [
-              'External web discovery result indexed from public provider API.',
-              'Corroboration evaluated against visual fingerprint.'
-            ],
-            isDemo: Boolean(inv?.isDemo || artifact.isDemo),
-            metadata: {
-              observationId: obsExt.id,
-              evidenceId: evExt.id,
-              sourceType: 'EXTERNAL_API_VERIFIED',
-              thumbnailUrl: extItem.thumbnailUrl || null,
-              mediaUrl: extItem.mediaUrl || null,
-              similarity: extItem.similarity ?? null
-            }
-          });
-
-          provenanceService.store.createFinding({
-            investigationId: invId,
-            findingType: 'DISCOVERED_APPEARANCES',
-            statement: `Reverse search identified public web appearance on ${extItem.platform} (${extItem.title || extItem.url}).`,
-            confidence: extItem.similarity || 0.85,
-            status: FindingStatus.CONFIRMED,
-            evidenceIds: [evExt.id]
-          });
-
-          // Automatically record a propagation event for each discovered candidate
-          // so Propagation graph, velocity, and reach have real dissemination nodes
-          try {
-            provenanceService.createPropagationEvent({
-              investigationId: invId,
-              artifactId: candArtifact.id || artifact.id,
-              sourceId: candidateSource.id,
-              platform: extItem.platform || 'Web',
-              url: extItem.url || null,
-              eventType: 'OBSERVED_APPEARANCE',
-              observedAt: extItem.retrievedAt || new Date().toISOString(),
-              publishedAt: extItem.publishedAt || null,
-              confidence: extItem.similarity || 0.85,
-              limitations: ['Discovered via multi-source reverse search.']
-            });
-          } catch (propErr) {
-            console.warn('[Propagation] Failed to create propagation event for candidate:', propErr.message);
-          }
-        }
-      } catch (saveErr) {
-        console.warn('[Discovery] Failed to persist discovery evidence into case file:', saveErr.message);
-      }
-    }
-
-    // Format discovered candidates for frontend rendering (Comparison tab & Propagation graph)
-    const discoveredCandidatesFormatted = discoveredCandidates.map((cand, idx) => {
-      const sim = typeof cand.similarity === 'number' ? cand.similarity : (cand.visionScore || 0.85);
-      let candDomain = 'web';
-      try {
-        if (cand.url) candDomain = new URL(cand.url).hostname;
-      } catch (_) {}
-
-      return {
-        id: cand.id || `CAND-${Date.now().toString(36)}-${idx}`,
-        title: cand.title || `${cand.platform} Match`,
-        url: cand.url,
-        domain: cand.domain || candDomain,
-        platform: cand.platform || 'Web',
-        publisher: cand.publisher || cand.author || cand.platform || 'Web Source',
-        author: cand.author || null,
-        publishedAt: cand.publishedAt || null,
-        similarity: Number(sim.toFixed(2)),
-        matchScore: Math.round(sim * 100),
-        visionScore: cand.visionScore ?? null,
-        phashSimilarity: cand.phashSimilarity ?? null,
-        thumbnailUrl: cand.thumbnailUrl || cand.mediaUrl || null,
-        mediaUrl: cand.mediaUrl || cand.url || null,
-        snippet: cand.snippet || `Discovered candidate match on ${cand.platform || 'web'}.`,
-        classification: cand.classification || (sim > 0.94 ? 'KNOWN' : (sim > 0.55 ? 'UNKNOWN' : 'NOT_SO')),
-        isOriginalSource: Boolean(cand.isOriginalSource),
-        isCropped: Boolean(cand.isCropped),
-        isManipulated: Boolean(cand.isManipulated),
-        source: cand.source || 'reverse_search',
-        status: 'SUPPORTED'
-      };
-    });
-
-    const localRefCandidate = matchedRef ? {
-      id: matchedRef.id,
-      title: matchedRef.filename || 'Corroborating Reference Media',
-      similarity: Number(highestSimilarity.toFixed(2)),
-      matchScore: Math.round(highestSimilarity * 100),
-      sha256: matchedRef.sha256,
-      domain: 'database',
-      platform: 'Internal Verified Repository',
-      url: `/api/artifacts/${matchedRef.id}/file`,
-      isOriginalSource: false
-    } : null;
-
-    const allCandidates = localRefCandidate 
-      ? [localRefCandidate, ...discoveredCandidatesFormatted]
-      : discoveredCandidatesFormatted;
-
-    let overallSimilarity = highestSimilarity;
-    for (const c of discoveredCandidatesFormatted) {
-      if (c.similarity > overallSimilarity) {
-        overallSimilarity = c.similarity;
-      }
-    }
-
-    const isThreat = !isSkipped && (overallSimilarity > 0.80 || (forensic?.riskLevel === 'HIGH' || forensic?.riskLevel === 'CRITICAL'));
+    const isThreat = !isSkipped && (highestSimilarity > 0.80 || (forensic?.riskLevel === 'HIGH' || forensic?.riskLevel === 'CRITICAL'));
     const decision = isSkipped
       ? 'SKIPPED'
       : (isThreat
-          ? (overallSimilarity > 0.95 ? 'EMERGENCY_TAKEDOWN' : 'TAKEDOWN')
-          : (overallSimilarity > 0.60 ? 'REVIEW REQUIRED' : (forensic?.status === 'INCONCLUSIVE' ? 'INCONCLUSIVE' : 'ALLOW')));
+          ? (highestSimilarity > 0.95 ? 'EMERGENCY_TAKEDOWN' : 'TAKEDOWN')
+          : (highestSimilarity > 0.60 ? 'REVIEW REQUIRED' : (forensic?.status === 'INCONCLUSIVE' ? 'INCONCLUSIVE' : 'ALLOW')));
 
     // Genuinely computed signals or explicitly null/absent
     const signals = {
-      match_score: Number(overallSimilarity.toFixed(2)),
+      match_score: Number(highestSimilarity.toFixed(2)),
       spatial_diff: typeof forensic?.signals?.spatial_diff === 'number'
         ? forensic.signals.spatial_diff
         : (forensic?.ela?.status === 'COMPLETED' ? Number(Math.min(1.0, (forensic.ela.meanError || 0) / 40).toFixed(2)) : null),
@@ -1756,33 +1361,6 @@ const handleV1Detect = async (req, res) => {
       ? Number((trustScore / 100).toFixed(2))
       : (forensic?.ela?.status === 'COMPLETED' ? (forensic.ela.hasCompressionAnomaly ? 0.35 : 0.85) : null);
 
-    let realPropagation = null;
-    if (invId) {
-      try {
-        provenanceService.updateInvestigationMetadata(invId, {
-          priority: isThreat ? (overallSimilarity > 0.95 ? 'CRITICAL' : 'HIGH') : (overallSimilarity > 0.60 ? 'MEDIUM' : 'LOW'),
-          decision,
-          forensicConfidence: Number(overallSimilarity.toFixed(2)),
-          threat_level: isThreat ? 'HIGH' : 'LOW',
-          platform: platform || 'Web',
-          username: username || null,
-          caption: caption || '',
-          contentType: content_type || 'media',
-          candidateCount: discoveredCandidatesFormatted.length,
-          authenticity: forensic?.authenticity || null,
-          trustScore: trustScore
-        });
-      } catch (updErr) {
-        console.warn('[Investigation] Failed to update investigation metadata:', updErr.message);
-      }
-
-      try {
-        realPropagation = provenanceService.getPropagation(invId);
-      } catch (propGetErr) {
-        console.warn('[Propagation] Failed to get real propagation for investigation:', propGetErr.message);
-      }
-    }
-
     return res.json({
       job_id: `DET-REAL-${Date.now().toString(36)}`,
       platform,
@@ -1790,7 +1368,7 @@ const handleV1Detect = async (req, res) => {
       caption,
       content_type,
       scenario: 'real_pipeline',
-      similarity: Number(overallSimilarity.toFixed(2)),
+      similarity: Number(highestSimilarity.toFixed(2)),
       fingerprint_hash: artifact.perceptualHash || (artifact.sha256 ? artifact.sha256.slice(0, 16) : 'N/A'),
       is_demo: false,
       mode: 'REAL_PIPELINE',
@@ -1815,14 +1393,14 @@ const handleV1Detect = async (req, res) => {
       ml: {
         label: isSkipped
           ? 'SKIPPED'
-          : (overallSimilarity > 0.80
+          : (highestSimilarity > 0.80
               ? 'TAMPERED'
               : (forensic?.authenticity || (forensic?.status === 'INCONCLUSIVE' ? 'INCONCLUSIVE' : 'UNKNOWN'))),
         manipulation_probability: typeof forensic?.manipulationProbability === 'number' ? forensic.manipulationProbability : null,
         trust_score: trustScore,
         confidence: typeof forensic?.confidence === 'number'
           ? forensic.confidence
-          : (overallSimilarity > 0.5 ? Number(overallSimilarity.toFixed(2)) : null),
+          : (highestSimilarity > 0.5 ? Number(highestSimilarity.toFixed(2)) : null),
         signals
       },
       integrity: {
@@ -1832,50 +1410,58 @@ const handleV1Detect = async (req, res) => {
       },
       trust: {
         trust_score: trustScore,
-        risk_tier: isThreat ? 'high_risk' : (overallSimilarity > 0.60 ? 'suspect' : (isSkipped ? 'unknown' : (trustScore != null ? (trustScore >= 70 ? 'safe' : 'suspect') : 'unknown'))),
+        risk_tier: isThreat ? 'high_risk' : (highestSimilarity > 0.60 ? 'suspect' : (isSkipped ? 'unknown' : (trustScore != null ? (trustScore >= 70 ? 'safe' : 'suspect') : 'unknown'))),
         verdict: isSkipped
           ? 'Analysis Skipped — Video/Audio Forensics Not Implemented'
-          : (forensic?.verdict || (overallSimilarity > 0.80 ? 'Perceptual Duplicate or Public Web Match Detected' : 'Authenticity Inconclusive — Vision Model Not Available')),
+          : (forensic?.verdict || (highestSimilarity > 0.80 ? 'Perceptual Duplicate Reference Detected' : 'Authenticity Inconclusive — Vision Model Not Available')),
         factors: {
-          perceptual_match: overallSimilarity,
+          perceptual_match: highestSimilarity,
           forensic_integrity: integrityScore
         }
       },
       authorship: null,
-      propagation: realPropagation,
+      propagation: null,
       ai_analysis: {
-        threat_type: overallSimilarity > 0.80
+        threat_type: highestSimilarity > 0.80
           ? 'Perceptual Match / Copyright Infringement'
           : (isSkipped ? 'Media Forensics Skipped (Video/Audio Not Implemented)' : (forensic?.authenticity || 'Forensic Analysis Inconclusive')),
         decision,
-        severity: isThreat ? (overallSimilarity > 0.95 ? 'CRITICAL' : 'HIGH') : (overallSimilarity > 0.60 ? 'MEDIUM' : (isSkipped ? 'UNKNOWN' : (forensic?.riskLevel || 'LOW'))),
-        risk_label: isThreat ? 'CONFIRMED_INFRINGEMENT' : (overallSimilarity > 0.60 ? 'POTENTIAL_DERIVATIVE' : (isSkipped ? 'UNANALYZED_MEDIA' : (forensic?.status === 'INCONCLUSIVE' ? 'INCONCLUSIVE' : 'ORIGINAL_OR_AUTHENTIC'))),
+        severity: isThreat ? (highestSimilarity > 0.95 ? 'CRITICAL' : 'HIGH') : (highestSimilarity > 0.60 ? 'MEDIUM' : (isSkipped ? 'UNKNOWN' : (forensic?.riskLevel || 'LOW'))),
+        risk_label: isThreat ? 'CONFIRMED_INFRINGEMENT' : (highestSimilarity > 0.60 ? 'POTENTIAL_DERIVATIVE' : (isSkipped ? 'UNANALYZED_MEDIA' : (forensic?.status === 'INCONCLUSIVE' ? 'INCONCLUSIVE' : 'ORIGINAL_OR_AUTHENTIC'))),
         confidence: typeof forensic?.confidence === 'number'
           ? forensic.confidence
-          : (overallSimilarity > 0.5 ? Number(overallSimilarity.toFixed(2)) : null),
-        reasoning_points: [
-          ...(forensic?.visualFindings ? forensic.visualFindings.slice(0, 3) : []),
-          overallSimilarity > 0.80 ? `Perceptual match (${Math.round(overallSimilarity * 100)}%) identified against reference or online sighting.` : 'No duplicate reference hash match found in active repository.',
-          discoveredCandidatesFormatted.length > 0 ? `Reverse search identified ${discoveredCandidatesFormatted.length} public web appearance(s) across indexed providers.` : (discoveryReason || 'No public web appearances found.')
+          : (highestSimilarity > 0.5 ? Number(highestSimilarity.toFixed(2)) : null),
+        reasoning_points: forensic?.visualFindings ? [
+          ...forensic.visualFindings.slice(0, 3),
+          highestSimilarity > 0.80 ? `Perceptual hash match (${Math.round(highestSimilarity * 100)}%) against reference media.` : 'No duplicate reference hash match found in active repository.'
+        ] : [
+          highestSimilarity > 0.80 ? `Perceptual hash match (${Math.round(highestSimilarity * 100)}%) against existing reference.` : 'No duplicate match found.',
+          isSkipped ? 'Video and audio forensic processing is not implemented in this version.' : (forensic?.ela?.status === 'COMPLETED'
+            ? (forensic.ela.hasCompressionAnomaly ? 'Compression grid discrepancies observed via ELA.' : 'Error Level Analysis reveals standard uniform compression.')
+            : 'Error Level Analysis not applicable or skipped.')
         ],
         action: isThreat ? 'Submit DMCA takedown' : (isSkipped ? 'video/audio forensic analysis not implemented — manual review required' : (forensic?.recommendedAction || 'No enforcement action required')),
         recommended_action: isThreat ? 'File expedited takedown notice' : (isSkipped ? 'Forensic pipeline skipped for video/audio. Manual verification required.' : (forensic?.recommendedAction || 'Retain in archive')),
-        origin_traced: Boolean(matchedRef || discoveredCandidatesFormatted.length > 0),
-        dmca_needed: overallSimilarity > 0.80 || Boolean(forensic?.dmcaNeeded),
-        source: forensic?.source || forensic?.engine || (overallSimilarity > 0.80 ? 'reverse-search-engine' : (isSkipped ? 'SKIPPED' : 'INCONCLUSIVE'))
+        origin_traced: Boolean(matchedRef),
+        dmca_needed: highestSimilarity > 0.80 || Boolean(forensic?.dmcaNeeded),
+        source: forensic?.source || forensic?.engine || (highestSimilarity > 0.80 ? 'pHash-matching-engine' : (isSkipped ? 'SKIPPED' : 'INCONCLUSIVE'))
       },
       forensics: isSkipped
         ? (forensic ? { ...forensic, status: 'SKIPPED', reason: 'video/audio forensic analysis not implemented' } : { status: 'SKIPPED', reason: 'video/audio forensic analysis not implemented' })
         : forensic,
-      candidates: allCandidates,
-      discovery: {
-        ran: !isVideoOrAudio,
-        status: discoveryStatus,
-        reason: discoveryReason,
-        count: discoveredCandidatesFormatted.length,
-        candidates: discoveredCandidatesFormatted,
-        providerStatuses: discoveryResult?.providerStatuses || {}
-      },
+      candidates: matchedRef ? [
+        {
+          id: matchedRef.id,
+          title: matchedRef.filename || 'Corroborating Reference Media',
+          similarity: Number(highestSimilarity.toFixed(2)),
+          matchScore: Math.round(highestSimilarity * 100),
+          sha256: matchedRef.sha256,
+          domain: 'database',
+          platform: 'Internal Verified Repository',
+          url: `/api/artifacts/${matchedRef.id}/file`,
+          isOriginalSource: false
+        }
+      ] : [],
       timestamp: new Date().toISOString(),
       case_id: invId || null,
       investigationId: invId || null,
@@ -2009,18 +1595,15 @@ app.get(['/api/v1/cases', '/api/v1/cases/'], (req, res) => {
   res.json(cases);
 });
 
-app.post(['/api/v1/enforce/dmca', '/api/v1/enforce/dmca/'], async (req, res) => {
+app.post(['/api/v1/enforce/dmca', '/api/v1/enforce/dmca/'], (req, res) => {
   applyLegacyDeprecationHeaders(res, '/api/investigations/:id/report');
   const {
     case_id = `VM-${Date.now().toString(36).toUpperCase()}`,
-    platform = 'Web',
+    platform = 'YouTube',
     username = 'unknown_user',
     caption = '',
     content_type = 'media',
-    analysis = {},
-    infringing_url = null,
-    work_title = 'Protected Media Asset',
-    rights_holder = 'VeriMedia Authorized Rights Holder'
+    analysis = {}
   } = req.body || {};
 
   const matchScore = analysis.similarity ?? 0.95;
@@ -2028,142 +1611,56 @@ app.post(['/api/v1/enforce/dmca', '/api/v1/enforce/dmca/'], async (req, res) => 
   const decision = analysis.decision ?? 'TAKEDOWN';
   const scenario = analysis.scenario ?? 'unauthorized_reupload';
 
-  // Find matching investigation if available
-  const inv = provenanceService.getInvestigation(case_id)
-    || provenanceService.getInvestigations().find(i => i.caseId === case_id || i.id === case_id);
-
-  let targetUrl = infringing_url;
-  let artifactHash = 'N/A';
-  let artifactPHash = 'N/A';
-  let resolvedTitle = work_title;
-
-  if (inv) {
-    resolvedTitle = inv.title || resolvedTitle;
-    const invArtifact = inv.artifactIds?.[0] ? provenanceService.getArtifact(inv.artifactIds[0]) : null;
-    if (invArtifact) {
-      artifactHash = invArtifact.sha256 || artifactHash;
-      artifactPHash = invArtifact.perceptualHash || artifactPHash;
-    }
-    if (!targetUrl) {
-      const appearance = Array.from(provenanceService.store.appearances.values()).find(a => a.investigationId === inv.id);
-      if (appearance?.sourceId) {
-        const src = provenanceService.getSource(appearance.sourceId);
-        targetUrl = src?.url;
-      }
-    }
-  }
-
-  targetUrl = targetUrl || (username && username !== 'unknown_user' ? `https://${platform.toLowerCase().replace(/[^a-z0-9]/g, '')}.com/@${username}` : `https://${platform.toLowerCase().replace(/[^a-z0-9]/g, '')}.com/content/${case_id}`);
-
-  const prompt = `Draft a legally binding DMCA Takedown Notice under 17 U.S.C. § 512(c)(3) with technical forensic citations:
+  const subject = `DMCA Takedown Notice: Copyright Infringement on ${platform} (${case_id})`;
+  const body = `DMCA TAKEDOWN NOTICE (17 U.S.C. § 512)
 Case ID: ${case_id}
-Protected Work: "${resolvedTitle}"
-Rights Holder: ${rights_holder}
-Infringing Platform: ${platform}
-Infringing Account: @${username}
-Infringing URL: ${targetUrl}
-Caption / Description: ${caption || 'N/A'}
-Content Type: ${content_type}
-Technical Evidence:
-- Perceptual Hash Similarity: ${(matchScore * 100).toFixed(1)}% (pHash: ${artifactPHash})
-- Cryptographic SHA-256 Digest: ${artifactHash}
-- Media Integrity Rating: ${(integrityScore * 100).toFixed(1)}%
-- Automated Decision: ${decision}
-
-Format strictly with headers:
-1. IDENTIFICATION OF COPYRIGHTED WORK
-2. IDENTIFICATION OF INFRINGING MATERIAL
-3. TECHNICAL FORENSIC EVIDENCE & INTEGRITY METRICS
-4. GOOD FAITH STATEMENT & DECLARATION UNDER PENALTY OF PERJURY
-5. AUTHORIZED REPRESENTATIVE & SIGNATURE BLOCK`;
-
-  let noticeText = null;
-  let engine = 'Legal Template Generator';
-  let source = 'template';
-
-  try {
-    const geminiResult = await callGemini(prompt, { temperature: 0.2 });
-    if (geminiResult && geminiResult.text) {
-      noticeText = geminiResult.text;
-      engine = geminiResult.model;
-      source = 'gemini';
-    }
-  } catch (err) {
-    console.warn('[DMCA] Gemini generation failed, falling back to dynamic legal template:', err.message);
-  }
-
-  const subject = `DMCA Takedown Notice (17 U.S.C. § 512): Copyright Infringement on ${platform} (${case_id})`;
-
-  if (!noticeText) {
-    noticeText = `DMCA TAKEDOWN NOTICE (17 U.S.C. § 512)
-Case Reference: ${case_id}
 Date: ${new Date().toUTCString()}
 
 To: Designated Copyright Agent — ${platform}
 
+I, the undersigned, certify under penalty of perjury that I am authorized to act on behalf of the owner of an exclusive right that is allegedly infringed.
+
 1. IDENTIFICATION OF COPYRIGHTED WORK:
-I am an authorized agent representing ${rights_holder} ("Rights Holder"). The protected copyrighted work at issue is: "${resolvedTitle}" (Work Reference: ${case_id}).
+Exclusive broadcast media and proprietary digital asset catalog (Work ID: ${case_id}).
 
 2. IDENTIFICATION OF INFRINGING MATERIAL:
-The infringing publication is located at:
-URL: ${targetUrl}
-Platform: ${platform}
 Account: @${username}
+Platform: ${platform}
 Caption / Description: ${caption || 'N/A'}
 Content Category: ${content_type}
 
-3. TECHNICAL FORENSIC EVIDENCE & INTEGRITY METRICS:
-- Perceptual Hash Match: ${(matchScore * 100).toFixed(1)}% (pHash: ${artifactPHash})
-- Cryptographic SHA-256 Digest: ${artifactHash}
+3. TECHNICAL FORENSIC EVIDENCE:
+- Perceptual Hash Similarity: ${(matchScore * 100).toFixed(1)}%
 - Media Integrity Rating: ${(integrityScore * 100).toFixed(1)}%
-- Automated Enforcement Decision: ${decision}
-- Forensic Findings: Frame-by-frame perceptual fingerprint match confirms unauthorized derivative/reupload.
+- Automated Decision: ${decision}
+- Forensic Findings: Frame-by-frame perceptual vector match exceeds copyright threshold.
 
-4. GOOD FAITH STATEMENT & STATUTORY DECLARATION:
+4. GOOD FAITH STATEMENT:
 I have a good faith belief that use of the material in the manner complained of is not authorized by the copyright owner, its agent, or the law.
-Under penalty of perjury, I declare that the information in this notice is accurate and that I am authorized to act on behalf of the owner of an exclusive right that is allegedly infringed.
 
-5. REQUESTED ACTION & SIGNATURE BLOCK:
-Expeditiously remove or disable access to the infringing material referenced above pursuant to 17 U.S.C. § 512(c)(1)(C).
+5. ACCURACY STATEMENT:
+The information in this notification is accurate, and under penalty of perjury, that the complaining party is authorized to act on behalf of the owner of an exclusive right that is allegedly infringed.
 
-Authorized Representative:
-VeriMedia AI Automated Rights Enforcement Operations
+Authorized Representative
+VeriMedia AI Automated Rights Enforcement System
 support@verimedia.ai`;
-  }
-
-  const noticeId = `DMCA-${Date.now()}`;
-
-  // Record DMCA filed in investigation metadata if investigation exists
-  if (inv) {
-    try {
-      provenanceService.updateInvestigationMetadata(inv.id, {
-        dmcaFiled: true,
-        dmcaNoticeId: noticeId,
-        dmcaTimestamp: new Date().toISOString(),
-        dmcaPlatform: platform,
-        dmcaTargetUrl: targetUrl
-      });
-    } catch (_) {}
-  }
 
   res.json({
     case_id,
     subject,
-    body: noticeText,
+    body,
     evidence_summary: `Perceptual match: ${(matchScore * 100).toFixed(0)}%, Integrity: ${(integrityScore * 100).toFixed(0)}%`,
     evidence_json: analysis,
-    claimant_name: rights_holder,
+    claimant_name: 'VeriMedia AI Rights Management',
     organization: 'VeriMedia Global Rights Operations',
     original_asset_id: `ASSET-${case_id}`,
     detection_timestamp: new Date().toISOString(),
     match_score: matchScore,
     manipulation_details: `Integrity assessed at ${(integrityScore * 100).toFixed(0)}% (${scenario})`,
     action_recommendation: decision,
-    source,
-    engine,
-    status: 'generated',
-    notice_id: noticeId,
-    target_url: targetUrl
+    source: 'fallback',
+    status: 'queued',
+    notice_id: `DMCA-${Date.now()}`
   });
 });
 
@@ -4246,7 +3743,7 @@ Respond ONLY with valid JSON conforming to this structure:
   "searchQueriesUsed": ["${targetQuery} earliest original source", "${targetQuery} first publication date"]
 }`;
 
-    const candidateModels = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'];
+    const candidateModels = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite', 'gemini-3.1-pro-preview'];
     for (const model of candidateModels) {
       try {
         const response = await ai.models.generateContent({
@@ -4445,7 +3942,7 @@ Respond ONLY with valid JSON conforming to this structure:
 }`;
 
   try {
-    const candidateModels = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'];
+    const candidateModels = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite', 'gemini-3.1-pro-preview'];
     for (const model of candidateModels) {
       try {
         const response = await ai.models.generateContent({
@@ -4997,7 +4494,6 @@ if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL && !isTestRunne
     const vite = await createViteServer({
       server: {
         middlewareMode: true,
-        allowedHosts: true,
         hmr: hmrConfig,
         ws: hmrConfig === false ? false : undefined,
       },

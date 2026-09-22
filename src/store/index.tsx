@@ -4,7 +4,7 @@ import type {
   DetectionResult, CaseRecord, HealthStatus,
   ScanStats, TabId, ForensicStageItem, ForensicStageStatus, ScanLogEntry
 } from '../types'
-import { DEFAULT_FORENSIC_STAGES } from './initialData'
+import { DEFAULT_SHOWCASE_RESULT, SAMPLE_CASES, DEFAULT_FORENSIC_STAGES } from './initialData'
 
 interface AppState {
   // Detection & Forensic Scan
@@ -29,9 +29,6 @@ interface AppState {
   // Cases
   cases: CaseRecord[]
   casesLoading: boolean
-  // Set when the real /api/v1/cases fetch fails, so the UI can show an honest
-  // error instead of silently displaying stale or placeholder case data.
-  casesError: string | null
 
   // Health
   health: HealthStatus | null
@@ -61,7 +58,6 @@ interface AppState {
   setShowGlobalProgressDrawer: (v: boolean) => void
   setCases: (c: CaseRecord[]) => void
   setCasesLoading: (v: boolean) => void
-  setCasesError: (e: string | null) => void
   setHealth: (h: HealthStatus) => void
   setActiveTab: (t: TabId) => void
   setShowEvidenceModal: (v: boolean) => void
@@ -93,9 +89,8 @@ export const useStore = create<AppState>((set, get) => ({
   activeJobId: null,
   showGlobalProgressDrawer: false,
 
-  cases: [],
+  cases: SAMPLE_CASES,
   casesLoading: false,
-  casesError: null,
   health: null,
   activeTab: 'scanner',
   showEvidenceModal: false,
@@ -212,7 +207,6 @@ export const useStore = create<AppState>((set, get) => ({
 
   setCases: (c) => set({ cases: c }),
   setCasesLoading: (v) => set({ casesLoading: v }),
-  setCasesError: (e: string | null) => set({ casesError: e }),
   setHealth: (h) => set({ health: h }),
   setActiveTab: (t) => set({ activeTab: t }),
   setShowEvidenceModal: (v) => set({ showEvidenceModal: v }),

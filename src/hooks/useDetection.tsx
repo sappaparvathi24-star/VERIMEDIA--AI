@@ -14,7 +14,6 @@ export function useDetection() {
     updateStats,
     setCases,
     setCasesLoading,
-    setCasesError,
     setShowEvidenceModal,
     setScanProgress,
     setScanStageStatus,
@@ -304,20 +303,15 @@ export function useDetection() {
 
   const refreshCases = useCallback(async () => {
     setCasesLoading(true)
-    setCasesError(null)
     try {
       const cases = await listCases(50)
       setCases(cases)
-    } catch (err: any) {
-      const msg = err?.response?.data?.error || err?.message || 'Failed to load cases from the backend.'
+    } catch (err) {
       console.error('Failed to load cases:', err)
-      // Do NOT fall back to placeholder/demo cases here — an empty, clearly
-      // errored list is more honest than silently showing fabricated data.
-      setCasesError(msg)
     } finally {
       setCasesLoading(false)
     }
-  }, [setCases, setCasesLoading, setCasesError])
+  }, [setCases, setCasesLoading])
 
   return { runDetection, runMediaInvestigation, runDMCA, refreshCases, streamJobEvents }
 }

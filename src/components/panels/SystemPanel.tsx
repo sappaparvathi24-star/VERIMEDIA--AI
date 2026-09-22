@@ -94,30 +94,6 @@ export function SystemPanel() {
         </div>
       </div>
 
-      {/* Ephemeral Session Notice Banner */}
-      {health && health.integrations?.supabase !== 'configured' && (
-        <div style={{
-          marginBottom: 18,
-          padding: '12px 16px',
-          borderRadius: 8,
-          background: 'rgba(245, 158, 11, 0.08)',
-          border: '1px solid rgba(245, 158, 11, 0.3)',
-          display: 'flex',
-          alignItems: 'flex-start',
-          gap: 12
-        }}>
-          <span style={{ fontSize: 18, marginTop: 1 }}>⚡</span>
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: '#fbbf24', marginBottom: 2 }}>
-              ephemeral session — Supabase not configured
-            </div>
-            <div style={{ fontSize: 12, color: '#cbd5e1', lineHeight: 1.5 }}>
-              Investigation cases, registered artifacts, analysis runs, observations, evidence, and findings are stored in memory and local SQLite. Data will reset when the server or container restarts. Configure <code>SUPABASE_URL</code> and <code>SUPABASE_SERVICE_ROLE_KEY</code> in environment variables for durable cloud persistence.
-            </div>
-          </div>
-        </div>
-      )}
-
       {testResult && (
         <div style={{
           marginBottom: 16,

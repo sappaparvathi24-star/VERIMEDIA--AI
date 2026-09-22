@@ -6,6 +6,7 @@ import { assessClaim, decomposeClaim, validateSourceUrl } from './claims.js';
 import { DiscoveryService } from './discovery.js';
 import { buildGenealogyGraph, traceTransformation } from './genealogy.js';
 import { analyzePropagation, tracePropagationEvent, validatePropagationUrl } from './propagation.js';
+import { groupIntoContentFamilies } from './contentFamily.js';
 import { fuseEvidenceAndReasoning, traceReasoningChain } from './reasoning.js';
 import { MonitoringService } from './monitoring.js';
 import { generateInvestigationReport, exportReportHTML, exportReportJSON } from './reporting.js';
@@ -79,30 +80,6 @@ class ProvenanceService {
 
   deleteArtifact(id) {
     return this.store.deleteArtifact(id);
-  }
-
-  getAnalysisRun(id) {
-    return this.store.getAnalysisRun(id);
-  }
-
-  createAnalysisRun(payload) {
-    return this.store.createAnalysisRun(payload);
-  }
-
-  getObservation(id) {
-    return this.store.getObservation(id);
-  }
-
-  createObservation(payload) {
-    return this.store.createObservation(payload);
-  }
-
-  getEvidence(id) {
-    return this.store.getEvidence(id);
-  }
-
-  createEvidence(payload) {
-    return this.store.createEvidence(payload);
   }
 
   getSource(id) {
@@ -191,13 +168,9 @@ class ProvenanceService {
     };
   }
 
-  // ── INVESTIGATION STATUS & METADATA ────────────────────────────────────────
+  // ── INVESTIGATION STATUS ──────────────────────────────────────────────────
   updateInvestigationStatus(investigationId, newStatus) {
     return this.store.updateInvestigationStatus(investigationId, newStatus);
-  }
-
-  updateInvestigationMetadata(investigationId, patch = {}) {
-    return this.store.updateInvestigationMetadata(investigationId, patch);
   }
 
   // ── FINDINGS MANAGEMENT & DECISIONS (PHASE J / PROMPT 1) ────────────────────
@@ -601,7 +574,10 @@ class ProvenanceService {
       retrievedAt = null,
       parentEventId = null,
       confidence = 0.85,
-      limitations = []
+      limitations = [],
+      independenceGroupId,
+      contentFamily,
+      hash
     } = payload;
 
     if (url) {
@@ -627,9 +603,68 @@ class ProvenanceService {
       confidence
     });
 
+    // Content Family & Independence Group Resolution
+    let resolvedFamilyId = payload.contentFamily?.familyId || payload.contentFamilyId || payload.independenceGroupId || null;
+    let computedFamily = payload.contentFamily || null;
+
+    const art = artifactId ? this.store.getArtifact(artifactId) : null;
+    const memberHash = hash || payload.perceptualHash || art?.perceptualHash || art?.metadata?.hash || null;
+
+    if (!resolvedFamilyId && memberHash) {
+      const existingEvents = investigationId
+        ? Array.from(this.store.propagationEvents.values()).filter(e => e.investigationId === investigationId)
+        : [];
+
+      const members = existingEvents.map(e => {
+        const eArt = e.artifactId ? this.store.getArtifact(e.artifactId) : null;
+        return {
+          id: e.id,
+          sourceId: e.sourceId || e.platform,
+          hash: e.hash || e.metadata?.hash || e.perceptualHash || eArt?.perceptualHash || eArt?.metadata?.hash || null,
+          publishedAt: e.publishedAt,
+          observedAt: e.observedAt
+        };
+      });
+
+      const currentMember = {
+        id: payload.id || `EVENT-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        sourceId: sourceId || platform,
+        hash: memberHash,
+        publishedAt,
+        observedAt
+      };
+      members.push(currentMember);
+
+      const families = groupIntoContentFamilies(members);
+      const myFamily = families.find(f => f.memberIds.includes(currentMember.id));
+      if (myFamily) {
+        computedFamily = myFamily;
+        resolvedFamilyId = myFamily.familyId;
+
+        // Propagate familyId to existing events and their evidence records in this family
+        for (const mId of myFamily.memberIds) {
+          const exEvt = this.store.propagationEvents.get(mId);
+          if (exEvt) {
+            exEvt.contentFamily = myFamily;
+            exEvt.contentFamilyId = myFamily.familyId;
+            if (exEvt.evidenceIds && Array.isArray(exEvt.evidenceIds)) {
+              for (const eid of exEvt.evidenceIds) {
+                const existingEv = this.store.getEvidence(eid);
+                if (existingEv) {
+                  existingEv.independenceGroupId = myFamily.familyId;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    const finalIndependenceGroupId = resolvedFamilyId || (sourceId && sourceId !== 'UNKNOWN' ? `IG-PROP-${sourceId}` : null);
+
     const ev = this.store.createEvidence({
       observationIds: [obs.id],
-      independenceGroupId: `IG-PROP-${sourceId}`,
+      independenceGroupId: finalIndependenceGroupId,
       evidenceType: 'PROPAGATION_OBSERVATION_EVIDENCE',
       description: `Analyst-recorded media appearance on ${platform} (${url || 'N/A'}).`,
       confidence,
@@ -648,9 +683,16 @@ class ProvenanceService {
       publishedAt,
       retrievedAt,
       parentEventId,
+      independenceGroup: finalIndependenceGroupId,
       evidenceIds: [ev.id],
       confidence,
-      limitations
+      limitations,
+      contentFamily: computedFamily,
+      hash: memberHash,
+      metadata: {
+        ...(payload.metadata || {}),
+        contentFamilyId: finalIndependenceGroupId
+      }
     });
 
     return {

@@ -438,18 +438,6 @@ export class ProvenanceStore {
     return inv;
   }
 
-  updateInvestigationMetadata(id, patch = {}) {
-    const inv = this.getInvestigation(id);
-    if (!inv) return null;
-    inv.metadata = {
-      ...(inv.metadata || {}),
-      ...patch
-    };
-    inv.updatedAt = new Date().toISOString();
-    persistence.saveInvestigation(inv);
-    return inv;
-  }
-
   addNote(investigationId, { author = 'Lead Analyst', text, tags = [] } = {}) {
     const inv = this.getInvestigation(investigationId);
     if (!inv) {
@@ -1569,6 +1557,8 @@ export class ProvenanceStore {
     epistemicStatus = PropagationEpistemicStatus.OBSERVED,
     limitations = [],
     isDemo = false,
+    contentFamily = null,
+    hash = null,
     metadata = {}
   }) {
     const evtId = id || `PEVT-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
@@ -1598,6 +1588,8 @@ export class ProvenanceStore {
       epistemicStatus,
       limitations: Array.isArray(limitations) && limitations.length > 0 ? [...limitations] : defaultLimits,
       isDemo: Boolean(isDemo),
+      contentFamily: contentFamily || null,
+      hash: hash || null,
       createdAt: now,
       updatedAt: now,
       metadata: { ...metadata }

@@ -30,7 +30,6 @@ export function ScannerBar() {
   const [isUploading, setIsUploading] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
-  const [pendingMediaFile, setPendingMediaFile] = useState<File | null>(null)
   const [uploadedArtifact, setUploadedArtifact] = useState<{
     id: string
     filename: string
@@ -38,17 +37,8 @@ export function ScannerBar() {
     previewUrl?: string
   } | null>(null)
 
-  function handleIncomingFile(file: File) {
-    if (file.type.startsWith('video/') || file.type.startsWith('audio/') || /\.(mp4|webm|avi|mov|mkv|mp3|wav|ogg|flac|m4a)$/i.test(file.name)) {
-      setPendingMediaFile(file)
-    } else {
-      processFile(file)
-    }
-  }
-
   async function processFile(file: File) {
     setIsUploading(true)
-    setPendingMediaFile(null)
     setScanError(null)
 
     // Generate local preview URL instantly
@@ -90,7 +80,7 @@ export function ScannerBar() {
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
-    if (file) handleIncomingFile(file)
+    if (file) processFile(file)
   }
 
   function handleDragOver(e: DragEvent<HTMLDivElement>) {
@@ -107,7 +97,7 @@ export function ScannerBar() {
     e.preventDefault()
     setIsDragging(false)
     const file = e.dataTransfer.files?.[0]
-    if (file) handleIncomingFile(file)
+    if (file) processFile(file)
   }
 
   async function handleScan() {
@@ -133,76 +123,6 @@ export function ScannerBar() {
       flexDirection: 'column',
       gap: 12
     }}>
-      {/* Video / Audio Pre-upload Warning Banner */}
-      {pendingMediaFile && (
-        <div style={{
-          padding: '12px 16px',
-          borderRadius: 8,
-          background: 'rgba(245, 158, 11, 0.08)',
-          border: '1px solid rgba(245, 158, 11, 0.3)',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 8
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#fbbf24', fontSize: 13, fontWeight: 700 }}>
-            <span>⚠️</span> Video and audio forensic analysis isn't implemented yet — the file will be registered but not analyzed
-          </div>
-          <div style={{ fontSize: 12, color: '#cbd5e1', lineHeight: 1.4 }}>
-            Selected: <strong>{pendingMediaFile.name}</strong> ({(pendingMediaFile.size / (1024 * 1024)).toFixed(2)} MB). Deep forensic analyzers are only implemented for image files.
-          </div>
-          <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
-            <button
-              type="button"
-              onClick={() => {
-                setPendingMediaFile(null)
-                fileInputRef.current?.click()
-              }}
-              style={{
-                background: 'rgba(0, 212, 255, 0.15)',
-                border: '1px solid rgba(0, 212, 255, 0.35)',
-                color: '#38bdf8',
-                padding: '6px 12px',
-                borderRadius: 6,
-                fontSize: 12,
-                fontWeight: 700,
-                cursor: 'pointer'
-              }}
-            >
-              Choose image instead
-            </button>
-            <button
-              type="button"
-              onClick={() => processFile(pendingMediaFile)}
-              style={{
-                background: 'transparent',
-                border: '1px solid #334155',
-                color: '#94a3b8',
-                padding: '6px 12px',
-                borderRadius: 6,
-                fontSize: 12,
-                cursor: 'pointer'
-              }}
-            >
-              Continue upload
-            </button>
-            <button
-              type="button"
-              onClick={() => setPendingMediaFile(null)}
-              style={{
-                background: 'transparent',
-                border: 'none',
-                color: '#64748b',
-                padding: '6px 10px',
-                fontSize: 12,
-                cursor: 'pointer'
-              }}
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Top Action Row: Drag & Drop Ingestion + Quick Controls */}
       <div style={{
         display: 'grid',

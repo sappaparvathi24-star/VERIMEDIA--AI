@@ -30,35 +30,13 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export function CasesPanel() {
-  const { cases, casesLoading, casesError } = useStore()
+  const { cases, casesLoading } = useStore()
   const { refreshCases } = useDetection()
 
   useEffect(() => { refreshCases() }, [refreshCases])
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      {/* Honest fetch-failure banner — replaces the old behavior of silently
-          leaving fabricated placeholder cases on screen when /api/v1/cases fails. */}
-      {casesError && (
-        <div style={{
-          margin: '10px 16px 0',
-          padding: '10px 14px',
-          borderRadius: 8,
-          background: 'rgba(239, 68, 68, 0.08)',
-          border: '1px solid rgba(239, 68, 68, 0.35)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 12
-        }}>
-          <span style={{ fontSize: 12, color: '#f87171' }}>
-            ⚠️ Couldn't load cases from the backend: {casesError}
-          </span>
-          <button className="vm-btn vm-btn-ghost" style={{ padding: '4px 12px', fontSize: 11 }} onClick={refreshCases}>
-            ↻ Retry
-          </button>
-        </div>
-      )}
       {/* Header */}
       <div style={{
         padding: '10px 16px',
