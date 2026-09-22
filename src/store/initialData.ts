@@ -1,4 +1,4 @@
-import type { ForensicStageItem } from '../types'
+import type { ForensicStageItem, VerificationJobHistoryItem } from '../types'
 
 export const DEFAULT_FORENSIC_STAGES: ForensicStageItem[] = [
   {
@@ -62,4 +62,333 @@ export const DEFAULT_FORENSIC_STAGES: ForensicStageItem[] = [
     status: 'PENDING',
   },
 ]
+
+export const INITIAL_VERIFICATION_JOBS: VerificationJobHistoryItem[] = [
+  {
+    id: 'VERIFY-JOB-001',
+    query: 'Pope Francis in white puffer jacket Midjourney',
+    timestamp: new Date(Date.now() - 14 * 60 * 1000).toISOString(),
+    status: 'COMPLETED',
+    verdict: 'AI_GENERATED',
+    verdictLabel: 'AI-Generated Synthetic Media',
+    confidence: 0.97,
+    veracityScore: 10,
+    headlineSummary: 'Confirmed Midjourney v5 synthetic generation created by Pablo Xavier on March 2023.',
+    explanation: 'Multiple independent fact-check investigations (Snopes, AP News, Reuters, BBC) confirm the image originated on Reddit r/midjourney and was produced using text-to-image AI prompt synthesis.',
+    totalSourcesCount: 16,
+    googleFindingsCount: 9,
+    factCheckCount: 4,
+    youtubeCount: 2,
+    socialCount: 1,
+    latencyMs: 1420,
+    provider: 'Google Search API Grounding + YouTube Data API',
+    searchQueriesExecuted: [
+      'Pope Francis white puffer jacket fact check',
+      'Midjourney Pope Balenciaga coat origin reddit',
+      'Reuters fact check Pope puffy coat synthetic'
+    ],
+    findings: [
+      {
+        id: 'f-1',
+        title: 'Did Pope Francis Wear a White Balenciaga Puffer Coat?',
+        url: 'https://www.snopes.com/fact-check/pope-francis-puffer-jacket-ai/',
+        domain: 'snopes.com',
+        sourceType: 'fact_check',
+        confidenceScore: 0.98,
+        veracityScore: 8,
+        publisher: 'Snopes Fact Check',
+        publishedDate: '2023-03-27',
+        snippet: 'The image was created by a 31-year-old construction worker from Chicago using the AI program Midjourney.',
+        verdictTag: 'False / AI-Generated'
+      },
+      {
+        id: 'f-2',
+        title: 'Fact Check: Viral image of Pope in stylish puffer jacket is AI generated',
+        url: 'https://www.reuters.com/article/factcheck-pope-puffer/',
+        domain: 'reuters.com',
+        sourceType: 'fact_check',
+        confidenceScore: 0.99,
+        veracityScore: 5,
+        publisher: 'Reuters Fact Check',
+        publishedDate: '2023-03-28',
+        snippet: 'Reuters verified discrepancies in the rendering of the Pope\'s right hand and rosary cross alignment consistent with Midjourney v5 artifacts.',
+        verdictTag: 'Debunked'
+      },
+      {
+        id: 'f-3',
+        title: 'How a fake image of the Pope fooled the internet',
+        url: 'https://www.bbc.com/news/technology-65090886',
+        domain: 'bbc.com',
+        sourceType: 'grounded_source',
+        confidenceScore: 0.94,
+        veracityScore: 12,
+        publisher: 'BBC News Technology',
+        publishedDate: '2023-03-29',
+        snippet: 'Experts note AI-generated images often struggle with hands, glasses and edge boundaries.',
+        verdictTag: 'Analysis'
+      },
+      {
+        id: 'f-4',
+        title: 'AP Fact Check: That stylish Pope photo was made with AI',
+        url: 'https://apnews.com/article/fact-check-pope-white-puffer-jacket',
+        domain: 'apnews.com',
+        sourceType: 'fact_check',
+        confidenceScore: 0.97,
+        veracityScore: 7,
+        publisher: 'Associated Press',
+        publishedDate: '2023-03-27',
+        snippet: 'A realistic-looking image of Pope Francis wearing a long white puffer jacket that went viral over the weekend is an artificial intelligence fake.',
+        verdictTag: 'Fabricated'
+      },
+      {
+        id: 'f-5',
+        title: 'How Midjourney v5 Made The Viral Pope Coat Image',
+        url: 'https://www.theverge.com/2023/3/27/23657927/ai-pope-puffer-jacket-midjourney-generative-art',
+        domain: 'theverge.com',
+        sourceType: 'grounded_source',
+        confidenceScore: 0.91,
+        veracityScore: 15,
+        publisher: 'The Verge',
+        publishedDate: '2023-03-27',
+        snippet: 'The image was initially posted on the Midjourney subreddit by user u/trippy_art before going viral on Twitter.',
+        verdictTag: 'Source Attribution'
+      },
+      {
+        id: 'f-6',
+        title: 'AI Puffer Pope Breakdown: Spotting the Glitches in Generative Photos',
+        url: 'https://www.youtube.com/watch?v=sample_pope_analysis',
+        domain: 'youtube.com',
+        sourceType: 'youtube_video',
+        confidenceScore: 0.88,
+        veracityScore: 20,
+        publisher: 'YouTube Digital Forensics Lab',
+        publishedDate: '2023-03-30',
+        snippet: 'Frame-by-frame visual breakdown examining skin texture blurring and irregular specular highlights on the jacket seams.',
+        verdictTag: 'Visual Debunk'
+      }
+    ]
+  },
+  {
+    id: 'VERIFY-JOB-002',
+    query: 'Deepfake image of Pentagon explosion May 2023',
+    timestamp: new Date(Date.now() - 48 * 60 * 1000).toISOString(),
+    status: 'COMPLETED',
+    verdict: 'DEBUNKED_FALSE',
+    verdictLabel: 'Debunked Falsehood / Synthetic Hoax',
+    confidence: 0.99,
+    veracityScore: 3,
+    headlineSummary: 'Synthesized hoax depicting smoke near Pentagon. Arlington Fire Dept confirmed zero incident occurred.',
+    explanation: 'A fraudulent AI-generated image depicting a black smoke plume near the Pentagon caused a brief 10-minute S&P 500 dip on May 22, 2023 before Arlington County Fire Dept and DoD refuted it.',
+    totalSourcesCount: 18,
+    googleFindingsCount: 11,
+    factCheckCount: 5,
+    youtubeCount: 2,
+    socialCount: 0,
+    latencyMs: 1680,
+    provider: 'Google Search API Grounding + Government Wires',
+    searchQueriesExecuted: [
+      'Pentagon explosion May 22 2023 Arlington Fire statement',
+      'AI generated Pentagon smoke image debunked Bloomberg',
+      'DoD official statement Pentagon explosion viral hoax'
+    ],
+    findings: [
+      {
+        id: 'f-201',
+        title: 'Pentagon explosion photo is an AI-generated fake, officials say',
+        url: 'https://apnews.com/article/pentagon-explosion-fake-image-ai-markets',
+        domain: 'apnews.com',
+        sourceType: 'fact_check',
+        confidenceScore: 0.99,
+        veracityScore: 2,
+        publisher: 'Associated Press',
+        publishedDate: '2023-05-22',
+        snippet: 'Arlington County Fire Department confirmed there was NO explosion or incident taking place at or near the Pentagon.',
+        verdictTag: 'Hoax'
+      },
+      {
+        id: 'f-202',
+        title: 'Fake image of Pentagon explosion causes brief stock market selloff',
+        url: 'https://www.reuters.com/world/us/fake-image-pentagon-explosion-spreads-briefly-dents-us-stocks-2023-05-22/',
+        domain: 'reuters.com',
+        sourceType: 'grounded_source',
+        confidenceScore: 0.98,
+        veracityScore: 4,
+        publisher: 'Reuters Financial',
+        publishedDate: '2023-05-22',
+        snippet: 'Defense Department spokesperson confirmed no incident occurred and the building façade lines did not match the Pentagon complex.',
+        verdictTag: 'Debunked'
+      },
+      {
+        id: 'f-203',
+        title: 'Fact Check: Did an Explosion Happen at the Pentagon on May 22, 2023?',
+        url: 'https://www.snopes.com/fact-check/pentagon-explosion-photo-real/',
+        domain: 'snopes.com',
+        sourceType: 'fact_check',
+        confidenceScore: 0.99,
+        veracityScore: 1,
+        publisher: 'Snopes',
+        publishedDate: '2023-05-22',
+        snippet: 'Architectural analysis revealed the columns and fence rendered in the viral image are impossible geometry.',
+        verdictTag: 'False'
+      },
+      {
+        id: 'f-204',
+        title: 'AI Hoax of Pentagon Explosion Shakes Financial Markets',
+        url: 'https://www.bloomberg.com/news/articles/2023-05-22/pentagon-explosion-fake-news',
+        domain: 'bloomberg.com',
+        sourceType: 'grounded_source',
+        confidenceScore: 0.96,
+        veracityScore: 5,
+        publisher: 'Bloomberg',
+        publishedDate: '2023-05-22',
+        snippet: 'S&P 500 dropped 0.3% before rebounding as multiple verified government wire feeds disproved the claim.',
+        verdictTag: 'Market Impact'
+      },
+      {
+        id: 'f-205',
+        title: 'Investigative Video: Anomaly in AI Pentagon Explosion Image Architecture',
+        url: 'https://www.youtube.com/watch?v=sample_pentagon_ai',
+        domain: 'youtube.com',
+        sourceType: 'youtube_video',
+        confidenceScore: 0.92,
+        veracityScore: 5,
+        publisher: 'OSINT Technical YouTube',
+        publishedDate: '2023-05-23',
+        snippet: 'Visual comparison between actual Department of Defense perimeter security fencing and the warped AI render.',
+        verdictTag: 'Debunk'
+      }
+    ]
+  },
+  {
+    id: 'VERIFY-JOB-003',
+    query: 'Cat rescued in Dubai flood viral video',
+    timestamp: new Date(Date.now() - 95 * 60 * 1000).toISOString(),
+    status: 'COMPLETED',
+    verdict: 'CONFIRMED_AUTHENTIC',
+    verdictLabel: 'Confirmed Authentic Event',
+    confidence: 0.94,
+    veracityScore: 96,
+    headlineSummary: 'Authentic emergency rescue by Dubai police during April 2024 record rainfall in UAE.',
+    explanation: 'Verified official documentation released by Dubai Media Office showing Dubai Police officers saving a cat clinging to a car door handle amidst floodwaters.',
+    totalSourcesCount: 14,
+    googleFindingsCount: 8,
+    factCheckCount: 3,
+    youtubeCount: 3,
+    socialCount: 0,
+    latencyMs: 1250,
+    provider: 'Google Search API Grounding + Dubai Media Office',
+    searchQueriesExecuted: [
+      'Cat rescued Dubai flood April 2024 police boat official video',
+      'Dubai Media Office verified cat rescue car door',
+      'Khaleej Times cat flood rescue Dubai police'
+    ],
+    findings: [
+      {
+        id: 'f-301',
+        title: 'Dubai Police rescue cat clinging to car door in floodwaters',
+        url: 'https://www.bbc.com/news/world-middle-east-68840251',
+        domain: 'bbc.com',
+        sourceType: 'grounded_source',
+        confidenceScore: 0.96,
+        veracityScore: 98,
+        publisher: 'BBC News Middle East',
+        publishedDate: '2024-04-18',
+        snippet: 'The Dubai Media Office released the clip showing the rescue operation after the heaviest rains in 75 years.',
+        verdictTag: 'Verified Authentic'
+      },
+      {
+        id: 'f-302',
+        title: 'Viral video of cat rescued from Dubai flood is real',
+        url: 'https://www.khaleejtimes.com/uae/dubai-flood-viral-cat-rescue',
+        domain: 'khaleejtimes.com',
+        sourceType: 'fact_check',
+        confidenceScore: 0.97,
+        veracityScore: 99,
+        publisher: 'Khaleej Times',
+        publishedDate: '2024-04-18',
+        snippet: 'Authenticity confirmed through official government emergency response archives and timestamps.',
+        verdictTag: 'True / Authentic'
+      },
+      {
+        id: 'f-303',
+        title: 'Official Video: Dubai Police Rescuing Stranded Cat in Flooded Al Quoz',
+        url: 'https://www.youtube.com/watch?v=sample_dubai_cat',
+        domain: 'youtube.com',
+        sourceType: 'youtube_video',
+        confidenceScore: 0.95,
+        veracityScore: 97,
+        publisher: 'Dubai Media Office Official YouTube',
+        publishedDate: '2024-04-17',
+        snippet: 'Official police maritime rescue unit bodycam footage capturing the complete animal evacuation.',
+        verdictTag: 'Primary Source'
+      }
+    ]
+  },
+  {
+    id: 'VERIFY-JOB-004',
+    query: 'Apollo 11 moon landing flag waving in vacuum',
+    timestamp: new Date(Date.now() - 170 * 60 * 1000).toISOString(),
+    status: 'COMPLETED',
+    verdict: 'MISLEADING',
+    verdictLabel: 'Misleading Context / Physics Misinterpretation',
+    confidence: 0.93,
+    veracityScore: 28,
+    headlineSummary: 'Telescopic rod inertia and fabric wrinkles mistaken for aerodynamic flutter in atmospheric wind.',
+    explanation: 'NASA Apollo 11 historical archives and archival film review show the horizontal telescoping support rod did not fully extend, leaving intentional folds that only ripple when astronauts manually twisted the flagpole.',
+    totalSourcesCount: 15,
+    googleFindingsCount: 9,
+    factCheckCount: 4,
+    youtubeCount: 2,
+    socialCount: 0,
+    latencyMs: 1510,
+    provider: 'Google Search API Grounding + NASA Archives',
+    searchQueriesExecuted: [
+      'Apollo 11 flag waving vacuum horizontal rod physics NASA',
+      'Snopes fact check Apollo moon flag flutter inertia',
+      'Smithsonian Air and Space flag ripple explanation'
+    ],
+    findings: [
+      {
+        id: 'f-401',
+        title: 'Why Does the American Flag Look Like It\'s Flapping on the Moon?',
+        url: 'https://www.history.com/news/apollo-11-moon-landing-flag-flapping',
+        domain: 'history.com',
+        sourceType: 'grounded_source',
+        confidenceScore: 0.95,
+        veracityScore: 30,
+        publisher: 'History Channel',
+        publishedDate: '2019-07-16',
+        snippet: 'NASA designed a special flagpole with a horizontal rod to keep the flag unfurled in vacuum; astronauts had trouble extending it fully.',
+        verdictTag: 'Explained Physics'
+      },
+      {
+        id: 'f-402',
+        title: 'Moon Landing Hoax: Did the Flag Wave in the Wind?',
+        url: 'https://www.snopes.com/fact-check/moon-landing-flag-flutter/',
+        domain: 'snopes.com',
+        sourceType: 'fact_check',
+        confidenceScore: 0.96,
+        veracityScore: 25,
+        publisher: 'Snopes Science',
+        publishedDate: '2020-07-20',
+        snippet: 'The flag moves only when touched or planted, caused by inertia in vacuum without atmospheric friction to dampen vibration.',
+        verdictTag: 'Misleading'
+      },
+      {
+        id: 'f-403',
+        title: 'Apollo Lunar Surface Journal: Flag Deployment Physics',
+        url: 'https://www.nasa.gov/history/alsj/a11/flag_deployment.html',
+        domain: 'nasa.gov',
+        sourceType: 'grounded_source',
+        confidenceScore: 0.99,
+        veracityScore: 99,
+        publisher: 'NASA Official Archives',
+        publishedDate: '2018-05-10',
+        snippet: 'Primary mission logs detailing 3/4-inch telescoping crossbar latch resistance and subsequent static rigidity.',
+        verdictTag: 'Primary Record'
+      }
+    ]
+  }
+]
+
 

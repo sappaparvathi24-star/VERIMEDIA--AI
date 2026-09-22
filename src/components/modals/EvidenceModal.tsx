@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react'
+import { FileDown } from 'lucide-react'
 import { useStore } from '../../store'
 import type { DetectionResult } from '../../types'
 import { D3ProvenanceTree } from '../charts/D3ProvenanceTree'
 import { SequentialForensicReport } from '../forensics/SequentialForensicReport'
 import { get4FeatureWorkflowReport } from '../../services/api'
+import { exportInvestigationPDF } from '../../utils/pdfExport'
 
 interface Props {
   result: DetectionResult
@@ -15,6 +17,19 @@ export function EvidenceModal({ result }: Props) {
   const [workflowReport, setWorkflowReport] = useState<any>(null)
   const [loadingWorkflow, setLoadingWorkflow] = useState(false)
   const [workflowError, setWorkflowError] = useState<string | null>(null)
+  const [isExportingPDF, setIsExportingPDF] = useState(false)
+
+  async function handleExportPDF() {
+    if (!result) return
+    try {
+      setIsExportingPDF(true)
+      await exportInvestigationPDF(result)
+    } catch (err) {
+      console.error('Failed to export PDF from EvidenceModal:', err)
+    } finally {
+      setIsExportingPDF(false)
+    }
+  }
 
   useEffect(() => {
     if (modalTab === 'workflow' && !workflowReport) {
@@ -127,19 +142,42 @@ export function EvidenceModal({ result }: Props) {
             </button>
           </div>
 
-          <button
-            onClick={() => setShowEvidenceModal(false)}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: '#8899aa',
-              fontSize: 16,
-              cursor: 'pointer',
-              padding: '2px 8px'
-            }}
-          >
-            ✕
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button
+              onClick={handleExportPDF}
+              disabled={isExportingPDF}
+              style={{
+                padding: '4px 12px',
+                borderRadius: 5,
+                fontSize: 11,
+                fontWeight: 700,
+                background: 'rgba(0, 212, 255, 0.1)',
+                border: '1px solid rgba(0, 212, 255, 0.4)',
+                color: '#38bdf8',
+                cursor: isExportingPDF ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6
+              }}
+              title="Download official evidentiary PDF audit report"
+            >
+              <FileDown size={13} /> {isExportingPDF ? 'Exporting PDF…' : 'Export PDF'}
+            </button>
+
+            <button
+              onClick={() => setShowEvidenceModal(false)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#8899aa',
+                fontSize: 16,
+                cursor: 'pointer',
+                padding: '2px 8px'
+              }}
+            >
+              ✕
+            </button>
+          </div>
         </div>
 
         {/* Modal View Content */}

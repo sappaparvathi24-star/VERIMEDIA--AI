@@ -15,6 +15,7 @@ import {
 } from 'recharts'
 import { useStore } from '../../store'
 import { getDetectionTrends } from '../../services/api'
+import { SearchFindingsRechartsChart } from './SearchFindingsRechartsChart'
 
 type TimeRange = '24h' | '7d' | '30d'
 
@@ -558,6 +559,9 @@ export function DetectionTrendChart() {
           </ResponsiveContainer>
         </div>
       </div>
+
+      {/* Google Search API Grounding Confidence & Finding Frequency Matrix */}
+      <SearchFindingsRechartsChart className="mt-4" />
     </div>
   )
 }

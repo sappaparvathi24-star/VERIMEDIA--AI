@@ -29,7 +29,8 @@ import {
   ChevronRight,
   FileCode,
   Share2,
-  FileCheck2
+  FileCheck2,
+  FileDown
 } from 'lucide-react'
 import { useStore } from '../../store'
 import { useDetection } from '../../hooks/useDetection'
@@ -42,6 +43,8 @@ import { EvidenceReasoningCard } from '../panels/EvidenceReasoningCard'
 import type { Platform, ContentType } from '../../types'
 import { DEMO_PIECES, buildDemoDetectionResult, type DemoPiece } from '../../data/demoPieces'
 import { isSimulatedResult } from '../../lib/resultMode'
+import { ClaimSearchBar } from './ClaimSearchBar'
+import { exportInvestigationPDF } from '../../utils/pdfExport'
 
 const STAGES = [
   {
@@ -129,6 +132,19 @@ export function InvestigationFlow() {
 
   const [currentStage, setCurrentStage] = useState<number>(1)
   const [elapsedTime, setElapsedTime] = useState(0)
+  const [isExportingPDF, setIsExportingPDF] = useState(false)
+
+  async function handleExportPDF() {
+    if (!currentResult) return
+    try {
+      setIsExportingPDF(true)
+      await exportInvestigationPDF(currentResult)
+    } catch (err) {
+      console.error('Failed to export PDF report:', err)
+    } finally {
+      setIsExportingPDF(false)
+    }
+  }
 
   // Sync elapsed timer
   useEffect(() => {
@@ -249,6 +265,13 @@ export function InvestigationFlow() {
             Drop any image, video, or audio file to run multi-signal Error Level Analysis (ELA), camera EXIF validation, reverse web discovery, and cryptographic provenance verification.
           </p>
         </div>
+
+        {/* Quick Headline & Claim Verification Card */}
+        {!selectedFile && (
+          <div style={{ width: '100%', marginBottom: 24 }}>
+            <ClaimSearchBar variant="card" />
+          </div>
+        )}
 
         {/* Upload Container */}
         <div style={{ width: '100%' }}>
@@ -1028,6 +1051,25 @@ export function InvestigationFlow() {
             style={{ padding: '6px 12px', fontSize: 11, display: 'flex', alignItems: 'center', gap: 6, color: '#38bdf8', border: '1px solid rgba(0, 212, 255, 0.3)' }}
           >
             <FileCheck2 size={13} /> Sequential Report
+          </button>
+
+          <button
+            onClick={handleExportPDF}
+            disabled={isExportingPDF}
+            className="vm-btn vm-btn-ghost"
+            style={{
+              padding: '6px 12px',
+              fontSize: 11,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              color: '#38bdf8',
+              border: '1px solid rgba(0, 212, 255, 0.4)',
+              background: 'rgba(0, 212, 255, 0.08)'
+            }}
+            title="Export complete forensic investigation dossier as a downloadable PDF report"
+          >
+            <FileDown size={13} /> {isExportingPDF ? 'Generating PDF…' : 'Export PDF Report'}
           </button>
 
           <button

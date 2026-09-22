@@ -3,6 +3,7 @@ import { useStore } from '../../store'
 import { Tooltip } from '../ui/Tooltip'
 import { runBackendConnectivityDiagnostic, type DiagnosticResult } from '../../services/api'
 import { useAuth } from '../auth/AuthGate'
+import { ClaimSearchBar } from '../scanner/ClaimSearchBar'
 import type { TabId } from '../../types'
 
 const PAGE_TITLES: Record<TabId, { title: string; subtitle: string; icon: string }> = {
@@ -76,7 +77,22 @@ const STAT_DESCRIPTIONS: Record<string, string> = {
 }
 
 export function HeaderBar() {
-  const { activeTab, stats, health, currentResult, setCurrentResult, setActiveTab, setShowHeroOverlay, setShowMonitoringModal, setShowCommandPalette, setShowEvidenceModal, setHealth } = useStore()
+  const {
+    activeTab,
+    stats,
+    health,
+    currentResult,
+    setCurrentResult,
+    setActiveTab,
+    setShowHeroOverlay,
+    setShowMonitoringModal,
+    setShowCommandPalette,
+    setShowEvidenceModal,
+    setHealth,
+    verificationHistory,
+    showVerificationHistoryDrawer,
+    toggleVerificationHistoryDrawer
+  } = useStore()
   const { session, signOut } = useAuth()
   const [isDiagnosing, setIsDiagnosing] = useState(false)
   const [diagResult, setDiagResult] = useState<DiagnosticResult | null>(null)
@@ -138,45 +154,50 @@ export function HeaderBar() {
         </div>
       </div>
 
-      {/* Center: Command Palette Search Bar */}
-      <Tooltip content="Global Command Palette: Search investigations, trigger workflows or create cases (Ctrl+K)" position="bottom">
-        <button
-          onClick={() => setShowCommandPalette(true)}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12,
-            background: 'rgba(15, 23, 42, 0.8)',
-            border: '1px solid #1e2d3d',
-            borderRadius: 8,
-            padding: '6px 14px',
-            color: '#64748b',
-            fontSize: 12,
-            cursor: 'pointer',
-            minWidth: 280,
-            justifyContent: 'space-between',
-            transition: 'all 0.15s'
-          }}
-          className="hover:border-cyan-500/40 hover:text-slate-300"
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 13, color: '#00d4ff' }}>🔍</span>
-            <span>Search forensic scans or commands...</span>
-          </div>
-          <span style={{
-            fontSize: 10,
-            fontWeight: 700,
-            fontFamily: 'monospace',
-            color: '#38bdf8',
-            background: 'rgba(0, 212, 255, 0.1)',
-            border: '1px solid rgba(0, 212, 255, 0.2)',
-            padding: '2px 6px',
-            borderRadius: 4
-          }}>
-            ⌘K
-          </span>
-        </button>
-      </Tooltip>
+      {/* Center: Live Media Claim Verification & Command Palette */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: '1 1 auto', maxWidth: 520, justifyContent: 'center' }}>
+        <ClaimSearchBar
+          variant="header"
+          placeholder="Verify media claim or headline (Google, YouTube)..."
+          className="flex-1"
+        />
+
+        <Tooltip content="Global Command Palette (Ctrl+K)" position="bottom">
+          <button
+            onClick={() => setShowCommandPalette(true)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              background: 'rgba(15, 23, 42, 0.8)',
+              border: '1px solid #1e2d3d',
+              borderRadius: 10,
+              padding: '6px 10px',
+              color: '#94a3b8',
+              fontSize: 11,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              transition: 'all 0.15s'
+            }}
+            className="hover:border-cyan-500/40 hover:text-slate-200"
+            title="Global Command Palette (Ctrl+K)"
+          >
+            <span style={{ fontSize: 12 }}>⚡</span>
+            <span style={{
+              fontSize: 10,
+              fontWeight: 700,
+              fontFamily: 'monospace',
+              color: '#38bdf8',
+              background: 'rgba(0, 212, 255, 0.1)',
+              border: '1px solid rgba(0, 212, 255, 0.2)',
+              padding: '1px 5px',
+              borderRadius: 4
+            }}>
+              ⌘K
+            </span>
+          </button>
+        </Tooltip>
+      </div>
 
       {/* Right: Quick Operational Counters & Live Health */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
@@ -249,6 +270,43 @@ export function HeaderBar() {
           >
             <span>✨</span>
             <span>VeriMedia Assistant</span>
+          </button>
+        </Tooltip>
+
+        {/* Search Grounded Verification History Side-Panel Toggle */}
+        <Tooltip content="Toggle Search-Grounded Verification History Side-Panel & Recharts Analytics" position="bottom">
+          <button
+            onClick={() => toggleVerificationHistoryDrawer()}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              background: showVerificationHistoryDrawer ? 'rgba(0, 212, 255, 0.25)' : 'rgba(15, 23, 42, 0.8)',
+              border: showVerificationHistoryDrawer ? '1px solid #00d4ff' : '1px solid rgba(56, 189, 248, 0.35)',
+              padding: '6px 12px',
+              borderRadius: 6,
+              color: showVerificationHistoryDrawer ? '#ffffff' : '#38bdf8',
+              fontSize: 11,
+              fontWeight: 700,
+              cursor: 'pointer',
+              transition: 'all 0.15s',
+              boxShadow: showVerificationHistoryDrawer ? '0 0 12px rgba(0, 212, 255, 0.4)' : 'none'
+            }}
+            className="hover:scale-105 hover:border-cyan-400"
+          >
+            <span>🔍</span>
+            <span>Search History</span>
+            <span style={{
+              background: 'rgba(0, 212, 255, 0.3)',
+              color: '#00d4ff',
+              borderRadius: 10,
+              padding: '1px 6px',
+              fontSize: 10,
+              fontWeight: 800,
+              fontFamily: 'monospace'
+            }}>
+              {verificationHistory.length}
+            </span>
           </button>
         </Tooltip>
 

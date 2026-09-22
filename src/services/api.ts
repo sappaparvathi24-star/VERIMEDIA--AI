@@ -231,6 +231,90 @@ export const testProvider = (provider: string) =>
 export const getSearchTransparency = () =>
   api.get('/search/transparency').then(r => r.data)
 
+export interface ClaimVerificationArticle {
+  title: string
+  publisher?: string
+  url?: string
+  publishedDate?: string | null
+  verdict?: string
+  summary?: string
+}
+
+export interface ClaimVerificationPlatformItem {
+  title: string
+  url?: string
+  publisher?: string
+  author?: string
+  subreddit?: string
+  publishedDate?: string | null
+  publishedAt?: string | null
+  snippet?: string
+  thumbnailUrl?: string | null
+  imageUrl?: string | null
+  source?: string
+  sourceType?: string
+  videoId?: string
+}
+
+export interface ClaimVerificationResult {
+  status: 'ok' | 'error' | 'unavailable'
+  query: string
+  verdict: 'CONFIRMED_AUTHENTIC' | 'DEBUNKED_FALSE' | 'MISLEADING' | 'AI_GENERATED' | 'UNVERIFIED'
+  verdictLabel: string
+  veracityScore: number
+  confidence: number
+  headlineSummary: string
+  explanation: string
+  keyFindings: string[]
+  debunkReason?: string | null
+  factCheckArticles: ClaimVerificationArticle[]
+  googleSearch: {
+    status: string
+    isGrounded?: boolean
+    groundedWebSources: Array<{ uri: string; title: string }>
+    searchQueriesExecuted: string[]
+    cseResults: ClaimVerificationPlatformItem[]
+  }
+  youtube: {
+    status: string
+    available: boolean
+    reason?: string | null
+    count: number
+    results: ClaimVerificationPlatformItem[]
+  }
+  googleImages?: {
+    status: string
+    available: boolean
+    count: number
+    results: ClaimVerificationPlatformItem[]
+  }
+  reddit: {
+    status: string
+    available: boolean
+    count: number
+    results: ClaimVerificationPlatformItem[]
+  }
+  mastodon: {
+    status: string
+    available: boolean
+    count: number
+    results: ClaimVerificationPlatformItem[]
+  }
+  totalSourcesCount: number
+  queriedAt: string
+}
+
+export const verifyMediaClaim = async (params: {
+  query: string
+  platforms?: string[] | string
+  context?: string
+}): Promise<ClaimVerificationResult> => {
+  const token = await getToken()
+  return axios.post(`${BASE}/api/verify/claim`, params, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {}
+  }).then(r => r.data)
+}
+
 export const searchMultiSource = (
   query: string,
   platforms?: string[],

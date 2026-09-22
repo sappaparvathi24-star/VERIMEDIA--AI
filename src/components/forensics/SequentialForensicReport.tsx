@@ -27,10 +27,12 @@ import {
   FileText,
   Clock,
   Terminal,
-  ChevronRight
+  ChevronRight,
+  FileDown
 } from 'lucide-react'
 import { useStore } from '../../store'
 import type { DetectionResult } from '../../types'
+import { exportInvestigationPDF } from '../../utils/pdfExport'
 
 interface Props {
   result: DetectionResult
@@ -111,6 +113,19 @@ export function SequentialForensicReport({ result, onClose, onFileDMCA }: Props)
   const [copiedHash, setCopiedHash] = useState(false)
   const [elaIntensity, setElaIntensity] = useState(25)
   const [elaViewMode, setElaViewMode] = useState<'heatmap' | 'original' | 'diff'>('heatmap')
+  const [isExportingPDF, setIsExportingPDF] = useState(false)
+
+  async function handleExportPDF() {
+    if (!result) return
+    try {
+      setIsExportingPDF(true)
+      await exportInvestigationPDF(result)
+    } catch (err) {
+      console.error('Failed to export PDF dossier:', err)
+    } finally {
+      setIsExportingPDF(false)
+    }
+  }
 
   const currentStep = STEPS[currentStepIndex]
   const isFirstStep = currentStepIndex === 0
@@ -219,6 +234,25 @@ export function SequentialForensicReport({ result, onClose, onFileDMCA }: Props)
         {/* Top Header Controls */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button
+            onClick={handleExportPDF}
+            disabled={isExportingPDF}
+            className="vm-btn vm-btn-ghost"
+            style={{
+              padding: '6px 12px',
+              fontSize: 11,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              color: '#38bdf8',
+              border: '1px solid rgba(0, 212, 255, 0.4)',
+              background: 'rgba(0, 212, 255, 0.08)'
+            }}
+            title="Download comprehensive PDF report including investigation summary, provenance timeline, and forensic metadata"
+          >
+            <FileDown size={13} /> {isExportingPDF ? 'Generating PDF…' : 'Export PDF Report'}
+          </button>
+
+          <button
             onClick={() => {
               const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(result, null, 2))
               const dlAnchor = document.createElement('a')
@@ -231,7 +265,7 @@ export function SequentialForensicReport({ result, onClose, onFileDMCA }: Props)
             className="vm-btn vm-btn-ghost"
             style={{ padding: '6px 12px', fontSize: 11, display: 'flex', alignItems: 'center', gap: 6 }}
           >
-            <Download size={13} /> Export Report
+            <Download size={13} /> Export JSON
           </button>
 
           {onClose && (
@@ -884,37 +918,62 @@ export function SequentialForensicReport({ result, onClose, onFileDMCA }: Props)
                 </div>
               </div>
 
-              {/* Recommended Enforcement Action */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14 }}>
+              {/* Recommended Enforcement Action & PDF Export */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
                 <div style={{ fontSize: 12, color: '#94a3b8' }}>
                   <strong>Recommended Action:</strong> {aiAnalysis.action || 'No takedown necessary. Intact camera signatures verified.'}
                 </div>
 
-                {isManipulated && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <button
-                    onClick={() => {
-                      if (onFileDMCA) onFileDMCA()
-                      else setShowDMCAModal(true)
-                    }}
+                    onClick={handleExportPDF}
+                    disabled={isExportingPDF}
                     style={{
-                      padding: '10px 20px',
+                      padding: '10px 18px',
                       borderRadius: 8,
-                      background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
-                      border: 'none',
-                      color: '#ffffff',
+                      background: 'linear-gradient(135deg, rgba(0, 212, 255, 0.2) 0%, rgba(59, 130, 246, 0.2) 100%)',
+                      border: '1px solid #00d4ff',
+                      color: '#38bdf8',
                       fontSize: 13,
                       fontWeight: 800,
-                      cursor: 'pointer',
+                      cursor: isExportingPDF ? 'not-allowed' : 'pointer',
                       display: 'flex',
                       alignItems: 'center',
                       gap: 8,
-                      boxShadow: '0 4px 18px rgba(239, 68, 68, 0.4)',
+                      boxShadow: '0 4px 18px rgba(0, 212, 255, 0.25)',
                       flexShrink: 0
                     }}
+                    title="Export the complete investigation findings, provenance timeline, and forensic metadata to a downloadable PDF"
                   >
-                    <Scale size={15} /> Generate Formal DMCA Notice ➔
+                    <FileDown size={15} /> {isExportingPDF ? 'Generating PDF…' : 'Download Evidentiary PDF Report'}
                   </button>
-                )}
+
+                  {isManipulated && (
+                    <button
+                      onClick={() => {
+                        if (onFileDMCA) onFileDMCA()
+                        else setShowDMCAModal(true)
+                      }}
+                      style={{
+                        padding: '10px 20px',
+                        borderRadius: 8,
+                        background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                        border: 'none',
+                        color: '#ffffff',
+                        fontSize: 13,
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        boxShadow: '0 4px 18px rgba(239, 68, 68, 0.4)',
+                        flexShrink: 0
+                      }}
+                    >
+                      <Scale size={15} /> Generate Formal DMCA Notice ➔
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           </div>

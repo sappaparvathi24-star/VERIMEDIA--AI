@@ -413,3 +413,43 @@ export interface ComparisonCandidateSummary {
   reports: ComparisonReport[]
 }
 
+// ── Search-Grounded Verification Session History & Recharts Visualizations ──
+export type VerificationJobStatus = 'COMPLETED' | 'RUNNING' | 'FAILED' | 'QUEUED'
+
+export interface GoogleSearchFindingItem {
+  id: string
+  title: string
+  url: string
+  domain: string
+  sourceType: 'fact_check' | 'grounded_source' | 'cse_web' | 'youtube_video' | 'social_citation'
+  confidenceScore: number // 0.0 - 1.0
+  veracityScore?: number // 0 - 100
+  publisher?: string
+  publishedDate?: string
+  snippet?: string
+  verdictTag?: string // e.g. "Debunked", "Verified", "Misleading", "AI Generated"
+}
+
+export interface VerificationJobHistoryItem {
+  id: string
+  query: string
+  timestamp: string
+  status: VerificationJobStatus
+  verdict: 'CONFIRMED_AUTHENTIC' | 'DEBUNKED_FALSE' | 'MISLEADING' | 'AI_GENERATED' | 'UNVERIFIED'
+  verdictLabel: string
+  confidence: number // 0.0 - 1.0 (e.g. 0.94)
+  veracityScore: number // 0 - 100
+  headlineSummary: string
+  explanation?: string
+  totalSourcesCount: number
+  googleFindingsCount: number
+  factCheckCount: number
+  youtubeCount: number
+  socialCount: number
+  searchQueriesExecuted: string[]
+  findings: GoogleSearchFindingItem[]
+  latencyMs?: number
+  provider: string
+  rawResult?: any
+}
+

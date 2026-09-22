@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { useStore } from '../../store'
 import { useDetection } from '../../hooks/useDetection'
 import type { TabId, Scenario, Platform, ContentType, DetectionResult, CaseRecord } from '../../types'
+import { exportInvestigationPDF } from '../../utils/pdfExport'
 
 interface CommandItem {
   id: string
@@ -20,6 +21,7 @@ export function CommandPalette() {
     showCommandPalette, setShowCommandPalette,
     setActiveTab, setShowDMCAModal, setShowMonitoringModal,
     setShowHeroOverlay, setShowEvidenceModal,
+    openClaimModal,
     results, currentResult, setCurrentResult,
     cases,
   } = useStore()
@@ -203,6 +205,40 @@ export function CommandPalette() {
 
   // Workflow items
   const workflowItems: CommandItem[] = [
+    {
+      id: 'wf-claim-verification',
+      category: 'WORKFLOWS',
+      title: query.trim() ? `Verify Claim: "${query.trim()}"` : 'Verify Media Claim or News Headline',
+      subtitle: 'Cross-examine claim with Google Search API, YouTube videos, and news fact-checkers',
+      icon: '🌐',
+      badge: 'LIVE SEARCH',
+      badgeColor: '#00d4ff',
+      shortcut: 'Instant',
+      action: () => {
+        setShowCommandPalette(false)
+        openClaimModal(query.trim())
+      }
+    },
+    {
+      id: 'wf-export-pdf',
+      category: 'WORKFLOWS',
+      title: 'Export Forensic PDF Dossier Report',
+      subtitle: 'Download complete investigation summary, provenance timeline, and forensic metadata as PDF',
+      icon: '📄',
+      badge: 'PDF REPORT',
+      badgeColor: '#38bdf8',
+      shortcut: 'PDF',
+      action: async () => {
+        setShowCommandPalette(false)
+        if (currentResult) {
+          await exportInvestigationPDF(currentResult)
+        } else if (results.length > 0) {
+          await exportInvestigationPDF(results[0])
+        } else {
+          setActiveTab('scanner')
+        }
+      }
+    },
     {
       id: 'wf-deepfake',
       category: 'WORKFLOWS',

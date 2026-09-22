@@ -2,9 +2,11 @@
 import { create } from 'zustand'
 import type {
   DetectionResult, CaseRecord, HealthStatus,
-  ScanStats, TabId, ForensicStageItem, ForensicStageStatus, ScanLogEntry
+  ScanStats, TabId, ForensicStageItem, ForensicStageStatus, ScanLogEntry,
+  VerificationJobHistoryItem
 } from '../types'
-import { DEFAULT_FORENSIC_STAGES } from './initialData'
+import type { ClaimVerificationResult } from '../services/api'
+import { DEFAULT_FORENSIC_STAGES, INITIAL_VERIFICATION_JOBS } from './initialData'
 
 interface AppState {
   // Detection & Forensic Scan
@@ -12,6 +14,19 @@ interface AppState {
   currentResult: DetectionResult | null
   isScanning: boolean
   scanError: string | null
+
+  // Claim & Media Headline Verification
+  showClaimModal: boolean
+  claimInitialQuery: string
+  claimResult: ClaimVerificationResult | null
+  claimLoading: boolean
+  claimError: string | null
+
+  // Search-Grounded Verification Session History & Analytics
+  verificationHistory: VerificationJobHistoryItem[]
+  selectedVerificationJobId: string | null
+  showVerificationHistoryDrawer: boolean
+  activeHistoryTab: 'stream' | 'recharts'
 
   // Real-time Forensic Module Progress & Telemetry
   scanProgress: number
@@ -69,9 +84,23 @@ interface AppState {
   setShowMonitoringModal: (v: boolean) => void
   setShowHeroOverlay: (v: boolean) => void
   setShowCommandPalette: (v: boolean) => void
+  openClaimModal: (query?: string) => void
+  closeClaimModal: () => void
+  setClaimResult: (res: ClaimVerificationResult | null) => void
+  setClaimLoading: (loading: boolean) => void
+  setClaimError: (err: string | null) => void
   setSelectedCaseId: (id: string | null) => void
   updateStats: (r: DetectionResult) => void
   clearResults: () => void
+
+  // Verification History Actions
+  addVerificationJob: (job: VerificationJobHistoryItem) => void
+  updateVerificationJob: (id: string, updates: Partial<VerificationJobHistoryItem>) => void
+  setSelectedVerificationJobId: (id: string | null) => void
+  toggleVerificationHistoryDrawer: (force?: boolean) => void
+  setShowVerificationHistoryDrawer: (v: boolean) => void
+  setActiveHistoryTab: (tab: 'stream' | 'recharts') => void
+  clearVerificationHistory: () => void
 }
 
 export const useStore = create<AppState>((set, get) => ({
@@ -79,6 +108,12 @@ export const useStore = create<AppState>((set, get) => ({
   currentResult: null,
   isScanning: false,
   scanError: null,
+
+  // Verification History Defaults
+  verificationHistory: INITIAL_VERIFICATION_JOBS,
+  selectedVerificationJobId: INITIAL_VERIFICATION_JOBS[0]?.id || null,
+  showVerificationHistoryDrawer: false,
+  activeHistoryTab: 'stream',
 
   // Forensic progress defaults
   scanProgress: 0,
@@ -103,6 +138,11 @@ export const useStore = create<AppState>((set, get) => ({
   showMonitoringModal: false,
   showHeroOverlay: false,
   showCommandPalette: false,
+  showClaimModal: false,
+  claimInitialQuery: '',
+  claimResult: null,
+  claimLoading: false,
+  claimError: null,
   selectedCaseId: null,
   stats: { total: 0, threats: 0, dmca: 0, clean: 0 },
 
@@ -220,6 +260,11 @@ export const useStore = create<AppState>((set, get) => ({
   setShowMonitoringModal: (v) => set({ showMonitoringModal: v }),
   setShowHeroOverlay: (v) => set({ showHeroOverlay: v }),
   setShowCommandPalette: (v) => set({ showCommandPalette: v }),
+  openClaimModal: (query = '') => set({ showClaimModal: true, claimInitialQuery: query }),
+  closeClaimModal: () => set({ showClaimModal: false }),
+  setClaimResult: (res) => set({ claimResult: res }),
+  setClaimLoading: (loading) => set({ claimLoading: loading }),
+  setClaimError: (err) => set({ claimError: err }),
   setSelectedCaseId: (id) => set({ selectedCaseId: id }),
   updateStats: (r) => set(s => {
     const d = r.ai_analysis.decision
@@ -233,5 +278,21 @@ export const useStore = create<AppState>((set, get) => ({
     }
   }),
   clearResults: () => set({ results: [], currentResult: null }),
+
+  // Verification History Actions
+  addVerificationJob: (job) => set(s => ({
+    verificationHistory: [job, ...s.verificationHistory.filter(j => j.id !== job.id)].slice(0, 100),
+    selectedVerificationJobId: job.id
+  })),
+  updateVerificationJob: (id, updates) => set(s => ({
+    verificationHistory: s.verificationHistory.map(j => j.id === id ? { ...j, ...updates } : j)
+  })),
+  setSelectedVerificationJobId: (id) => set({ selectedVerificationJobId: id }),
+  toggleVerificationHistoryDrawer: (force) => set(s => ({
+    showVerificationHistoryDrawer: force !== undefined ? force : !s.showVerificationHistoryDrawer
+  })),
+  setShowVerificationHistoryDrawer: (v) => set({ showVerificationHistoryDrawer: v }),
+  setActiveHistoryTab: (tab) => set({ activeHistoryTab: tab }),
+  clearVerificationHistory: () => set({ verificationHistory: [], selectedVerificationJobId: null }),
 }))
 

@@ -17,7 +17,7 @@ export class GoogleVisionWebDetectionProvider {
     this.kind = 'EXTERNAL_API';
     this.apiKey = (config && config.apiKey !== undefined)
       ? config.apiKey
-      : (process.env.GOOGLE_VISION_API_KEY || process.env.GOOGLE_API_KEY || null);
+      : (process.env.GOOGLE_VISION_API_KEY || process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || null);
     this.authRequired = true;
     this.permanentUnavailable = false;
   }
