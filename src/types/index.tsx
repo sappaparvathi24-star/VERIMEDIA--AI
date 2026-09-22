@@ -173,6 +173,7 @@ export interface DetectionResult {
       } | null
       message?: string
       isRealAnalysis?: boolean
+      detectionMethod?: string
     }
     videoMetadata?: {
       supported?: boolean

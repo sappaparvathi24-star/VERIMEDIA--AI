@@ -61,6 +61,7 @@ interface AppState {
   setShowGlobalProgressDrawer: (v: boolean) => void
   setCases: (c: CaseRecord[]) => void
   setCasesLoading: (v: boolean) => void
+  setCasesError: (e: string | null) => void
   setHealth: (h: HealthStatus) => void
   setActiveTab: (t: TabId) => void
   setShowEvidenceModal: (v: boolean) => void
@@ -211,6 +212,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   setCases: (c) => set({ cases: c }),
   setCasesLoading: (v) => set({ casesLoading: v }),
+  setCasesError: (e: string | null) => set({ casesError: e }),
   setHealth: (h) => set({ health: h }),
   setActiveTab: (t) => set({ activeTab: t }),
   setShowEvidenceModal: (v) => set({ showEvidenceModal: v }),

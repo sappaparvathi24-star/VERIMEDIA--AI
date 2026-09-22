@@ -10,7 +10,7 @@ import { InstagramDiscoveryProvider } from './instagram.js';
 import { GoogleVisionDiscoveryProvider } from './googleVision.js';
 import { getDiscoveryHealth } from '../../proxy/searchProxy.js';
 import { getArtifactMedia } from '../../forensics/imageForensics.js';
-import { computeAverageHash } from '../../forensics/perceptualHash.js';
+import { computePhash } from '../../forensics/perceptualHash.js';
 import { 
   evaluateCandidateVisualSimilarity, 
   SIMILARITY_THRESHOLDS, 
@@ -121,7 +121,9 @@ export class MultiSourceDiscoveryManager {
     let uploadedHash = opts.perceptualHash || null;
     if (!uploadedHash && imageBuffer) {
       try {
-        uploadedHash = await computeAverageHash(imageBuffer);
+        // Uses the DCT-based pHash (not aHash) so it matches the discriminative
+        // hash now used in evaluateCandidateVisualSimilarity() below.
+        uploadedHash = await computePhash(imageBuffer);
       } catch (_) {}
     }
 

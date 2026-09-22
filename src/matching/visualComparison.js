@@ -1,6 +1,11 @@
 // VeriMedia AI — Visual Comparison & Perceptual Forensic Scoring Engine
 import sharp from 'sharp';
-import { computeAverageHash, hammingDistance, hashSimilarity } from '../forensics/perceptualHash.js';
+// NOTE: Uses the DCT-based perceptual hash (computePhash), not the average
+// hash (computeAverageHash). aHash is a coarse 64-bit brightness-threshold
+// hash and produces frequent false "matches" (>=0.70 similarity) between
+// visually unrelated photos that merely share overall lighting/composition.
+// The DCT-based hash is far more discriminative for reverse-image matching.
+import { computePhash, hammingDistance, hashSimilarity } from '../forensics/perceptualHash.js';
 
 /**
  * Forensically calibrated similarity thresholds.
@@ -106,7 +111,7 @@ export async function fetchThumbnailBuffer(url, timeoutMs = 5000) {
 export async function evaluateCandidateVisualSimilarity(candidate, { uploadedHash, uploadedBuffer } = {}) {
   let refHash = uploadedHash || null;
   if (!refHash && uploadedBuffer && Buffer.isBuffer(uploadedBuffer)) {
-    refHash = await computeAverageHash(uploadedBuffer);
+    refHash = await computePhash(uploadedBuffer);
   }
 
   const evaluated = { ...candidate };
@@ -122,7 +127,7 @@ export async function evaluateCandidateVisualSimilarity(candidate, { uploadedHas
   if (thumbUrl && refHash) {
     const thumbBuffer = await fetchThumbnailBuffer(thumbUrl);
     if (thumbBuffer) {
-      const thumbHash = await computeAverageHash(thumbBuffer);
+      const thumbHash = await computePhash(thumbBuffer);
       if (thumbHash) {
         phashSimilarity = hashSimilarity(refHash, thumbHash);
         hammingDist = hammingDistance(refHash, thumbHash);
