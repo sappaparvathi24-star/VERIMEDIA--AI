@@ -1001,21 +1001,21 @@ export function DiscoveryPanel() {
 
         {/* Dynamic Provider Error or Unavailable Notices */}
         {Object.entries(providerStatuses)
-          .filter(([id, p]) => (p.status === 'ERROR' || p.status === 'AUTHENTICATED_ERROR') && id !== 'instagram' && id !== 'x')
+          .filter(([id, p]) => (p.status === 'ERROR' || p.status === 'AUTHENTICATED_ERROR' || p.status === 'UNAVAILABLE' || p.status === 'NOT_CONFIGURED' || p.status === 'QUOTA_REACHED') && id !== 'instagram' && id !== 'x')
           .map(([id, p]) => (
             <div key={id} style={{
               padding: '8px 12px',
               borderRadius: 6,
-              background: 'rgba(245, 158, 11, 0.08)',
-              border: '1px solid rgba(245, 158, 11, 0.25)',
+              background: p.status === 'ERROR' ? 'rgba(239, 68, 68, 0.08)' : 'rgba(245, 158, 11, 0.08)',
+              border: `1px solid ${p.status === 'ERROR' ? 'rgba(239, 68, 68, 0.3)' : 'rgba(245, 158, 11, 0.3)'}`,
               fontSize: 11,
-              color: '#fbbf24',
+              color: p.status === 'ERROR' ? '#f87171' : '#fbbf24',
               display: 'flex',
               alignItems: 'center',
               gap: 8
             }}>
-              <span>⚠</span>
-              <span><strong>Provider Notice ({p.name || id}):</strong> {p.reason || 'Provider unavailable or skipped without synthetic filler.'}</span>
+              <span>{p.status === 'ERROR' ? '❌' : '⚠️'}</span>
+              <span><strong>Provider Status ({p.name || id}):</strong> {p.reason || (p.status === 'NOT_CONFIGURED' || p.status === 'UNAVAILABLE' ? 'API credentials not configured on this deployment. Set provider environment variable in deployment settings.' : 'Provider status: ' + p.status)}</span>
             </div>
           ))
         }

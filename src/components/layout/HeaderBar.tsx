@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useStore } from '../../store'
 import { Tooltip } from '../ui/Tooltip'
-import { runBackendConnectivityDiagnostic, type DiagnosticResult } from '../../services/api'
+import { runBackendConnectivityDiagnostic, getApiBaseUrl, setApiBaseUrl, RENDER_BACKEND, type DiagnosticResult } from '../../services/api'
 import { useAuth } from '../auth/AuthGate'
 import { ClaimSearchBar } from '../scanner/ClaimSearchBar'
 import type { TabId } from '../../types'
@@ -546,6 +546,62 @@ export function HeaderBar() {
 
             {/* Modal Body */}
             <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 14, maxHeight: '75vh', overflowY: 'auto' }}>
+              {/* Backend Target Switcher */}
+              <div style={{
+                background: '#161b22',
+                border: '1px solid #30363d',
+                borderRadius: 8,
+                padding: 12,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 8
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase' }}>
+                    Active Backend Target:
+                  </span>
+                  <span style={{ fontSize: 11, fontFamily: 'monospace', color: '#38bdf8', fontWeight: 700 }}>
+                    {getApiBaseUrl() || 'Same-Origin Local Container (/api)'}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button
+                    onClick={() => setApiBaseUrl(RENDER_BACKEND)}
+                    style={{
+                      flex: '1 1 auto',
+                      background: getApiBaseUrl() === RENDER_BACKEND ? 'rgba(0, 212, 255, 0.2)' : '#0d1117',
+                      border: getApiBaseUrl() === RENDER_BACKEND ? '1.5px solid #00d4ff' : '1px solid #30363d',
+                      color: getApiBaseUrl() === RENDER_BACKEND ? '#38bdf8' : '#e2e8f0',
+                      borderRadius: 6,
+                      padding: '8px 12px',
+                      fontSize: 11,
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      textAlign: 'center'
+                    }}
+                  >
+                    ⚡ Connect to Render Live Backend (verimedia-ai-2)
+                  </button>
+                  <button
+                    onClick={() => setApiBaseUrl('')}
+                    style={{
+                      flex: '1 1 auto',
+                      background: getApiBaseUrl() === '' ? 'rgba(0, 212, 255, 0.2)' : '#0d1117',
+                      border: getApiBaseUrl() === '' ? '1.5px solid #00d4ff' : '1px solid #30363d',
+                      color: getApiBaseUrl() === '' ? '#38bdf8' : '#e2e8f0',
+                      borderRadius: 6,
+                      padding: '8px 12px',
+                      fontSize: 11,
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      textAlign: 'center'
+                    }}
+                  >
+                    🖥️ Use Local/Container Backend
+                  </button>
+                </div>
+              </div>
+
               {/* Status Bar */}
               <div style={{
                 display: 'grid',

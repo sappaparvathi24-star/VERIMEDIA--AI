@@ -3,31 +3,7 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "/api/index.js"
-    },
-    {
-      "source": "/chat",
-      "destination": "/api/index.js"
-    },
-    {
-      "source": "/analyze",
-      "destination": "/api/index.js"
-    },
-    {
-      "source": "/dmca-reasoning",
-      "destination": "/api/index.js"
-    },
-    {
-      "source": "/dmca/generate",
-      "destination": "/api/index.js"
-    },
-    {
-      "source": "/claims/(.*)",
-      "destination": "/api/index.js"
-    },
-    {
-      "source": "/health",
-      "destination": "/api/index.js"
+      "destination": "https://verimedia-ai-2.onrender.com/api/$1"
     },
     {
       "source": "/(.*)",

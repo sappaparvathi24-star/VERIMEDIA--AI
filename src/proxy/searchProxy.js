@@ -740,7 +740,13 @@ export async function searchX(query, options = {}) {
  * Direct reverse image & visual similarity search across web pages.
  */
 export async function searchGoogleVisionWebDetection({ imageBase64, imageBuffer, imageUri } = {}, apiKey) {
-  const effectiveKey = apiKey || process.env.GOOGLE_VISION_API_KEY || process.env.GOOGLE_CSE_API_KEY || process.env.GOOGLE_SEARCH_API_KEY || process.env.GEMINI_API_KEY;
+  const effectiveKey = apiKey ||
+    process.env.GOOGLE_VISION_API_KEY ||
+    process.env.GOOGLE_API_KEY ||
+    process.env.GOOGLE_GENAI_API_KEY ||
+    process.env.GOOGLE_CSE_API_KEY ||
+    process.env.GOOGLE_SEARCH_API_KEY ||
+    process.env.GEMINI_API_KEY;
   if (!effectiveKey) {
     return {
       available: false,

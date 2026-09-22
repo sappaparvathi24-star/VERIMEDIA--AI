@@ -12,11 +12,17 @@ import type {
 export { networkLogger }
 
 // Canonical Render backend URL — update this single constant when the backend URL changes
-const RENDER_BACKEND = 'https://verimedia-ai-2.onrender.com'
+export const RENDER_BACKEND = 'https://verimedia-ai-2.onrender.com'
 
 export const getApiBaseUrl = (): string => {
+  if (typeof window !== 'undefined') {
+    const custom = localStorage.getItem('verimedia_backend_url')
+    if (custom !== null && custom.trim() !== '') {
+      return custom.trim().replace(/\/$/, '')
+    }
+  }
   const envUrl = import.meta.env.VITE_API_BASE_URL?.trim()
-  if (envUrl && envUrl !== 'https://verimedia-ai-2.onrender.com' && envUrl !== 'https://verimedia-ai-1.onrender.com') {
+  if (envUrl) {
     return envUrl.replace(/\/$/, '')
   }
   if (typeof window !== 'undefined') {
@@ -31,7 +37,18 @@ export const getApiBaseUrl = (): string => {
   return ''
 }
 
-const BASE = getApiBaseUrl()
+export const setApiBaseUrl = (url: string) => {
+  if (typeof window !== 'undefined') {
+    if (!url || url.trim() === '') {
+      localStorage.removeItem('verimedia_backend_url')
+    } else {
+      localStorage.setItem('verimedia_backend_url', url.trim())
+    }
+    window.location.reload()
+  }
+}
+
+export const BASE = getApiBaseUrl()
 
 const api = axios.create({
   baseURL: `${BASE}/api`,
@@ -768,7 +785,7 @@ export const runBackendConnectivityDiagnostic = async (): Promise<DiagnosticResu
 
     const allowOrigin = headersObj['access-control-allow-origin']
     let corsStatus: DiagnosticResult['corsStatus'] = 'OK'
-    if (!allowOrigin && BASE !== '') {
+    if (!allowOrigin && BASE !== '' && !window.location.hostname.includes('vercel.app')) {
       corsStatus = 'MISSING_ALLOW_ORIGIN'
     }
 

@@ -14,7 +14,11 @@ export class GoogleVisionDiscoveryProvider {
 
   getApiKey() {
     if (this.apiKey !== undefined && this.apiKey !== null) return this.apiKey;
-    return process.env.GOOGLE_VISION_API_KEY || process.env.GOOGLE_API_KEY || null;
+    return process.env.GOOGLE_VISION_API_KEY ||
+      process.env.GOOGLE_API_KEY ||
+      process.env.GEMINI_API_KEY ||
+      process.env.GOOGLE_GENAI_API_KEY ||
+      null;
   }
 
   isConfigured() {

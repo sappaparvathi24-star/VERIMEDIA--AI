@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '../../store'
-import { getHealth, getProviders, testProvider, getSearchTransparency, getAuditEvents } from '../../services/api'
+import { getHealth, getProviders, testProvider, getSearchTransparency, getAuditEvents, getApiBaseUrl, setApiBaseUrl, RENDER_BACKEND } from '../../services/api'
 
 export function SystemPanel() {
   const { health, setHealth, stats } = useStore()
@@ -91,6 +91,60 @@ export function SystemPanel() {
           >
             {loading ? '◌ Checking...' : '↻ Refresh Status'}
           </button>
+        </div>
+      </div>
+
+      {/* Active Backend Connection Switcher Card */}
+      <div style={{
+        marginBottom: 18,
+        padding: '14px 18px',
+        borderRadius: 8,
+        background: '#0d1117',
+        border: '1px solid #1e2d3d',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 10
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 16 }}>🔌</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: '#f8fafc' }}>Active API Backend:</span>
+            <code style={{ fontSize: 12, color: '#38bdf8', background: 'rgba(0, 212, 255, 0.1)', padding: '2px 8px', borderRadius: 4, border: '1px solid rgba(0, 212, 255, 0.2)' }}>
+              {getApiBaseUrl() || 'Same-Origin / Local Container (/api)'}
+            </code>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button
+              onClick={() => setApiBaseUrl(RENDER_BACKEND)}
+              style={{
+                background: getApiBaseUrl() === RENDER_BACKEND ? 'rgba(0, 212, 255, 0.25)' : '#161b22',
+                border: getApiBaseUrl() === RENDER_BACKEND ? '1.5px solid #00d4ff' : '1px solid #30363d',
+                color: getApiBaseUrl() === RENDER_BACKEND ? '#38bdf8' : '#cbd5e1',
+                padding: '6px 12px',
+                borderRadius: 6,
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: 'pointer'
+              }}
+            >
+              ⚡ Connect to Render (verimedia-ai-2)
+            </button>
+            <button
+              onClick={() => setApiBaseUrl('')}
+              style={{
+                background: getApiBaseUrl() === '' ? 'rgba(0, 212, 255, 0.25)' : '#161b22',
+                border: getApiBaseUrl() === '' ? '1.5px solid #00d4ff' : '1px solid #30363d',
+                color: getApiBaseUrl() === '' ? '#38bdf8' : '#cbd5e1',
+                padding: '6px 12px',
+                borderRadius: 6,
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: 'pointer'
+              }}
+            >
+              🖥️ Use Local/Container Backend
+            </button>
+          </div>
         </div>
       </div>
 
