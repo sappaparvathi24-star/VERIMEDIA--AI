@@ -208,10 +208,23 @@ export class MultiSourceDiscoveryManager {
           reason: err.message,
           queryType: providerQueryType
         };
-        if (err.message && (err.message.includes('billing') || err.message.includes('403') || err.message.includes('restricted') || err.message.includes('not have the access'))) {
-          console.log(`[Discovery Provider Audit] Provider: ${provider.id} (${provider.name}) | Status: RESTRICTED | Note: ${err.message.slice(0, 100)}`);
+        const isAuthOrQuotaNotice = err.message && (
+          err.message.includes('billing') ||
+          err.message.includes('403') ||
+          err.message.includes('400') ||
+          err.message.includes('401') ||
+          err.message.includes('restricted') ||
+          err.message.includes('not have the access') ||
+          err.message.includes('API key') ||
+          err.message.includes('api key') ||
+          err.message.includes('expired') ||
+          err.message.includes('quota')
+        );
+
+        if (isAuthOrQuotaNotice) {
+          console.info(`[Discovery Provider Audit] Provider: ${provider.id} (${provider.name}) | Status: RESTRICTED/INACTIVE | Note: ${err.message.slice(0, 100)}`);
         } else {
-          console.warn(`[Discovery Provider Audit Error] Provider: ${provider.id} (${provider.name}) | Error: ${err.message.slice(0, 120)}`);
+          console.info(`[Discovery Provider Audit] Provider: ${provider.id} (${provider.name}) | Status: NOTICE | ${err.message.slice(0, 100)}`);
         }
       }
     });

@@ -31,8 +31,22 @@ export const DEFAULT_PIPELINE_STAGES = [
 ];
 
 export class ForensicJobQueue extends EventEmitter {
-  constructor({ provenanceService, callGeminiFn = null } = {}) {
+  constructor(optionsOrService = {}, maybeOpts = {}) {
     super();
+    let provenanceService = null;
+    let callGeminiFn = null;
+
+    if (optionsOrService && optionsOrService.provenanceService) {
+      provenanceService = optionsOrService.provenanceService;
+      callGeminiFn = optionsOrService.callGeminiFn || null;
+    } else if (optionsOrService && typeof optionsOrService === 'object' && optionsOrService.createInvestigation) {
+      provenanceService = optionsOrService;
+      callGeminiFn = maybeOpts?.callGeminiFn || null;
+    } else if (typeof optionsOrService === 'object') {
+      provenanceService = optionsOrService.provenanceService || null;
+      callGeminiFn = optionsOrService.callGeminiFn || null;
+    }
+
     this.provenanceService = provenanceService;
     this.callGeminiFn = callGeminiFn;
     this.jobs = new Map();

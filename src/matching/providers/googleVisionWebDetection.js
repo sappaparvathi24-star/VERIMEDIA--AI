@@ -20,6 +20,7 @@ export class GoogleVisionWebDetectionProvider {
       : (process.env.GOOGLE_VISION_API_KEY || process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || null);
     this.authRequired = true;
     this.permanentUnavailable = false;
+    this.keyExpired = false;
   }
 
   getApiKey() {
@@ -32,10 +33,20 @@ export class GoogleVisionWebDetectionProvider {
   }
 
   isConfigured() {
+    if (this.keyExpired) return false;
     return Boolean(this.getApiKey() && this.getApiKey().trim());
   }
 
   status() {
+    if (this.keyExpired || this.permanentUnavailable) {
+      return {
+        status: 'UNAVAILABLE',
+        confidence: 'UNAVAILABLE',
+        source: this.name,
+        reason: 'Google Cloud Vision API key is expired or inactive. Multi-source fallback active.',
+        isSystemAnalysisOnly: true
+      };
+    }
     if (!this.isConfigured()) {
       return {
         status: 'UNAVAILABLE',
@@ -60,13 +71,13 @@ export class GoogleVisionWebDetectionProvider {
    * @param {object} [opts] - Additional options
    */
   async search(signalsOrPayload = {}, opts = {}) {
-    if (!this.isConfigured()) {
+    if (this.keyExpired || this.permanentUnavailable || !this.isConfigured()) {
       return {
         providerId: this.id,
         status: 'UNAVAILABLE',
         confidence: 'UNAVAILABLE',
         source: this.name,
-        reason: 'GOOGLE_VISION_API_KEY not configured on this deployment',
+        reason: this.keyExpired ? 'Google Cloud Vision API key is expired or inactive. Multi-source fallback active.' : 'GOOGLE_VISION_API_KEY not configured on this deployment',
         isSystemAnalysisOnly: true,
         candidates: []
       };
@@ -179,6 +190,10 @@ export class GoogleVisionWebDetectionProvider {
         errBody = { error: { message: `HTTP ${res.status} ${res.statusText}` } };
       }
       const errMsg = errBody?.error?.message || `HTTP ${res.status} ${res.statusText}`;
+      if (res.status === 400 || res.status === 401 || res.status === 403 || /expired|api key|unauthorized|permission|forbidden/i.test(errMsg)) {
+        this.keyExpired = true;
+        this.permanentUnavailable = true;
+      }
       throw new Error(`Google Cloud Vision API error (${res.status}): ${errMsg}`);
     }
 
@@ -186,7 +201,12 @@ export class GoogleVisionWebDetectionProvider {
     const annotation = data?.responses?.[0];
 
     if (annotation?.error) {
-      throw new Error(annotation.error.message || 'Google Vision annotation error');
+      const annotMsg = annotation.error.message || 'Google Vision annotation error';
+      if (/expired|api key|permission|forbidden|quota/i.test(annotMsg)) {
+        this.keyExpired = true;
+        this.permanentUnavailable = true;
+      }
+      throw new Error(annotMsg);
     }
 
     // Increment and log usage after successful API call

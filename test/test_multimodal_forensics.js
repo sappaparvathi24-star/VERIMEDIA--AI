@@ -272,7 +272,9 @@ startxref
   console.log('====================================================\n');
 }
 
-runMultimodalTests().catch(err => {
+runMultimodalTests().then(() => {
+  process.exit(0);
+}).catch(err => {
   console.error('Multimodal test failed:', err);
   process.exit(1);
 });
