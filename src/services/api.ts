@@ -7,6 +7,7 @@ import type {
   DMCARequest, DMCANotice,
   CaseRecord, CaseStatus,
   HealthStatus,
+  DeepfakeDetectionResult,
 } from '../types'
 
 export { networkLogger }
@@ -693,6 +694,50 @@ export const analyzeMultimodalGemini = async (payload: {
   return axios.post(`${BASE}/api/gemini/multimodal-analyze`, payload, {
     headers: token ? { Authorization: `Bearer ${token}` } : {}
   }).then(r => r.data)
+}
+
+export const runDeepfakeDetection = async (payload: {
+  file?: File
+  imageBase64?: string
+  videoBase64?: string
+  dataUrl?: string
+  mimeType?: string
+  filename?: string
+  investigationId?: string
+  customPrompt?: string
+}): Promise<DeepfakeDetectionResult> => {
+  const token = await getToken()
+  const base = getApiBaseUrl()
+
+  if (payload.file) {
+    const formData = new FormData()
+    formData.append('media', payload.file)
+    formData.append('file', payload.file)
+    if (payload.filename) formData.append('filename', payload.filename)
+    if (payload.investigationId) formData.append('investigationId', payload.investigationId)
+    if (payload.customPrompt) formData.append('customPrompt', payload.customPrompt)
+
+    const res = await axios.post(`${base}/api/gemini/deepfake-detect`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      }
+    })
+    return res.data
+  }
+
+  const res = await axios.post(`${base}/api/gemini/deepfake-detect`, {
+    imageBase64: payload.imageBase64,
+    videoBase64: payload.videoBase64,
+    dataUrl: payload.dataUrl,
+    mimeType: payload.mimeType,
+    filename: payload.filename,
+    investigationId: payload.investigationId,
+    customPrompt: payload.customPrompt
+  }, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {}
+  })
+  return res.data
 }
 
 export const getEarliestAppearanceSearch = async (payload: {

@@ -495,3 +495,63 @@ export interface VerificationJobHistoryItem {
   rawResult?: any
 }
 
+// ── Deepfake Detection & Gemini Visual Confidence Metrics ───────────────────
+export interface VisualConfidenceMetrics {
+  faceSynthesisAnomaly: number // 0 - 100% (higher = more anomalous/synthetic face)
+  lightingAndSpecularConsistency: number // 0 - 100% (higher = physically consistent natural light)
+  boundaryEdgeCoherence: number // 0 - 100% (higher = natural edge gradients)
+  facialLandmarkAlignment: number // 0 - 100% (higher = natural anatomical structure)
+  textureMicroGrainNaturalness: number // 0 - 100% (higher = natural sensor noise & pore grain)
+  temporalMotionContinuity: number // 0 - 100% (higher = smooth motion vectors / optical flow)
+  compressionQuantizationConsistency: number // 0 - 100% (higher = uniform compression blocks)
+  eyeReflectionAgreement: number // 0 - 100% (higher = matching corneal specular reflection)
+  backgroundGeometricIntegrity: number // 0 - 100% (higher = geometrically coherent perspective)
+}
+
+export type DeepfakeVerdict =
+  | 'AUTHENTIC_CAPTURE'
+  | 'SYNTHETIC_DEEPFAKE'
+  | 'AI_GENERATED'
+  | 'FACE_SWAP_MANIPULATION'
+  | 'LOCALIZED_INPAINTING'
+  | 'DIFFUSION_GENERATED'
+  | 'AUDIO_VISUAL_MISMATCH'
+  | 'INCONCLUSIVE'
+
+export interface DeepfakeDetectionResult {
+  status: 'COMPLETED' | 'FALLBACK' | 'ERROR'
+  mediaType: 'image' | 'video' | 'audio' | 'unknown'
+  filename: string
+  fileSize?: number
+  dimensions?: { width: number; height: number }
+  duration?: number
+  deepfakeScore: number // 0 - 100 (higher = more likely deepfake)
+  authenticityScore: number // 0 - 100 (higher = more authentic)
+  verdict: DeepfakeVerdict
+  confidence: number // 0.0 - 1.0
+  riskLevel: Severity
+  subjectDescription: string
+  visualConfidenceMetrics: VisualConfidenceMetrics
+  visualFindings: string[]
+  detectedAnomalies: string[]
+  summary: string
+  recommendedAction: string
+  dmcaNeeded: boolean
+  keyframeUrl?: string
+  model: string
+  analyzedAt: string
+  source?: string
+  degradationReason?: string
+  isSystemAnalysisOnly?: boolean
+  technicalDetails?: {
+    sha256?: string
+    pHash?: string
+    elaMeanError?: number
+    noiseVariance?: number
+    codec?: string
+    fps?: number
+    duration?: number
+    resolution?: string
+  }
+}
+
