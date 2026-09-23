@@ -205,7 +205,7 @@ export function useDetection() {
   const runMediaInvestigation = useCallback(async (file: File, options?: { platform?: any; username?: string; caption?: string; contentType?: any; investigationId?: string }) => {
     setScanning(true)
     setScanError(null)
-    addScanLog(`Starting full media investigation for ${file.name} (${file.type}, ${(file.size / 1024).toFixed(1)} KB)...`, 'ingest', 'info')
+    addScanLog(`Starting high-speed media investigation for ${file.name} (${file.type}, ${(file.size / 1024).toFixed(1)} KB)...`, 'ingest', 'info')
 
     // Create immediate local Object URL and Data URL for guaranteed UI rendering
     const localObjUrl = URL.createObjectURL(file)
@@ -216,84 +216,78 @@ export function useDetection() {
       reader.readAsDataURL(file)
     }).catch(() => localObjUrl)
 
-    try {
-      // Step 1: Upload media binary to create artifact & enqueue job
-      setScanProgress(20, 0, 'Stage 1: Media Ingest & Fingerprinting', 'Uploading binary to memory buffer store and computing SHA-256...')
-      setScanStageStatus('ingest', 'RUNNING', 'Computing SHA-256 and perceptual hash...')
+    // Non-blocking stage progression ticker for real-time visual feedback while request is in-flight
+    let currentStageIdx = 0
+    const stageSequence = [
+      { progress: 20, stage: 0, title: 'Stage 1: Media Ingest & Fingerprinting', detail: 'Computing SHA-256 and perceptual hash...', key: 'ingest' },
+      { progress: 40, stage: 1, title: 'Stage 2: Pixel & Sensor Forensics', detail: 'Running dual-pass ELA & noise consistency audit...', key: 'forensics' },
+      { progress: 65, stage: 2, title: 'Stage 3: Web Discovery & Source Indexing', detail: 'Parallel search across indexed reverse search providers...', key: 'discovery' },
+      { progress: 80, stage: 3, title: 'Stage 4: Lineage & Origin Graph', detail: 'Resolving provenance tree & attribution lineage...', key: 'provenance' },
+      { progress: 92, stage: 4, title: 'Stage 5: Spread Topology & Viral Cascade', detail: 'Mapping propagation mesh & dissemination velocity...', key: 'topology' },
+      { progress: 98, stage: 5, title: 'Stage 6: Multi-Signal Evidence Fusion', detail: 'Synthesizing verdict across physical & web signals...', key: 'fusion' }
+    ]
 
-      const uploadRes = await registerMediaArtifact(file, options?.investigationId)
-      const art = uploadRes?.artifact || uploadRes
-      const jobId = uploadRes?.jobId || uploadRes?.job?.id
+    setScanProgress(stageSequence[0].progress, stageSequence[0].stage, stageSequence[0].title, stageSequence[0].detail)
+    setScanStageStatus('ingest', 'RUNNING', stageSequence[0].detail)
 
-      if (!art || !art.id) {
-        throw new Error('Backend failed to create media artifact')
+    const ticker = setInterval(() => {
+      currentStageIdx++
+      if (currentStageIdx < stageSequence.length) {
+        const item = stageSequence[currentStageIdx]
+        setScanProgress(item.progress, item.stage, item.title, item.detail)
+        setScanStageStatus(item.key as any, 'RUNNING', item.detail)
+        const prevKey = stageSequence[currentStageIdx - 1]?.key
+        if (prevKey) {
+          setScanStageStatus(prevKey as any, 'COMPLETED', 'Completed')
+        }
       }
+    }, 140)
 
-      addScanLog(`Artifact registered: ${art.id} (SHA-256: ${art.sha256 ? art.sha256.slice(0, 16) + '...' : 'computed'})`, 'ingest', 'success')
-      setScanStageStatus('ingest', 'COMPLETED', 'SHA-256 & perceptual hash registered')
-
-      // Rapidly step through stages 1-5 for real-time visual progress & fast feedback
-      setScanProgress(30, 1, 'Stage 2: Pixel & Sensor Forensics', 'Running ELA, noise level variance, and EXIF header scanner...')
-      setScanStageStatus('forensics', 'RUNNING', 'Evaluating ELA noise maps...')
-      await new Promise(r => setTimeout(r, 60))
-      setScanStageStatus('forensics', 'COMPLETED', 'ELA heatmaps & EXIF headers processed')
-
-      setScanProgress(55, 2, 'Stage 3: Web Discovery & Source Indexing', 'Searching web discovery candidates & domain occurrences...')
-      setScanStageStatus('discovery', 'RUNNING', 'Crawling web discovery index...')
-      await new Promise(r => setTimeout(r, 60))
-      setScanStageStatus('discovery', 'COMPLETED', 'Found candidate source matches')
-
-      setScanProgress(75, 3, 'Stage 4: Lineage & Origin Graph', 'Trace-back timestamp lineage and author attribution graph...')
-      setScanStageStatus('provenance', 'RUNNING', 'Resolving provenance tree...')
-      await new Promise(r => setTimeout(r, 60))
-      setScanStageStatus('provenance', 'COMPLETED', 'Lineage tree resolved')
-
-      setScanProgress(90, 4, 'Stage 5: Spread Topology & Viral Cascade', 'Analyzing platform propagation velocity...')
-      setScanStageStatus('topology', 'RUNNING', 'Mapping propagation mesh...')
-      await new Promise(r => setTimeout(r, 50))
-      setScanStageStatus('topology', 'COMPLETED', 'Spread topology mapped')
-
-      setScanProgress(98, 5, 'Stage 6: Multi-Signal Evidence Fusion', 'Synthesizing verdict across physical & web signals...')
-      setScanStageStatus('fusion', 'RUNNING', 'Synthesizing evidence fusion matrix...')
-
-      // Step 2: Trigger immediate detection synthesis without blocking on long background job streaming
-      const targetInvestigationId = options?.investigationId || uploadRes?.investigationId || art?.investigationId || undefined
+    try {
+      // Single unified direct detection upload: server executes artifact creation, forensics, and discovery in parallel
       const result: any = await detect({
+        file,
         platform: options?.platform || 'YouTube',
         username: options?.username || 'analyst_upload',
         caption: options?.caption || file.name,
         content_type: options?.contentType || 'news',
         scenario: 'normal',
-        artifactId: art.id,
-        investigationId: targetInvestigationId
+        investigationId: options?.investigationId
       })
 
+      clearInterval(ticker)
+
       if (result) {
-        const finalInvId = result.investigationId || targetInvestigationId || result.case_id || null
+        const finalInvId = result.investigationId || options?.investigationId || result.case_id || null
         result.investigationId = finalInvId
         result.case_id = finalInvId
-        result.artifactId = result.artifactId || art.id
+        if (!result.artifactId && result.artifact?.id) {
+          result.artifactId = result.artifact.id
+        }
       }
 
+      // Mark all pipeline stages completed
+      stageSequence.forEach((s) => setScanStageStatus(s.key as any, 'COMPLETED', 'Completed'))
+
       // Ensure artifact object has valid media preview URLs for guaranteed visual display
+      const artId = result?.artifactId || result?.artifact?.id || `art_${Date.now().toString(36)}`
       if (result) {
         if (!result.artifact) {
           result.artifact = {
-            id: art.id,
+            id: artId,
             filename: file.name,
             mimeType: file.type,
             byteSize: file.size,
-            sha256: art.sha256,
-            perceptualHash: art.perceptualHash,
-            dimensions: art.dimensions,
-            fileUrl: art.dataUrl || localDataUrl || localObjUrl,
-            previewUrl: art.dataUrl || localDataUrl || localObjUrl,
-            dataUrl: art.dataUrl || localDataUrl
+            sha256: result.fingerprint_hash || '',
+            perceptualHash: result.fingerprint_hash,
+            fileUrl: localDataUrl || localObjUrl,
+            previewUrl: localDataUrl || localObjUrl,
+            dataUrl: localDataUrl
           }
         } else {
-          result.artifact.previewUrl = result.artifact.previewUrl || art.dataUrl || localDataUrl || localObjUrl
-          result.artifact.fileUrl = result.artifact.fileUrl || art.dataUrl || localDataUrl || localObjUrl
-          result.artifact.dataUrl = result.artifact.dataUrl || art.dataUrl || localDataUrl
+          result.artifact.previewUrl = result.artifact.previewUrl || result.artifact.fileUrl || localDataUrl || localObjUrl
+          result.artifact.fileUrl = result.artifact.fileUrl || result.artifact.previewUrl || localDataUrl || localObjUrl
+          result.artifact.dataUrl = result.artifact.dataUrl || localDataUrl
         }
       }
 
@@ -301,7 +295,7 @@ export function useDetection() {
       const uploadCandidates = (result as any)?.candidates || []
       if (uploadCandidates.length > 0) {
         const comparisonSummary = generateTenComparisonReports(
-          result?.artifact || art || { filename: file.name, title: file.name },
+          result?.artifact || { filename: file.name, title: file.name },
           uploadCandidates,
           'normal'
         )
@@ -318,6 +312,7 @@ export function useDetection() {
 
       return result
     } catch (err: any) {
+      clearInterval(ticker)
       const serverMsg = err?.response?.data?.error || err?.response?.data?.message
       const msg = serverMsg || (err instanceof Error ? err.message : 'Media investigation failed')
       console.error('Media investigation error:', err)
@@ -325,9 +320,10 @@ export function useDetection() {
       addScanLog(`Investigation failure: ${msg}`, 'pipeline', 'error')
       return null
     } finally {
+      clearInterval(ticker)
       setScanning(false)
     }
-  }, [setScanning, setScanError, setCurrentResult, addResult, updateStats, setScanProgress, addScanLog, streamJobEvents])
+  }, [setScanning, setScanError, setCurrentResult, addResult, updateStats, setScanProgress, addScanLog, setScanStageStatus])
 
   const runDMCA = useCallback(async (req: DMCARequest) => {
     try {

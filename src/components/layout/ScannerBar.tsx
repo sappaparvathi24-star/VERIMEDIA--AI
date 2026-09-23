@@ -51,32 +51,34 @@ export function ScannerBar() {
     setPendingMediaFile(null)
     setScanError(null)
 
-    // Generate local preview URL instantly
+    // Generate local preview URL instantly so user sees the uploaded part immediately
     const localUrl = URL.createObjectURL(file)
     setPreviewUrl(localUrl)
+    setUploadedArtifact({
+      id: 'pending_scan',
+      filename: file.name,
+      sha256: '',
+      previewUrl: localUrl
+    })
 
     try {
-      const data = await registerMediaArtifact(file)
-      if (data && (data.artifact || data.success)) {
-        const art = data.artifact || data
-        setUploadedArtifact({
-          id: art.id,
-          filename: art.filename || file.name,
-          sha256: art.sha256,
-          previewUrl: localUrl
-        })
+      // Directly trigger fast unified detection on the uploaded artifact in a single call
+      const result = await runDetection({
+        platform,
+        username: username || 'uploaded_user',
+        caption: caption || file.name,
+        content_type: contentType,
+        scenario: 'normal',
+        file
+      })
 
-        // Automatically trigger detection on the uploaded artifact
-        await runDetection({
-          platform,
-          username: username || 'uploaded_user',
-          caption: caption || file.name,
-          content_type: contentType,
-          scenario: 'normal',
-          artifactId: art.id
+      if (result) {
+        setUploadedArtifact({
+          id: result.artifactId || result.artifact?.id || 'uploaded_asset',
+          filename: result.artifact?.filename || file.name,
+          sha256: result.artifact?.sha256 || result.fingerprint_hash || '',
+          previewUrl: result.artifact?.previewUrl || localUrl
         })
-      } else {
-        throw new Error('Could not parse registered artifact')
       }
     } catch (err: unknown) {
       console.error('File upload error:', err)

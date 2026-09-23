@@ -148,14 +148,28 @@ Return STRICT JSON only (no markdown, no extra commentary):
 }`;
 
   try {
+    let visionBuffer = buffer;
+    let visionMime = mimeType || 'image/jpeg';
+    if (buffer && buffer.length > 200 * 1024) {
+      try {
+        visionBuffer = await sharp(buffer)
+          .resize({ width: 1024, height: 1024, fit: 'inside', withoutEnlargement: true })
+          .jpeg({ quality: 80 })
+          .toBuffer();
+        visionMime = 'image/jpeg';
+      } catch (_) {
+        visionBuffer = buffer;
+      }
+    }
+
     const contents = [
       {
         role: 'user',
         parts: [
           {
             inlineData: {
-              mimeType: mimeType || 'image/jpeg',
-              data: buffer.toString('base64')
+              mimeType: visionMime,
+              data: visionBuffer.toString('base64')
             }
           },
           {

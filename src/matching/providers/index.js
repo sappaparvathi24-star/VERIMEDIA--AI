@@ -145,70 +145,8 @@ export class MultiSourceDiscoveryManager {
 
     let extractedBestGuessLabels = opts.bestGuessLabels || [];
 
-    // 2. Primary Provider Execution: If Google Vision is active and media is present,
-    // execute it first to extract native visual web detection matches and entity/best-guess labels
-    const visionProvider = targetProviders.find(p => p.id === 'googleVisionWebDetection' || p.id === 'google_vision');
-    const otherProviders = targetProviders.filter(p => p.id !== 'googleVisionWebDetection' && p.id !== 'google_vision');
-
-    if (visionProvider && isVisualSearch) {
-      const vStart = Date.now();
-      try {
-        const imageBase64 = imageBuffer ? imageBuffer.toString('base64') : (opts.imageBase64 || null);
-        const vRes = await visionProvider.search(signals, {
-          ...opts,
-          imageBuffer,
-          imageBase64,
-          uploadedHash,
-          isVisualSearch: true
-        });
-        const vLatency = Date.now() - vStart;
-        providerStatuses[visionProvider.id] = {
-          providerId: visionProvider.id,
-          name: visionProvider.name,
-          status: vRes.status,
-          count: vRes.count || (vRes.candidates ? vRes.candidates.length : 0),
-          latencyMs: vLatency,
-          reason: vRes.reason || null,
-          queryType: 'REAL_VISUAL_QUERY'
-        };
-
-        if (Array.isArray(vRes.bestGuessLabels) && vRes.bestGuessLabels.length > 0) {
-          extractedBestGuessLabels = vRes.bestGuessLabels;
-        }
-
-        if (vRes.candidates && vRes.candidates.length > 0) {
-          const normalized = vRes.candidates.map(cand => ({
-            ...cand,
-            source: visionProvider.id,
-            sourceType: 'EXTERNAL_API_VERIFIED',
-            matchType: 'visual_match',
-            platform: cand.platform || visionProvider.name
-          }));
-          rawResults.push(...normalized);
-        }
-
-        console.log(`[Discovery Provider Audit] Provider: ${visionProvider.id} (${visionProvider.name}) | Status: ${vRes.status} | Query Type: REAL_VISUAL_QUERY | Count: ${providerStatuses[visionProvider.id].count} | Latency: ${vLatency}ms`);
-      } catch (vErr) {
-        const vLatency = Date.now() - vStart;
-        providerStatuses[visionProvider.id] = {
-          providerId: visionProvider.id,
-          name: visionProvider.name,
-          status: 'ERROR',
-          count: 0,
-          latencyMs: vLatency,
-          reason: vErr.message,
-          queryType: 'REAL_VISUAL_QUERY'
-        };
-        if (vErr.message && (vErr.message.includes('billing') || vErr.message.includes('403') || vErr.message.includes('restricted'))) {
-          console.log(`[Discovery Provider Audit] Provider: ${visionProvider.id} | Status: RESTRICTED | Note: ${vErr.message.slice(0, 100)}`);
-        } else {
-          console.warn(`[Discovery Provider Audit Error] Provider: ${visionProvider.id} | Error: ${vErr.message.slice(0, 120)}`);
-        }
-      }
-    }
-
-    // 3. Execute remaining providers concurrently with propagated visual labels
-    const searchPromises = otherProviders.map(async (provider) => {
+    // Execute all providers concurrently in parallel with individual 2500ms timeout guards
+    const searchPromises = targetProviders.map(async (provider) => {
       const pStart = Date.now();
       const isVisualCapability = provider.id === 'google_vision' || provider.id === 'googleVisionWebDetection';
       const providerQueryType = isVisualCapability 
@@ -226,7 +164,12 @@ export class MultiSourceDiscoveryManager {
           bestGuessLabels: extractedBestGuessLabels
         };
 
-        const res = await provider.search(signals, providerOpts);
+        const searchTask = provider.search(signals, providerOpts);
+        const timeoutTask = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Provider request timeout (2500ms)')), 2500)
+        );
+        const res = await Promise.race([searchTask, timeoutTask]);
+
         const pLatency = Date.now() - pStart;
         providerStatuses[provider.id] = {
           providerId: provider.id,
@@ -237,6 +180,10 @@ export class MultiSourceDiscoveryManager {
           reason: res.reason || null,
           queryType: providerQueryType
         };
+
+        if (Array.isArray(res.bestGuessLabels) && res.bestGuessLabels.length > 0) {
+          extractedBestGuessLabels = res.bestGuessLabels;
+        }
 
         console.log(`[Discovery Provider Audit] Query: "${queryStr}" | Provider: ${provider.id} (${provider.name}) | Status: ${res.status} | Query Type: ${providerQueryType} | Count: ${providerStatuses[provider.id].count} | Latency: ${pLatency}ms`);
 
@@ -270,37 +217,6 @@ export class MultiSourceDiscoveryManager {
     });
 
     await Promise.all(searchPromises);
-
-    // If Google Vision was in target providers but not run above (e.g. non-visual query)
-    if (visionProvider && !providerStatuses[visionProvider.id]) {
-      const vStart = Date.now();
-      try {
-        const vRes = await visionProvider.search(signals, opts);
-        const vLatency = Date.now() - vStart;
-        providerStatuses[visionProvider.id] = {
-          providerId: visionProvider.id,
-          name: visionProvider.name,
-          status: vRes.status,
-          count: vRes.count || (vRes.candidates ? vRes.candidates.length : 0),
-          latencyMs: vLatency,
-          reason: vRes.reason || null,
-          queryType: 'REAL_VISUAL_QUERY'
-        };
-        if (vRes.candidates && vRes.candidates.length > 0) {
-          rawResults.push(...vRes.candidates);
-        }
-      } catch (err) {
-        providerStatuses[visionProvider.id] = {
-          providerId: visionProvider.id,
-          name: visionProvider.name,
-          status: 'ERROR',
-          count: 0,
-          latencyMs: 0,
-          reason: err.message,
-          queryType: 'REAL_VISUAL_QUERY'
-        };
-      }
-    }
 
     // Include closed or unconfigured platforms in status report
     const transparency = this.getTransparencyReport();

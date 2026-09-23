@@ -510,7 +510,28 @@ export const getDetectionTrends = (timeRange: string = '24h', platform: string =
 // ── Legacy Compatibility Wrappers ──────────────────────────────────────────
 export const detect = async (req: DetectionRequest): Promise<DetectionResult> => {
   try {
-    const res = await api.post<DetectionResult>('/v1/detect/', req)
+    let res: any
+    if (req.file) {
+      const formData = new FormData()
+      formData.append('media', req.file)
+      formData.append('file', req.file)
+      formData.append('platform', req.platform || 'YouTube')
+      formData.append('username', req.username || 'analyst_upload')
+      formData.append('caption', req.caption || req.file.name)
+      formData.append('content_type', req.content_type || 'news')
+      formData.append('scenario', req.scenario || 'normal')
+      if (req.investigationId) formData.append('investigationId', req.investigationId)
+      if (req.artifactId) formData.append('artifactId', req.artifactId)
+
+      res = await api.post<DetectionResult>('/v1/detect/', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      })
+    } else {
+      res = await api.post<DetectionResult>('/v1/detect/', req)
+    }
+
     if (res && res.data && typeof res.data === 'object' && res.data.trust) {
       if (!res.data.investigationId) {
         res.data.investigationId = res.data.case_id || req.investigationId || (res.data as any).artifact?.investigationId || null

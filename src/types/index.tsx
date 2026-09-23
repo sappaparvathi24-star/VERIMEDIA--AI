@@ -263,6 +263,7 @@ export interface DetectionRequest {
   media_url?: string
   artifactId?: string
   investigationId?: string
+  file?: File
 }
 
 export interface DMCARequest {

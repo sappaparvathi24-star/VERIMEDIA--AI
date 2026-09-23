@@ -333,8 +333,22 @@ function getGeminiCacheKey(contents, config) {
   }
 }
 
+// Global cooldown timestamp for Gemini API quota limits to avoid stalling uploads
+let geminiQuotaCooldownUntil = 0;
+
 // Helper to call Gemini with graceful fallback between models, retry on 429, and cache
 async function callGemini(contents, config = {}) {
+  // If recent calls proved quota exhaustion, return local forensic fallback instantly
+  if (Date.now() < geminiQuotaCooldownUntil) {
+    return {
+      text: null,
+      source: 'rule-based-fallback',
+      confidence: 'DEGRADED',
+      degradationReason: 'Gemini API quota cooldown active — accelerated local forensic pipeline utilized',
+      isSystemAnalysisOnly: true
+    };
+  }
+
   const cacheKey = getGeminiCacheKey(contents, config);
   if (cacheKey && geminiCache.has(cacheKey)) {
     const entry = geminiCache.get(cacheKey);
@@ -375,98 +389,86 @@ async function callGemini(contents, config = {}) {
     let isSafetyBlocked = false;
 
     for (const model of models) {
-      let attempts = 0;
-      const maxAttempts = 2; // Allow 1 retry with exponential backoff on 429
+      try {
+        const timeoutMs = 4000;
+        const response = await Promise.race([
+          ai.models.generateContent({
+            model,
+            contents,
+            config
+          }),
+          new Promise((_, reject) => {
+            const timer = setTimeout(() => reject(new Error(`Timeout after ${timeoutMs}ms calling ${model}`)), timeoutMs);
+            if (timer.unref) timer.unref();
+          })
+        ]);
 
-      while (attempts < maxAttempts) {
-        attempts++;
-        try {
-          const timeoutMs = 10000;
-          const response = await Promise.race([
-            ai.models.generateContent({
+        if (response?.candidates?.[0]?.finishReason === 'SAFETY') {
+          isSafetyBlocked = true;
+        }
+
+        if (response && response.text) {
+          const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || null;
+          const webSearchQueries = response.candidates?.[0]?.groundingMetadata?.webSearchQueries || null;
+          const result = {
+            text: response.text,
+            model,
+            source: model,
+            confidence: 'LIVE',
+            isSystemAnalysisOnly: false,
+            groundingChunks,
+            webSearchQueries,
+            groundingMetadata: response.candidates?.[0]?.groundingMetadata || null
+          };
+
+          if (cacheKey) {
+            geminiCache.set(cacheKey, { timestamp: Date.now(), result });
+          }
+          return result;
+        }
+      } catch (err) {
+        lastError = err;
+        const msg = (err.message || '').toLowerCase();
+        const is429 = msg.includes('429') || msg.includes('quota') || msg.includes('resource_exhausted') || err.status === 429;
+        const isTimeout = msg.includes('timeout');
+
+        if (isTimeout) {
+          isTimeoutError = true;
+        }
+
+        // If tools (such as googleSearch grounding) caused a quota or runtime failure, try immediately without tools
+        if (config && config.tools) {
+          try {
+            const { tools, ...configNoTools } = config;
+            const responseNoTools = await ai.models.generateContent({
               model,
               contents,
-              config
-            }),
-            new Promise((_, reject) => {
-              const timer = setTimeout(() => reject(new Error(`Timeout after ${timeoutMs}ms calling ${model}`)), timeoutMs);
-              if (timer.unref) timer.unref();
-            })
-          ]);
-
-          if (response?.candidates?.[0]?.finishReason === 'SAFETY') {
-            isSafetyBlocked = true;
-          }
-
-          if (response && response.text) {
-            const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || null;
-            const webSearchQueries = response.candidates?.[0]?.groundingMetadata?.webSearchQueries || null;
-            const result = {
-              text: response.text,
-              model,
-              source: model,
-              confidence: 'LIVE',
-              isSystemAnalysisOnly: false,
-              groundingChunks,
-              webSearchQueries,
-              groundingMetadata: response.candidates?.[0]?.groundingMetadata || null
-            };
-
-            if (cacheKey) {
-              geminiCache.set(cacheKey, { timestamp: Date.now(), result });
-            }
-            return result;
-          }
-        } catch (err) {
-          lastError = err;
-          const msg = (err.message || '').toLowerCase();
-          const is429 = msg.includes('429') || msg.includes('quota') || msg.includes('resource_exhausted') || err.status === 429;
-          const isTimeout = msg.includes('timeout');
-
-          if (isTimeout) {
-            isTimeoutError = true;
-          }
-
-          // If tools (such as googleSearch grounding) caused a quota or runtime failure, try immediately without tools
-          if (config && config.tools) {
-            try {
-              const { tools, ...configNoTools } = config;
-              const responseNoTools = await ai.models.generateContent({
+              config: configNoTools
+            });
+            if (responseNoTools && responseNoTools.text) {
+              const result = {
+                text: responseNoTools.text,
                 model,
-                contents,
-                config: configNoTools
-              });
-              if (responseNoTools && responseNoTools.text) {
-                const result = {
-                  text: responseNoTools.text,
-                  model,
-                  source: model,
-                  confidence: 'DEGRADED',
-                  degradationReason: 'Search grounding quota exceeded — response generated using neural forensic reasoning without live web search',
-                  isSystemAnalysisOnly: false,
-                  groundingChunks: null,
-                  webSearchQueries: null,
-                  groundingMetadata: null
-                };
-                if (cacheKey) geminiCache.set(cacheKey, { timestamp: Date.now(), result });
-                return result;
-              }
-            } catch (_) {}
-          }
-
-          if (is429) {
-            isQuotaError = true;
-            if (attempts < maxAttempts) {
-              const backoffMs = 1500 * attempts;
-              console.warn(`[Gemini] Rate limit 429 on ${model}. Retrying in ${backoffMs}ms (attempt ${attempts}/${maxAttempts})...`);
-              await new Promise(r => setTimeout(r, backoffMs));
-              continue;
+                source: model,
+                confidence: 'DEGRADED',
+                degradationReason: 'Search grounding quota exceeded — response generated using neural forensic reasoning without live web search',
+                isSystemAnalysisOnly: false,
+                groundingChunks: null,
+                webSearchQueries: null,
+                groundingMetadata: null
+              };
+              if (cacheKey) geminiCache.set(cacheKey, { timestamp: Date.now(), result });
+              return result;
             }
-            console.warn(`[Gemini] Quota limit reached on ${model}. Trying next candidate model.`);
-            break;
-          }
-          break; // Non-429 error, move to next model
+          } catch (_) {}
         }
+
+        if (is429) {
+          isQuotaError = true;
+          console.warn(`[Gemini] Model ${model} returned quota/429. Immediate failover to next candidate model...`);
+          continue; // Instantly try next model in cascade without artificial sleep!
+        }
+        // Non-429 error, continue to next model
       }
     }
 
@@ -474,8 +476,9 @@ async function callGemini(contents, config = {}) {
     if (isSafetyBlocked) {
       degradationReason = 'Prompt triggered safety filters';
     } else if (isQuotaError) {
+      geminiQuotaCooldownUntil = Date.now() + 25000; // 25s cooldown
       degradationReason = 'Rate limit or free-trial quota reached (HTTP 429)';
-      console.warn('[Gemini] Rate limit / quota limit reached (429). Falling back to local forensic analysis.');
+      console.warn('[Gemini] Rate limit / quota reached across candidate models. Enabling 25s cooldown; fast fallback active.');
     } else if (isTimeoutError) {
       degradationReason = 'API request timed out';
     } else if (lastError) {
@@ -1588,6 +1591,16 @@ const handleV1Detect = async (req, res) => {
       }
     });
 
+    // Ensure memory store has media buffer for instant previews and serving
+    try {
+      storeArtifactMedia(artifact.id, {
+        buffer,
+        mimeType,
+        filename,
+        originalName: uploadedFile.originalname
+      });
+    } catch (_) {}
+
     let earlyDiscoveryPromise = null;
     const isUploadedVideoOrAudio = mimeType.startsWith('video/') || mimeType.startsWith('audio/');
     if (!isUploadedVideoOrAudio) {
@@ -1725,8 +1738,8 @@ const handleV1Detect = async (req, res) => {
       claimStatement: caption
     });
 
-    // Execute real reverse-search with a 15-second safety timeout
-    const SEARCH_TIMEOUT_MS = 15000;
+    // Execute real reverse-search with a 3.5-second safety timeout
+    const SEARCH_TIMEOUT_MS = 3500;
     let discoveryResult = null;
     let discoveryTimedOut = false;
     let discoveryError = null;
