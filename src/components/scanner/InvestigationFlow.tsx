@@ -33,7 +33,8 @@ import {
   FileCheck2,
   FileDown,
   FolderPlus,
-  FolderCheck
+  FolderCheck,
+  History
 } from 'lucide-react'
 import { useStore } from '../../store'
 import { useDetection } from '../../hooks/useDetection'
@@ -114,9 +115,17 @@ export function InvestigationFlow() {
     scanStageDetail,
     scanStages,
     scanLogs,
-    scanStartTime
+    scanStartTime,
+    investigations,
+    investigationsLoading,
+    fetchInvestigations,
+    loadInvestigationIntoDashboard
   } = useStore()
   const { runMediaInvestigation } = useDetection()
+
+  useEffect(() => {
+    fetchInvestigations().catch(() => {})
+  }, [fetchInvestigations])
 
   // Selected file in staging before scan
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
@@ -843,6 +852,175 @@ export function InvestigationFlow() {
               </div>
             </div>
           )}
+
+          {/* Persisted Investigations Ledger */}
+          <div style={{
+            marginTop: 36,
+            borderTop: '1px solid rgba(30, 45, 61, 0.8)',
+            paddingTop: 24,
+            width: '100%',
+            maxWidth: 860
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <History size={16} color="#00d4ff" />
+                <span style={{ fontSize: 13, fontWeight: 700, fontFamily: 'monospace', color: '#f8fafc', letterSpacing: '0.05em' }}>
+                  PERSISTED INVESTIGATION DOSSIERS
+                </span>
+                <span style={{
+                  fontSize: 10,
+                  fontFamily: 'monospace',
+                  background: 'rgba(0, 212, 255, 0.1)',
+                  color: '#00d4ff',
+                  border: '1px solid rgba(0, 212, 255, 0.3)',
+                  padding: '2px 8px',
+                  borderRadius: 12
+                }}>
+                  {investigations.length} RECORDED
+                </span>
+              </div>
+              <button
+                onClick={() => fetchInvestigations()}
+                style={{
+                  background: 'transparent',
+                  border: '1px solid #1e293b',
+                  color: '#94a3b8',
+                  padding: '4px 10px',
+                  borderRadius: 4,
+                  fontSize: 11,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  cursor: 'pointer'
+                }}
+              >
+                <RefreshCw size={12} className={investigationsLoading ? 'animate-spin' : ''} />
+                Refresh Ledger
+              </button>
+            </div>
+
+            {investigationsLoading && investigations.length === 0 ? (
+              <div style={{ padding: '24px', textAlign: 'center', color: '#64748b', fontSize: 12, fontFamily: 'monospace' }}>
+                Querying persisted investigation cases from SQLite ledger...
+              </div>
+            ) : investigations.length === 0 ? (
+              <div style={{
+                padding: '24px',
+                textAlign: 'center',
+                background: 'rgba(15, 23, 42, 0.4)',
+                border: '1px dashed #1e293b',
+                borderRadius: 8,
+                color: '#64748b',
+                fontSize: 12
+              }}>
+                No investigations recorded yet. Upload a media asset above to begin.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {investigations.map((inv: any) => {
+                  const trust = inv.trustScore ?? inv.metadata?.trustScore
+                  const title = inv.title || inv.filename || inv.id
+                  const dateStr = inv.createdAt ? new Date(inv.createdAt).toLocaleString() : 'Recent'
+
+                  return (
+                    <div
+                      key={inv.id}
+                      onClick={() => loadInvestigationIntoDashboard(inv)}
+                      style={{
+                        padding: '12px 16px',
+                        background: '#0d1522',
+                        border: '1px solid #1e2d3d',
+                        borderRadius: 6,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease'
+                      }}
+                      onMouseEnter={e => {
+                        e.currentTarget.style.borderColor = '#00d4ff'
+                        e.currentTarget.style.background = '#111c2e'
+                      }}
+                      onMouseLeave={e => {
+                        e.currentTarget.style.borderColor = '#1e2d3d'
+                        e.currentTarget.style.background = '#0d1522'
+                      }}
+                    >
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0, flex: 1, marginRight: 16 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: '#f1f5f9', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {title}
+                          </span>
+                          <span style={{
+                            fontSize: 9,
+                            fontFamily: 'monospace',
+                            padding: '1px 6px',
+                            borderRadius: 3,
+                            background: inv.isDemo ? 'rgba(245, 158, 11, 0.15)' : 'rgba(34, 197, 94, 0.15)',
+                            color: inv.isDemo ? '#f59e0b' : '#22c55e',
+                            border: `1px solid ${inv.isDemo ? 'rgba(245, 158, 11, 0.3)' : 'rgba(34, 197, 94, 0.3)'}`
+                          }}>
+                            {inv.isDemo ? 'DEMO' : 'PERSISTED'}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 11, color: '#64748b' }}>
+                          <span>Case ID: <code style={{ color: '#94a3b8' }}>{inv.id}</code></span>
+                          <span>•</span>
+                          <span>{dateStr}</span>
+                          {inv.sha256 && (
+                            <>
+                              <span>•</span>
+                              <span style={{ fontFamily: 'monospace' }}>SHA: {inv.sha256.slice(0, 8)}...</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+                        {trust != null ? (
+                          <span style={{
+                            fontSize: 11,
+                            fontFamily: 'monospace',
+                            fontWeight: 700,
+                            padding: '2px 8px',
+                            borderRadius: 4,
+                            background: trust >= 70 ? 'rgba(34, 197, 94, 0.1)' : trust >= 40 ? 'rgba(245, 158, 11, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                            color: trust >= 70 ? '#22c55e' : trust >= 40 ? '#f59e0b' : '#ef4444',
+                            border: `1px solid ${trust >= 70 ? 'rgba(34, 197, 94, 0.3)' : trust >= 40 ? 'rgba(245, 158, 11, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`
+                          }}>
+                            Trust: {trust}/100
+                          </span>
+                        ) : (
+                          <span style={{
+                            fontSize: 11,
+                            fontFamily: 'monospace',
+                            padding: '2px 8px',
+                            borderRadius: 4,
+                            background: 'rgba(148, 163, 184, 0.1)',
+                            color: '#94a3b8',
+                            border: '1px solid rgba(148, 163, 184, 0.2)'
+                          }}>
+                            Trust: Inconclusive
+                          </span>
+                        )}
+
+                        <span style={{
+                          fontSize: 11,
+                          fontWeight: 600,
+                          color: '#00d4ff',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 4
+                        }}>
+                          Open Dossier <ChevronRight size={14} />
+                        </span>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     )

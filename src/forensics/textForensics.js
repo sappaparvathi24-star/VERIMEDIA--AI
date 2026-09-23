@@ -64,35 +64,32 @@ export async function analyzeText(input, opts = {}) {
     const wordCount = rawText.trim() ? rawText.trim().split(/\s+/).length : 0;
     const lineCount = rawText.split('\n').length;
 
-    // 1. Language detection
+    // 1. Language detection & claim extraction (synchronous)
     const langResult = detectLanguage(rawText);
-
-    // 2. Named Entity Recognition (NER)
-    let entities = [];
-    try {
-      const entResult = await extractEntities(rawText);
-      if (entResult) {
-        if (Array.isArray(entResult.people)) entities.push(...entResult.people.map(p => ({ text: p, type: 'PERSON' })));
-        if (Array.isArray(entResult.organizations)) entities.push(...entResult.organizations.map(o => ({ text: o, type: 'ORGANIZATION' })));
-        if (Array.isArray(entResult.locations)) entities.push(...entResult.locations.map(l => ({ text: l, type: 'LOCATION' })));
-        if (Array.isArray(entResult.dates)) entities.push(...entResult.dates.map(d => ({ text: d, type: 'DATE' })));
-      }
-    } catch (nerErr) {
-      console.warn('[textForensics] NER warning:', nerErr.message);
-    }
-
-    // 3. Claim extraction
     const claims = extractClaims(rawText);
 
-    // 4. Semantic Embedding
+    // 2. Run Named Entity Recognition (NER) and Semantic Embedding concurrently in parallel
+    const [nerSettled, embSettled] = await Promise.allSettled([
+      extractEntities(rawText),
+      embedText(rawText.slice(0, 1000))
+    ]);
+
+    let entities = [];
+    if (nerSettled.status === 'fulfilled' && nerSettled.value) {
+      const entResult = nerSettled.value;
+      if (Array.isArray(entResult.people)) entities.push(...entResult.people.map(p => ({ text: p, type: 'PERSON' })));
+      if (Array.isArray(entResult.organizations)) entities.push(...entResult.organizations.map(o => ({ text: o, type: 'ORGANIZATION' })));
+      if (Array.isArray(entResult.locations)) entities.push(...entResult.locations.map(l => ({ text: l, type: 'LOCATION' })));
+      if (Array.isArray(entResult.dates)) entities.push(...entResult.dates.map(d => ({ text: d, type: 'DATE' })));
+    } else if (nerSettled.status === 'rejected') {
+      console.warn('[textForensics] NER warning:', nerSettled.reason?.message);
+    }
+
     let embedding = null;
-    try {
-      const emb = await embedText(rawText.slice(0, 1000));
-      if (Array.isArray(emb) && emb.length > 0) {
-        embedding = emb;
-      }
-    } catch (embErr) {
-      console.warn('[textForensics] Embedding warning:', embErr.message);
+    if (embSettled.status === 'fulfilled' && Array.isArray(embSettled.value) && embSettled.value.length > 0) {
+      embedding = embSettled.value;
+    } else if (embSettled.status === 'rejected') {
+      console.warn('[textForensics] Embedding warning:', embSettled.reason?.message);
     }
 
     // 5. Build structured measurements and observations

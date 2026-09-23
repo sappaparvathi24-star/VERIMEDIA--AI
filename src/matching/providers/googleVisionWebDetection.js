@@ -23,7 +23,7 @@ export class GoogleVisionWebDetectionProvider {
   }
 
   getApiKey() {
-    if (this.apiKey !== undefined && this.apiKey !== null) return this.apiKey;
+    if (this.apiKey !== undefined) return this.apiKey;
     return process.env.GOOGLE_VISION_API_KEY ||
       process.env.GOOGLE_API_KEY ||
       process.env.GEMINI_API_KEY ||
@@ -142,7 +142,8 @@ export class GoogleVisionWebDetectionProvider {
       ? { content: imageBase64 }
       : { source: { imageUri } };
 
-    const endpoint = `https://vision.googleapis.com/v1/images:annotate?key=${encodeURIComponent(this.apiKey)}`;
+    const apiKey = this.getApiKey();
+    const endpoint = `https://vision.googleapis.com/v1/images:annotate?key=${encodeURIComponent(apiKey || '')}`;
     const requestBody = {
       requests: [
         {
@@ -167,15 +168,7 @@ export class GoogleVisionWebDetectionProvider {
         body: JSON.stringify(requestBody)
       });
     } catch (netErr) {
-      return {
-        providerId: this.id,
-        status: 'ERROR',
-        confidence: 'UNAVAILABLE',
-        source: this.name,
-        reason: `Network failure connecting to Google Cloud Vision API: ${netErr.message}`,
-        isSystemAnalysisOnly: true,
-        candidates: []
-      };
+      throw new Error(`Network failure connecting to Google Cloud Vision API: ${netErr.message}`);
     }
 
     if (!res.ok) {
@@ -186,16 +179,7 @@ export class GoogleVisionWebDetectionProvider {
         errBody = { error: { message: `HTTP ${res.status} ${res.statusText}` } };
       }
       const errMsg = errBody?.error?.message || `HTTP ${res.status} ${res.statusText}`;
-      const isQuota = res.status === 429 || errMsg.toLowerCase().includes('quota');
-      return {
-        providerId: this.id,
-        status: isQuota ? 'QUOTA_EXCEEDED' : 'ERROR',
-        confidence: isQuota ? 'DEGRADED' : 'UNAVAILABLE',
-        source: this.name,
-        reason: isQuota ? 'Google Cloud Vision API quota limit exceeded' : `Google Cloud Vision API error (${res.status}): ${errMsg}`,
-        isSystemAnalysisOnly: true,
-        candidates: []
-      };
+      throw new Error(`Google Cloud Vision API error (${res.status}): ${errMsg}`);
     }
 
     const data = await res.json();

@@ -113,8 +113,12 @@ export async function analyzeAudio(input, opts = {}) {
 
     const sha256 = crypto.createHash('sha256').update(buffer).digest('hex');
 
-    // 1. Probe audio container and streams
-    const probeData = await probeAudioFile(filePath);
+    // 1. Probe audio container and analyze volume & silence in parallel
+    const [probeData, volumeStats] = await Promise.all([
+      probeAudioFile(filePath),
+      analyzeAudioVolumeAndSilence(filePath)
+    ]);
+
     if (!probeData || !probeData.streams || probeData.streams.length === 0) {
       return createEngineResult({
         engine: 'AUDIO_FORENSICS',
@@ -135,9 +139,6 @@ export async function analyzeAudio(input, opts = {}) {
     const channels = parseInt(audioStream.channels || 1, 10);
     const codec = audioStream.codec_name || 'unknown';
     const bitrate = parseInt(audioStream.bit_rate || format.bit_rate || 0, 10);
-
-    // 2. Volume, clipping, dynamic range, and silence analysis
-    const volumeStats = await analyzeAudioVolumeAndSilence(filePath);
 
     // 3. Observations and measurements
     const observations = [];

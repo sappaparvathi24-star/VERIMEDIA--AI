@@ -466,90 +466,297 @@ function buildCandidatesFromRealData(reasoning: any, realCandidates: any[]): Ori
 }
 
 function buildDefaultCandidateFromScan(currentResult: any): OriginCandidate {
-  const isManipulated = currentResult.isManipulated ?? false
-  const conf = currentResult.confidence ?? 0
+  const isManipulated = currentResult?.isManipulated ?? (currentResult?.ml?.label === 'TAMPERED' || currentResult?.forensics?.authenticity === 'MANIPULATED')
+  const conf = currentResult?.confidence ?? currentResult?.ml?.confidence ?? (typeof currentResult?.trust?.trust_score === 'number' ? currentResult.trust.trust_score / 100 : 0)
   const verdict = isManipulated ? 'Manipulated' : (conf > 0.5 ? 'Authentic' : 'Inconclusive')
-  
+
+  const forensics = currentResult?.forensics || {}
+  const ela = forensics.ela
+  const exif = forensics.exif || currentResult?.artifact?.rawExif
+  const c2pa = forensics.c2pa
+  const ocr = forensics.ocr
+  const disc = currentResult?.discovery
+  const dims = currentResult?.artifact?.dimensions || currentResult?.dimensions
+
+  // Epistemic Facts derived strictly from actual measurements
+  const epistemicFacts: string[] = []
+  if (dims?.width && dims?.height) {
+    epistemicFacts.push(`Resolution: ${dims.width}x${dims.height}`)
+  }
+  if (currentResult?.artifact?.byteSize) {
+    epistemicFacts.push(`File size: ${(currentResult.artifact.byteSize / 1024).toFixed(1)} KB`)
+  }
+  if (currentResult?.fingerprint_hash || currentResult?.artifact?.sha256) {
+    const sha = currentResult.fingerprint_hash || currentResult.artifact.sha256
+    epistemicFacts.push(`Hash: ${sha.slice(0, 16)}...`)
+  }
+  if (ela && typeof ela.anomalyScore === 'number') {
+    epistemicFacts.push(`ELA compression delta: ${ela.anomalyScore.toFixed(3)}`)
+  }
+  if (ocr && typeof ocr.text === 'string' && ocr.text.trim().length > 0) {
+    epistemicFacts.push(`OCR detected ${ocr.text.trim().length} text character(s)`)
+  }
+  if (disc?.ran) {
+    if (disc.count > 0) {
+      epistemicFacts.push(`Discovered on ${disc.count} public source(s)`)
+    } else {
+      epistemicFacts.push('No prior appearance found on any configured platform')
+    }
+  }
+  if (epistemicFacts.length === 0) {
+    epistemicFacts.push('Asset ingested and registered in verification ledger')
+  }
+
+  // Epistemic Limitations derived strictly from missing data
+  const epistemicLimitations: string[] = []
+  if (!c2pa?.hasC2pa) {
+    epistemicLimitations.push('No cryptographic C2PA provenance ledger attached to target media.')
+  }
+  if (!exif || (!exif.make && !exif.Make && !exif.model && !exif.Model)) {
+    epistemicLimitations.push('No camera EXIF sensor metadata found in file.')
+  }
+  if (ocr && (!ocr.text || ocr.text.trim().length === 0)) {
+    epistemicLimitations.push('OCR found no text in this frame.')
+  }
+  if (disc?.ran && disc.count === 0) {
+    epistemicLimitations.push('No prior appearance found on any configured platform.')
+  } else if (!disc?.ran) {
+    epistemicLimitations.push('Public web discovery was not executed.')
+  }
+  const hasVisionFindings = (currentResult?.visual_findings && currentResult.visual_findings.length > 0) || (forensics.visualFindings && forensics.visualFindings.length > 0)
+  if (!hasVisionFindings) {
+    epistemicLimitations.push('Vision analysis unavailable — API not configured or skipped.')
+  }
+
+  // Forensic Signals derived strictly from real engine outputs
+  const signals: ForensicSignalItem[] = []
+
+  // 1. ELA Signal
+  if (ela && typeof ela.anomalyScore === 'number') {
+    const isSuspicious = ela.suspicious || ela.anomalyScore > 0.4
+    signals.push({
+      id: 'sig-ela',
+      name: 'Error Level Analysis (ELA)',
+      category: 'COMPRESSION',
+      type: isSuspicious ? 'CONTRADICTING' : 'SUPPORTING',
+      vector: 'Spectral Error Level Analysis',
+      impact: isSuspicious ? -20 : 15,
+      verifiedBy: 'Spectral Forensic Engine',
+      rawValue: `Compression delta: ${ela.anomalyScore.toFixed(3)}${typeof ela.meanSquaredError === 'number' ? ` (MSE: ${ela.meanSquaredError.toFixed(1)})` : ''}`,
+      algorithm: 'Discrete Cosine Transform (DCT) Resave Delta',
+      diagnosticDetail: isSuspicious
+        ? `High error level delta (${ela.anomalyScore.toFixed(3)}) detected between primary raster and resave layers.`
+        : `Uniform compression delta (${ela.anomalyScore.toFixed(3)}) observed across macroblock boundaries.`,
+      epistemicCaveat: 'Heuristic recompression analysis measures gradient variance; re-encoding does not prove malicious intent.'
+    })
+  } else {
+    signals.push({
+      id: 'sig-ela',
+      name: 'Error Level Analysis (ELA)',
+      category: 'COMPRESSION',
+      type: 'UNKNOWN',
+      vector: 'Spectral Error Level Analysis',
+      impact: 0,
+      verifiedBy: 'Spectral Forensic Engine',
+      rawValue: 'Not computed',
+      algorithm: 'Discrete Cosine Transform (DCT)',
+      diagnosticDetail: 'Error Level Analysis was not computed for this media format.',
+      epistemicCaveat: 'Spectral analysis requires lossy raster format to compute compression differences.'
+    })
+  }
+
+  // 2. C2PA Signal
+  if (c2pa?.hasC2pa) {
+    signals.push({
+      id: 'sig-c2pa',
+      name: 'C2PA Content Credentials',
+      category: 'HARDWARE',
+      type: c2pa.isValid ? 'SUPPORTING' : 'CONTRADICTING',
+      vector: 'Content Credentials PKI',
+      impact: c2pa.isValid ? 25 : -25,
+      verifiedBy: 'C2PA Manifest Validator',
+      rawValue: `C2PA MANIFEST PRESENT: ${c2pa.claimGenerator || 'Signed'}`,
+      algorithm: 'X.509 Cryptographic Certificate Chain Scanner',
+      diagnosticDetail: c2pa.isValid
+        ? `Valid cryptographic signature verified from claim generator ${c2pa.claimGenerator || 'trusted root'}.`
+        : 'C2PA manifest is present but cryptographic signature validation failed.',
+      epistemicCaveat: 'Valid certificates confirm source software was used; does not guarantee physical ground reality.'
+    })
+  } else {
+    signals.push({
+      id: 'sig-c2pa',
+      name: 'C2PA Content Credentials',
+      category: 'HARDWARE',
+      type: 'UNKNOWN',
+      vector: 'Content Credentials PKI',
+      impact: 0,
+      verifiedBy: 'C2PA Manifest Validator',
+      rawValue: 'No C2PA manifest found',
+      algorithm: 'X.509 Cryptographic Certificate Chain Scanner',
+      diagnosticDetail: 'Target media does not contain an embedded cryptographically signed C2PA provenance header.',
+      epistemicCaveat: 'Absence of C2PA manifest is expected for consumer web uploads and is not evidence of forgery.'
+    })
+  }
+
+  // 3. EXIF Metadata Signal
+  const hasExifHardware = Boolean(exif && (exif.make || exif.Make || exif.model || exif.Model || exif.dateTime || exif.DateTimeOriginal))
+  if (hasExifHardware) {
+    const make = exif.make || exif.Make || ''
+    const model = exif.model || exif.Model || ''
+    const date = exif.dateTime || exif.DateTimeOriginal || ''
+    signals.push({
+      id: 'sig-exif',
+      name: 'EXIF Sensor Metadata Header',
+      category: 'HARDWARE',
+      type: 'SUPPORTING',
+      vector: 'TIFF/JPEG Hardware Header Scanner',
+      impact: 15,
+      verifiedBy: 'EXIF Header Parser',
+      rawValue: `EXIF HEADERS PRESENT: ${[make, model, date].filter(Boolean).join(' ')}`,
+      algorithm: 'ExifTool Tag Extraction Engine',
+      diagnosticDetail: `Hardware camera sensor headers preserved: ${[make, model].filter(Boolean).join(' ')}${date ? ` (Captured: ${date})` : ''}.`,
+      epistemicCaveat: 'EXIF headers can be edited or forged if not cryptographically signed.'
+    })
+  } else {
+    signals.push({
+      id: 'sig-exif',
+      name: 'EXIF Sensor Metadata Header',
+      category: 'HARDWARE',
+      type: 'UNKNOWN',
+      vector: 'TIFF/JPEG Hardware Header Scanner',
+      impact: 0,
+      verifiedBy: 'EXIF Header Parser',
+      rawValue: 'No EXIF metadata found',
+      algorithm: 'ExifTool Tag Extraction Engine',
+      diagnosticDetail: 'Camera sensor metadata headers not found or stripped during upload.',
+      epistemicCaveat: 'Web platforms routinely strip EXIF metadata by default; evaluated as unknown.'
+    })
+  }
+
+  // 4. OCR Optical Character Recognition Signal
+  if (ocr && typeof ocr.text === 'string' && ocr.text.trim().length > 0) {
+    signals.push({
+      id: 'sig-ocr',
+      name: 'Optical Character Recognition (OCR)',
+      category: 'OCR',
+      type: 'SUPPORTING',
+      vector: 'Raster Typography Scanner',
+      impact: 10,
+      verifiedBy: 'OCR Context Engine',
+      rawValue: `Text extracted (${ocr.text.trim().length} chars): "${ocr.text.trim().slice(0, 36)}..."`,
+      algorithm: 'Tesseract OCR Optical Engine',
+      diagnosticDetail: `OCR optical engine extracted text: "${ocr.text.trim().slice(0, 80)}"`,
+      epistemicCaveat: 'OCR extracts textual content but does not verify whether captions or banners were altered.'
+    })
+  } else if (ocr && typeof ocr.text === 'string') {
+    signals.push({
+      id: 'sig-ocr',
+      name: 'Optical Character Recognition (OCR)',
+      category: 'OCR',
+      type: 'UNKNOWN',
+      vector: 'Raster Typography Scanner',
+      impact: 0,
+      verifiedBy: 'OCR Context Engine',
+      rawValue: 'No text extracted',
+      algorithm: 'Tesseract OCR Optical Engine',
+      diagnosticDetail: 'OCR found no text in this frame.',
+      epistemicCaveat: 'Absence of text is common in non-document visual imagery.'
+    })
+  } else {
+    signals.push({
+      id: 'sig-ocr',
+      name: 'Optical Character Recognition (OCR)',
+      category: 'OCR',
+      type: 'UNKNOWN',
+      vector: 'Raster Typography Scanner',
+      impact: 0,
+      verifiedBy: 'OCR Context Engine',
+      rawValue: 'OCR not executed',
+      algorithm: 'Tesseract OCR Optical Engine',
+      diagnosticDetail: 'Optical Character Recognition was not executed for this media artifact.',
+      epistemicCaveat: 'Engine execution was bypassed.'
+    })
+  }
+
+  // 5. Discovery / Prior Appearance Signal
+  if (disc?.ran) {
+    if (disc.count > 0) {
+      const platforms = (disc.candidates || []).map((c: any) => c.platform || c.domain).slice(0, 3).join(', ')
+      signals.push({
+        id: 'sig-discovery',
+        name: 'Public Syndication Lineage',
+        category: 'EPSTEMIC',
+        type: 'SUPPORTING',
+        vector: 'Multi-Platform Appearance Ledger',
+        impact: 20,
+        verifiedBy: 'Discovery Orchestrator',
+        rawValue: `${disc.count} prior appearance(s) found`,
+        algorithm: 'Multi-Platform Reverse Media Crawler',
+        diagnosticDetail: `Identified appearances across indexed nodes: ${platforms || 'Indexed platforms'}.`,
+        epistemicCaveat: 'Public appearance confirms syndication, not original copyright ownership.'
+      })
+    } else {
+      signals.push({
+        id: 'sig-discovery',
+        name: 'Public Syndication Lineage',
+        category: 'EPSTEMIC',
+        type: 'UNKNOWN',
+        vector: 'Multi-Platform Appearance Ledger',
+        impact: 0,
+        verifiedBy: 'Discovery Orchestrator',
+        rawValue: 'No prior appearance found',
+        algorithm: 'Multi-Platform Reverse Media Crawler',
+        diagnosticDetail: 'No prior appearance found on any configured platform.',
+        epistemicCaveat: 'Absence of indexed web records does not disprove authentic private capture.'
+      })
+    }
+  } else {
+    signals.push({
+      id: 'sig-discovery',
+      name: 'Public Syndication Lineage',
+      category: 'EPSTEMIC',
+      type: 'UNKNOWN',
+      vector: 'Multi-Platform Appearance Ledger',
+      impact: 0,
+      verifiedBy: 'Discovery Orchestrator',
+      rawValue: 'Discovery unavailable',
+      algorithm: 'Multi-Platform Reverse Media Crawler',
+      diagnosticDetail: 'Vision analysis / web discovery unavailable — API not configured.',
+      epistemicCaveat: 'External search discovery was skipped or unconfigured.'
+    })
+  }
+
+  // Assessment summary derived from findings
+  let summary = currentResult?.summary || ''
+  if (!summary) {
+    if (currentResult?.visual_findings && currentResult.visual_findings.length > 0) {
+      summary = `Visual findings: ${currentResult.visual_findings.slice(0, 2).join('; ')}`
+    } else if (currentResult?.detected_anomalies && currentResult.detected_anomalies.length > 0) {
+      summary = `Detected anomalies: ${currentResult.detected_anomalies.join('; ')}`
+    } else if (isManipulated) {
+      summary = 'Forensic scan detected compression and frequency pattern anomalies consistent with manipulation.'
+    } else if (conf > 0.5) {
+      summary = 'Initial forensic scan completed. No structural anomalies detected in local analysis.'
+    } else {
+      summary = 'Forensic evaluation inconclusive. Insufficient signals extracted to establish definitive origin.'
+    }
+  }
+
   return {
-    id: currentResult.id || 'scan-target',
-    label: currentResult.filename || 'Scanned Media Asset',
-    platform: 'Target File',
-    timestamp: currentResult.analyzedAt ? new Date(currentResult.analyzedAt).toLocaleString() : 'Recent Scan',
+    id: currentResult?.id || currentResult?.job_id || 'scan-target',
+    label: currentResult?.artifact?.filename || currentResult?.filename || 'Scanned Media Asset',
+    platform: currentResult?.platform || 'Target File',
+    timestamp: currentResult?.timestamp ? new Date(currentResult.timestamp).toLocaleString() : 'Recent Scan',
     confidence: conf,
-    status: isManipulated ? 'DERIVED_MUTATION' : 'UNVERIFIED_CANDIDATE',
+    status: isManipulated ? 'DERIVED_MUTATION' : (conf > 0.5 ? 'LIKELY_EARLIEST_ORIGIN' : 'UNVERIFIED_CANDIDATE'),
     statusLabel: verdict,
     statusColor: isManipulated ? '#ef4444' : (verdict === 'Authentic' ? '#22c55e' : '#f59e0b'),
     similarity: 1.0,
     cropDerived: false,
-    assessmentSummary: currentResult.summary || (isManipulated
-      ? 'Forensic analysis identified synthetic artifacts and tampering signatures in the scanned media.'
-      : 'Initial forensic scan completed. Origin and external lineage have not been determined on public indexing networks.'),
-    epistemicFacts: [
-      currentResult.dimensions ? `Resolution: ${currentResult.dimensions.width}x${currentResult.dimensions.height}` : 'Resolution verified',
-      currentResult.format ? `Format: ${currentResult.format.toUpperCase()}` : 'Format detected',
-      'Claimed origin: Not determined (uncorroborated across public archives)'
-    ],
-    epistemicLimitations: [
-      'No cryptographic C2PA provenance ledger attached to target media.',
-      'Public network web crawling returned 0 verified prior appearances.',
-      'Lineage origin remains uncorroborated without verified publisher signatures.'
-    ],
-    signals: [
-      {
-        id: 'sig-forensics',
-        name: 'Pixel & Frequency Analysis',
-        category: 'PERCEPTUAL',
-        type: isManipulated ? 'CONTRADICTING' : 'SUPPORTING',
-        vector: 'Spectral Error Level Analysis',
-        impact: isManipulated ? -25 : 15,
-        verifiedBy: 'Forensic Engine',
-        rawValue: isManipulated ? 'Inconsistencies detected' : 'Uniform compression',
-        algorithm: 'DCT & Noise Variance',
-        diagnosticDetail: isManipulated ? 'High-frequency noise anomalies consistent with neural generation.' : 'No synthetic boundary anomalies identified in primary raster.',
-        epistemicCaveat: 'Heuristic sensor analysis does not prove intentional malice.'
-      },
-      {
-        id: 'sig-c2pa',
-        name: 'C2PA Hardware Manifest',
-        category: 'HARDWARE',
-        type: 'UNKNOWN',
-        vector: 'Content Credentials PKI',
-        impact: 0,
-        verifiedBy: 'C2PA Manifest Validator',
-        rawValue: 'UNAVAILABLE / UNSIGNED',
-        algorithm: 'X.509 Certificate Chain Scanner',
-        diagnosticDetail: 'Target asset does not contain an embedded cryptographically signed C2PA provenance header.',
-        epistemicCaveat: 'Standard for standard web file formats; manifest absence is unverified, not evidence of forgery.'
-      },
-      {
-        id: 'sig-exif',
-        name: 'EXIF Sensor Metadata Header',
-        category: 'HARDWARE',
-        type: currentResult?.artifact?.rawExif ? 'SUPPORTING' : 'UNKNOWN',
-        vector: 'TIFF/JPEG Hardware Header Scanner',
-        impact: currentResult?.artifact?.rawExif ? 15 : 0,
-        verifiedBy: 'EXIF Header Parser',
-        rawValue: currentResult?.artifact?.rawExif ? 'EXIF HEADERS PRESENT' : 'STRIPPED / UNAVAILABLE',
-        algorithm: 'ExifTool Tag Extraction Engine',
-        diagnosticDetail: currentResult?.artifact?.rawExif
-          ? 'Camera sensor serial and capture timestamp headers validated.'
-          : 'Camera metadata headers stripped during transcode or unavailable in target file.',
-        epistemicCaveat: 'Web platforms strip EXIF metadata by default; evaluated as unverified/unknown.'
-      },
-      {
-        id: 'sig-provenance',
-        name: 'Public Syndication Lineage',
-        category: 'EPSTEMIC',
-        type: 'UNKNOWN',
-        vector: 'Lineage Ledger',
-        impact: 0,
-        verifiedBy: 'Origin Engine',
-        rawValue: 'UNINDEXED / UNKNOWN',
-        algorithm: 'C2PA & Hash Crawl',
-        diagnosticDetail: 'Zero prior syndication appearances discovered on public web indexing networks.',
-        epistemicCaveat: 'Absence of public records does not prove or disprove authentic offline capture.'
-      }
-    ]
+    assessmentSummary: summary,
+    epistemicFacts,
+    epistemicLimitations,
+    signals
   }
 }
 

@@ -932,53 +932,38 @@ class ProvenanceService {
       originalName: art.metadata?.originalName || filename
     });
 
-    // 2. Compute Physical Error-Level Analysis (ELA)
+    // 2. Run independent extraction checks (ELA, C2PA, Stats, OCR) concurrently in parallel
     notifyStage({
-      stage: 'ELA',
+      stage: 'PARALLEL_EXTRACTION',
       stageIndex: 1,
-      stageTitle: 'Stage 2: Error Level Analysis (ELA)',
-      stageDetail: 'Executing dual-pass 95% JPEG recompression & DCT quantization diff...',
-      progress: 35,
-      log: 'Running error-level pixel variance inspection against baseline compression grids...'
+      stageTitle: 'Pixel, Metadata & Text Extraction Checks',
+      stageDetail: 'Running dual-pass ELA, C2PA credentials, pixel entropy & OCR text extraction concurrently in parallel...',
+      progress: 30,
+      log: 'Running pixel variance, metadata validation, channel decomposition and OCR in parallel...'
     });
-    const elaResult = await performErrorLevelAnalysis(buffer, mimeType);
 
-    // 3. Compute Deep EXIF Metadata & Device Provenance Analysis
-    notifyStage({
-      stage: 'EXIF_C2PA',
-      stageIndex: 2,
-      stageTitle: 'Stage 3: EXIF Metadata & C2PA Content Credentials',
-      stageDetail: 'Extracting camera device metadata, sensor PRNU characteristics and C2PA manifests...',
-      progress: 55,
-      log: `Parsed EXIF metadata. Checking C2PA JUMBF cryptographic envelopes...`
-    });
     const exifResult = analyzeExifMetadata(exif);
-    const c2paResult = await detectC2PA(buffer, mimeType);
 
-    // 4. Compute Deep Pixel, Channel & Luminance Statistics via Sharp & OCR
-    notifyStage({
-      stage: 'STATS_OCR',
-      stageIndex: 3,
-      stageTitle: 'Stage 4: Pixel Statistics & OCR Extraction',
-      stageDetail: 'Computing Shannon entropy, luminance variance & optical text extraction...',
-      progress: 75,
-      log: 'Sharp channel decomposition & Tesseract optical text analysis active...'
-    });
-    const statsResult = await computeImageStatistics(buffer);
-    const ocrResult = await performOCR(buffer, { language: 'eng' });
+    // Kick off independent pixel, metadata, and OCR extraction steps in parallel
+    const elaPromise = performErrorLevelAnalysis(buffer, mimeType);
+    const c2paPromise = detectC2PA(buffer, mimeType);
+    const statsPromise = computeImageStatistics(buffer);
+    const ocrPromise = performOCR(buffer, { language: 'eng' });
 
-    // 5. Run Real Gemini Multimodal AI Vision Forensic Inspection
-    notifyStage({
-      stage: 'VISION_AI',
-      stageIndex: 4,
-      stageTitle: 'Stage 5: Multimodal AI Vision Audit',
-      stageDetail: 'Sending high-res buffer to Gemini Vision for generative artifact & tampering inspection...',
-      progress: 90,
-      log: 'Gemini multimodal neural vision inspection in progress...'
-    });
-    let visionResult = null;
+    // As soon as elaResult and statsResult resolve, start Gemini vision immediately without waiting for OCR or C2PA
+    const [elaResult, statsResult] = await Promise.all([elaPromise, statsPromise]);
+
+    let visionPromise = Promise.resolve(null);
     if (callGeminiFn) {
-      visionResult = await runGeminiMultimodalForensicVision({
+      notifyStage({
+        stage: 'VISION_AI',
+        stageIndex: 4,
+        stageTitle: 'Multimodal AI Vision Audit',
+        stageDetail: 'Sending high-res buffer to Gemini Vision for generative artifact & tampering inspection...',
+        progress: 75,
+        log: 'Gemini multimodal neural vision inspection in progress...'
+      });
+      visionPromise = runGeminiMultimodalForensicVision({
         buffer,
         mimeType,
         filename,
@@ -988,6 +973,13 @@ class ProvenanceService {
         callGeminiFn
       });
     }
+
+    // Await all concurrently running engines to finalize results
+    const [c2paResult, ocrResult, visionResult] = await Promise.all([
+      c2paPromise,
+      ocrPromise,
+      visionPromise
+    ]);
 
     // 6. Record Technical Analysis Run in Provenance Ledger
     notifyStage({

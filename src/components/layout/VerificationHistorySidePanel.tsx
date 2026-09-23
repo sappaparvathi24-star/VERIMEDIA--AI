@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import {
   History,
   X,
@@ -127,8 +127,18 @@ export function VerificationHistorySidePanel() {
     openClaimModal,
     addVerificationJob,
     updateVerificationJob,
-    clearVerificationHistory
+    clearVerificationHistory,
+    investigations,
+    investigationsLoading,
+    fetchInvestigations,
+    loadInvestigationIntoDashboard
   } = useStore()
+
+  const [panelTab, setPanelTab] = useState<'cases' | 'claims' | 'analytics'>('cases')
+
+  useEffect(() => {
+    fetchInvestigations().catch(() => {})
+  }, [fetchInvestigations])
 
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null)
   const [quickSearchInput, setQuickSearchInput] = useState('')
@@ -299,79 +309,179 @@ export function VerificationHistorySidePanel() {
         </div>
       </div>
 
-      {/* Mode Sub-Tabs (Jobs Stream vs Recharts Analytics) */}
+      {/* Mode Sub-Tabs (Cases Ledger vs Jobs Stream vs Recharts Analytics) */}
       <div className="flex border-b border-slate-800 bg-[#080d16] px-3 pt-2 gap-2">
         <button
-          onClick={() => setActiveHistoryTab('stream')}
+          onClick={() => setPanelTab('cases')}
           className={`flex items-center gap-1.5 pb-2 text-xs font-mono font-bold transition-all border-b-2 px-2 cursor-pointer ${
-            activeHistoryTab === 'stream'
+            panelTab === 'cases'
+              ? 'border-cyan-400 text-cyan-300'
+              : 'border-transparent text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <Radio size={13} />
+          <span>Cases Ledger ({investigations.length})</span>
+        </button>
+
+        <button
+          onClick={() => {
+            setPanelTab('claims')
+            setActiveHistoryTab('stream')
+          }}
+          className={`flex items-center gap-1.5 pb-2 text-xs font-mono font-bold transition-all border-b-2 px-2 cursor-pointer ${
+            panelTab === 'claims'
               ? 'border-cyan-400 text-cyan-300'
               : 'border-transparent text-slate-400 hover:text-slate-200'
           }`}
         >
           <History size={13} />
-          <span>Jobs Stream ({filteredJobs.length})</span>
+          <span>Claim Searches ({filteredJobs.length})</span>
         </button>
 
         <button
-          onClick={() => setActiveHistoryTab('recharts')}
+          onClick={() => {
+            setPanelTab('analytics')
+            setActiveHistoryTab('recharts')
+          }}
           className={`flex items-center gap-1.5 pb-2 text-xs font-mono font-bold transition-all border-b-2 px-2 cursor-pointer ${
-            activeHistoryTab === 'recharts'
+            panelTab === 'analytics'
               ? 'border-cyan-400 text-cyan-300'
               : 'border-transparent text-slate-400 hover:text-slate-200'
           }`}
         >
           <BarChart3 size={13} />
-          <span>Recharts Analytics</span>
+          <span>Analytics</span>
         </button>
       </div>
 
-      {/* Quick Search Input */}
-      <div className="p-3 border-b border-slate-800/80 bg-[#0a101a]">
-        <form onSubmit={handleQuickSubmit} className="flex items-center gap-2">
-          <div className="relative flex-1">
-            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-cyan-400/80" />
-            <input
-              type="text"
-              value={quickSearchInput}
-              onChange={e => setQuickSearchInput(e.target.value)}
-              placeholder="Verify new claim via Google Search..."
-              disabled={isSubmittingQuick}
-              className="w-full bg-[#05080e] border border-cyan-500/25 focus:border-cyan-400 text-xs text-white placeholder-slate-500 rounded-lg pl-8 pr-3 py-1.5 outline-none"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={isSubmittingQuick || !quickSearchInput.trim()}
-            className="px-3 py-1.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-300 text-xs font-mono font-bold flex items-center gap-1 transition-all disabled:opacity-50 cursor-pointer"
-          >
-            {isSubmittingQuick ? <RefreshCw size={12} className="animate-spin" /> : <Search size={12} />}
-            <span>Run</span>
-          </button>
-        </form>
-
-        {/* Verdict Filter Chips */}
-        <div className="flex items-center gap-1.5 mt-2 overflow-x-auto pb-1 text-[10px] font-mono">
-          <span className="text-slate-500 shrink-0">Filter:</span>
-          {['all', 'AI_GENERATED', 'DEBUNKED_FALSE', 'CONFIRMED_AUTHENTIC', 'MISLEADING'].map(key => (
+      {panelTab === 'claims' && (
+        <div className="p-3 border-b border-slate-800/80 bg-[#0a101a]">
+          <form onSubmit={handleQuickSubmit} className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-cyan-400/80" />
+              <input
+                type="text"
+                value={quickSearchInput}
+                onChange={e => setQuickSearchInput(e.target.value)}
+                placeholder="Verify new claim via Google Search..."
+                disabled={isSubmittingQuick}
+                className="w-full bg-[#05080e] border border-cyan-500/25 focus:border-cyan-400 text-xs text-white placeholder-slate-500 rounded-lg pl-8 pr-3 py-1.5 outline-none"
+              />
+            </div>
             <button
-              key={key}
-              onClick={() => setFilterVerdict(key)}
-              className={`px-2 py-0.5 rounded transition-all shrink-0 ${
-                filterVerdict === key
-                  ? 'bg-cyan-500/25 text-cyan-300 font-bold border border-cyan-500/40'
-                  : 'bg-slate-900/60 text-slate-400 hover:text-white border border-transparent'
-              }`}
+              type="submit"
+              disabled={isSubmittingQuick || !quickSearchInput.trim()}
+              className="px-3 py-1.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-300 text-xs font-mono font-bold flex items-center gap-1 transition-all disabled:opacity-50 cursor-pointer"
             >
-              {key === 'all' ? 'All' : key.replace('_', ' ')}
+              {isSubmittingQuick ? <RefreshCw size={12} className="animate-spin" /> : <Search size={12} />}
+              <span>Run</span>
             </button>
-          ))}
+          </form>
+
+          {/* Verdict Filter Chips */}
+          <div className="flex items-center gap-1.5 mt-2 overflow-x-auto pb-1 text-[10px] font-mono">
+            <span className="text-slate-500 shrink-0">Filter:</span>
+            {['all', 'AI_GENERATED', 'DEBUNKED_FALSE', 'CONFIRMED_AUTHENTIC', 'MISLEADING'].map(key => (
+              <button
+                key={key}
+                onClick={() => setFilterVerdict(key)}
+                className={`px-2 py-0.5 rounded transition-all shrink-0 ${
+                  filterVerdict === key
+                    ? 'bg-cyan-500/25 text-cyan-300 font-bold border border-cyan-500/40'
+                    : 'bg-slate-900/60 text-slate-400 hover:text-white border border-transparent'
+                }`}
+              >
+                {key === 'all' ? 'All' : key.replace('_', ' ')}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Main Content Area: Tab Switch */}
       <div className="flex-1 overflow-y-auto min-h-0 p-3">
-        {activeHistoryTab === 'recharts' ? (
+        {panelTab === 'cases' ? (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between text-xs font-mono pb-2 border-b border-slate-800">
+              <span className="text-slate-400">Persisted Cases Ledger</span>
+              <button
+                onClick={() => fetchInvestigations()}
+                className="text-cyan-400 hover:text-cyan-300 text-[11px] flex items-center gap-1 cursor-pointer"
+              >
+                <RefreshCw size={11} className={investigationsLoading ? 'animate-spin' : ''} />
+                Refresh
+              </button>
+            </div>
+
+            {investigationsLoading && investigations.length === 0 ? (
+              <div className="py-8 text-center text-xs font-mono text-slate-500">
+                Loading cases from SQLite ledger...
+              </div>
+            ) : investigations.length === 0 ? (
+              <div className="py-8 text-center text-xs font-mono text-slate-500 border border-dashed border-slate-800 rounded-lg p-4">
+                No investigations recorded yet. Upload a media asset above to begin.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {investigations.map((inv: any) => {
+                  const trust = inv.trustScore ?? inv.metadata?.trustScore
+                  const title = inv.title || inv.filename || inv.id
+                  const dateStr = inv.createdAt ? new Date(inv.createdAt).toLocaleString() : 'Recent'
+
+                  return (
+                    <div
+                      key={inv.id}
+                      onClick={() => loadInvestigationIntoDashboard(inv)}
+                      className="p-3 rounded-lg bg-[#080d16] border border-slate-800 hover:border-cyan-500/40 hover:bg-[#0c1422] transition-all cursor-pointer space-y-1.5"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-bold text-slate-200 truncate">
+                          {title}
+                        </span>
+                        <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded border ${
+                          inv.isDemo
+                            ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                            : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                        }`}>
+                          {inv.isDemo ? 'DEMO' : 'PERSISTED'}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between text-[11px] text-slate-400">
+                        <span className="font-mono text-[10px] text-slate-500">
+                          {inv.id}
+                        </span>
+                        <span>{dateStr}</span>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-1">
+                        {trust != null ? (
+                          <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border ${
+                            trust >= 70
+                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                              : trust >= 40
+                              ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                              : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                          }`}>
+                            Trust: {trust}/100
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
+                            Trust: Inconclusive
+                          </span>
+                        )}
+
+                        <span className="text-xs font-semibold text-cyan-400 flex items-center gap-1 hover:underline">
+                          Load Into Dashboard ➔
+                        </span>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        ) : panelTab === 'analytics' || activeHistoryTab === 'recharts' ? (
           <div className="space-y-3">
             <SearchFindingsRechartsChart
               selectedJob={selectedJob}

@@ -4,6 +4,7 @@ import { useDetection } from '../../hooks/useDetection'
 import { Tooltip } from '../ui/Tooltip'
 import { uploadArtifactAsync, pollForensicJob } from '../../services/api'
 import { ForensicViewer } from './ForensicViewer'
+import { ForensicAnalysisProgress } from '../forensics/ForensicAnalysisProgress'
 import type { Scenario } from '../../types'
 import { Columns2, Activity, ShieldCheck, Sparkles, RefreshCw } from 'lucide-react'
 import { TermLabel } from '../ui/TermLabel'
@@ -112,6 +113,7 @@ export function ForensicPanel() {
           </div>
 
           <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center' }}>
+            {isScanning && <ForensicAnalysisProgress />}
             <input
               ref={fileInputRef}
               type="file"
@@ -181,6 +183,7 @@ export function ForensicPanel() {
       color: '#f8fafc',
       gap: 16
     }}>
+      {isScanning && <ForensicAnalysisProgress />}
       {((currentResult as any)?.disclaimer || (currentResult as any)?.ai_analysis?.source === 'fallback' || forensicStatus === 'SKIPPED') && (
         <DataConfidenceBanner
           confidence="DEGRADED"

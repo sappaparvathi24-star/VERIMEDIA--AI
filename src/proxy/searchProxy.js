@@ -166,8 +166,15 @@ export async function searchReddit(query, options = {}) {
  * GET /search/youtube?q=<query>
  */
 export async function searchYouTube(query, apiKey) {
-  if (!query || !query.trim()) return { available: true, results: [] };
   const effectiveKey = apiKey !== undefined ? apiKey : (getYouTubeApiKey() || process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || null);
+  if (apiKey === null || !effectiveKey) {
+    return {
+      available: false,
+      reason: 'YouTube Data API key not configured (set YOUTUBE_API_KEY)',
+      results: []
+    };
+  }
+  if (!query || !query.trim()) return { available: true, results: [] };
 
   const cacheKey = `youtube:${query.trim().toLowerCase()}`;
   const cached = getCached(cacheKey);
@@ -392,6 +399,14 @@ export async function searchGoogleImages(query, apiKey, cx, options = {}) {
   const creds = getGoogleCseCredentials();
   const effectiveKey = apiKey !== undefined ? apiKey : (creds.apiKey || process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || null);
   const effectiveCx = cx !== undefined ? cx : creds.cx;
+
+  if (apiKey === null || cx === null || (!effectiveKey && !effectiveCx)) {
+    return {
+      available: false,
+      reason: 'Google Images API key or Search Engine ID (CX) not configured',
+      results: []
+    };
+  }
 
   if (!query || !query.trim()) return { available: true, results: [] };
 

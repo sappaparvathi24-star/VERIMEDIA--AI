@@ -231,6 +231,8 @@ export interface DisseminationHop {
   status: 'ORIGIN' | 'SYNDICATED' | 'CROPPED' | 'SYNTHETIC' | 'FLAGGED'
   icon: string
   accentColor: string
+  hasBackingEvidence?: boolean
+  evidenceDescription?: string
 }
 
 export const DEMO_DISSEMINATION_HOPS: DisseminationHop[] = [
@@ -352,21 +354,61 @@ export function PropagationGraph({ ppm: propPpm, candidates: propCandidates }: P
     )
   }, [propCandidates, currentResult, activePropagation])
 
-  const hasRealCandidates = rawCandidates.length >= 2
-  const [useDemoHops, setUseDemoHops] = useState<boolean>(!hasRealCandidates)
+  const isScenario = isSimulatedResult(currentResult)
+  const hasRealCandidates = rawCandidates.length > 0
+  const [useDemoHops, setUseDemoHops] = useState<boolean>(isScenario)
 
   useEffect(() => {
-    if (!hasRealCandidates) {
+    if (isScenario) {
       setUseDemoHops(true)
     }
-  }, [hasRealCandidates])
+  }, [isScenario])
 
   // Active Hops: Real Candidates or Rich Demo Pipeline
   const activeHops: DisseminationHop[] = useMemo(() => {
-    if (useDemoHops || !hasRealCandidates) {
-      return DEMO_DISSEMINATION_HOPS
+    if (useDemoHops || (isScenario && rawCandidates.length === 0)) {
+      return DEMO_DISSEMINATION_HOPS.map(h => ({
+        ...h,
+        hasBackingEvidence: true,
+        evidenceDescription: h.movementDescription
+      }))
     }
-    // Build real hops from discovered candidates
+    if (rawCandidates.length === 0) {
+      return [
+        {
+          id: 'SEED-00',
+          hopNumber: 0,
+          stageLabel: 'ORIGIN INGEST SEED',
+          title: 'Scanned Media Asset',
+          movementDescription: 'No prior appearance found on any configured platform.',
+          platform: currentResult?.platform ? `Origin (${currentResult.platform})` : 'Target Media Asset',
+          username: currentResult?.username ? `@${currentResult.username}` : 'Direct Upload Ingest',
+          url: currentResult?.url || '#',
+          timestamp: currentResult?.timestamp || new Date().toISOString(),
+          deltaMinutes: 0,
+          reachEstimate: 1,
+          similarity: 1.0,
+          mutationType: 'Target Media Asset',
+          status: 'ORIGIN',
+          icon: '📁',
+          accentColor: '#22c55e',
+          hasBackingEvidence: true,
+          evidenceDescription: 'Target media asset registered in forensic pipeline.'
+        }
+      ]
+    }
+
+    // Sort candidates strictly chronologically!
+    const sorted = [...rawCandidates].sort((a: any, b: any) => {
+      const tA = new Date(a.publishedAt || a.timestamp || 0).getTime()
+      const tB = new Date(b.publishedAt || b.timestamp || 0).getTime()
+      return tA - tB
+    })
+
+    const t0 = currentResult?.timestamp
+      ? new Date(currentResult.timestamp).getTime()
+      : (sorted[0]?.publishedAt || sorted[0]?.timestamp ? new Date(sorted[0].publishedAt || sorted[0].timestamp).getTime() : Date.now())
+
     const hops: DisseminationHop[] = [
       {
         id: 'REAL-HOP-00',
@@ -374,50 +416,70 @@ export function PropagationGraph({ ppm: propPpm, candidates: propCandidates }: P
         stageLabel: 'ORIGIN INGEST SEED',
         title: 'Authentic Ground Truth Master Ingest',
         movementDescription: 'Origin Seed: Earliest verified baseline record ingest registered in the detection pipeline.',
-        platform: currentResult?.platform ? `Origin (${currentResult.platform})` : 'Source Email Ingest',
+        platform: currentResult?.platform ? `Origin (${currentResult.platform})` : 'Target Ingest',
         username: currentResult?.username ? `@${currentResult.username}` : 'investigation_ingest@verimedia.org',
         url: currentResult?.url || '#',
-        timestamp: currentResult?.timestamp || new Date().toISOString(),
+        timestamp: new Date(t0).toISOString(),
         deltaMinutes: 0,
         reachEstimate: 1,
         similarity: 1.0,
         mutationType: 'Ground Truth Reference Asset',
         status: 'ORIGIN',
-        icon: '📧',
-        accentColor: '#22c55e'
+        icon: '📁',
+        accentColor: '#22c55e',
+        hasBackingEvidence: true,
+        evidenceDescription: 'Baseline media asset ingested into verification pipeline.'
       }
     ]
 
-    rawCandidates.forEach((c: any, idx: number) => {
-      const stageName = idx === 0 ? 'HOP 1: PRIMARY LEAK' : idx === 1 ? 'HOP 2: SECONDARY SPREAD' : `HOP ${idx + 1}: VIRAL SPILLOVER`
-      const moveDesc = idx === 0
-        ? `Moved like this: First observed external public appearance discovered on ${c.platform || c.domain || 'Web'}.`
-        : idx === 1
-        ? `And moved like this: Secondary dissemination discovered on ${c.platform || c.domain || 'Web'} with derivative formatting.`
-        : `And like this: Multi-platform syndication across ${c.platform || c.domain || 'Web'}.`
+    sorted.forEach((c: any, idx: number) => {
+      const stageName = idx === 0 ? 'HOP 1: PRIMARY LEAK' : idx === 1 ? 'HOP 2: SECONDARY REPLICATION' : `HOP ${idx + 1}: SYNDICATION SPILLOVER`
+      const candidateTime = new Date(c.publishedAt || c.timestamp || t0).getTime()
+      const deltaMinutes = Math.max(0, Math.round((candidateTime - t0) / 60000))
+
+      const hasBackingEvidence = Boolean(
+        c.classification === 'EXACT_MATCH' ||
+        c.isCropped ||
+        (typeof c.similarity === 'number' && c.similarity >= 0.65) ||
+        c.evidence ||
+        c.parentCandidateId ||
+        c.repostOf
+      )
+
+      const evidenceDesc = c.classification === 'EXACT_MATCH'
+        ? `Exact perceptual duplicate discovered on ${c.platform || c.domain || 'Web'} (${Math.round((c.similarity || 1) * 100)}% match)`
+        : c.isCropped
+        ? `Cropped aspect derivative discovered on ${c.platform || c.domain || 'Web'} (${Math.round((c.similarity || 0.85) * 100)}% match)`
+        : (typeof c.similarity === 'number' && c.similarity >= 0.65)
+        ? `High perceptual match (${Math.round(c.similarity * 100)}%) on ${c.platform || c.domain || 'Web'}`
+        : c.evidence?.relation
+        ? `${c.evidence.relation} on ${c.platform || c.domain || 'Web'}`
+        : `Discovered on ${c.platform || c.domain || 'Web'} — Causal lineage link uncorroborated`
 
       hops.push({
         id: c.id || `REAL-HOP-${idx + 1}`,
         hopNumber: idx + 1,
         stageLabel: stageName,
         title: `${c.platform || c.domain || 'Web'} Appearance (${c.publisher || c.author || 'Indexed Node'})`,
-        movementDescription: moveDesc,
+        movementDescription: evidenceDesc,
         platform: c.platform || c.domain || 'Web',
         username: c.publisher || c.author || 'Indexed Appearance',
         url: c.url || c.link || '#',
-        timestamp: c.publishedAt || c.timestamp || new Date().toISOString(),
-        deltaMinutes: (idx + 1) * 25,
+        timestamp: new Date(candidateTime).toISOString(),
+        deltaMinutes,
         reachEstimate: c.views || (typeof c.similarity === 'number' ? Math.round(c.similarity * 200000) : 75000),
         similarity: typeof c.similarity === 'number' ? c.similarity : (c.matchScore ? c.matchScore / 100 : 0.88),
         mutationType: c.classification === 'EXACT_MATCH' ? 'Identical Master Clone' : c.isCropped ? 'Aspect Ratio Crop' : 'Modified Derivative',
         status: c.classification === 'EXACT_MATCH' ? 'SYNDICATED' : c.isCropped ? 'CROPPED' : 'SYNTHETIC',
         icon: (c.platform || '').toLowerCase().includes('youtube') ? '▶️' : (c.platform || '').toLowerCase().includes('tiktok') ? '🎵' : (c.platform || '').toLowerCase().includes('reddit') ? '💬' : '📡',
-        accentColor: PLATFORM_COLORS[c.platform] || '#38bdf8'
+        accentColor: PLATFORM_COLORS[c.platform] || '#38bdf8',
+        hasBackingEvidence,
+        evidenceDescription: evidenceDesc
       })
     })
 
     return hops
-  }, [useDemoHops, hasRealCandidates, rawCandidates, currentResult])
+  }, [useDemoHops, isScenario, rawCandidates, currentResult])
 
   // Playback state for Trajectory Flow
   const [currentHopIndex, setCurrentHopIndex] = useState<number>(3)
@@ -515,12 +577,24 @@ export function PropagationGraph({ ppm: propPpm, candidates: propCandidates }: P
         return { x, y }
       })
 
+      // If single hop (no observed appearances), draw honest standby message
+      if (positions.length <= 1) {
+        ctx.fillStyle = '#94a3b8'
+        ctx.font = '700 12px monospace'
+        ctx.textAlign = 'center'
+        ctx.fillText('No prior appearance found on any configured platform.', w / 2, h / 2 + 55)
+        ctx.font = '400 10px monospace'
+        ctx.fillStyle = '#64748b'
+        ctx.fillText('Propagation vectors require multi-node observed syndication.', w / 2, h / 2 + 75)
+      }
+
       // Draw vectors between revealed hops
       for (let i = 0; i < positions.length - 1; i++) {
         const isRevealed = i < currentHopIndex
         const p1 = positions[i]
         const p2 = positions[i + 1]
         const hopTarget = activeHops[i + 1]
+        const hasEvidence = hopTarget?.hasBackingEvidence !== false
 
         // Curved connector
         const cp1x = p1.x + (p2.x - p1.x) * 0.5
@@ -531,18 +605,26 @@ export function PropagationGraph({ ppm: propPpm, candidates: propCandidates }: P
         ctx.beginPath()
         ctx.moveTo(p1.x, p1.y)
         ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, p2.y)
-        ctx.strokeStyle = isRevealed ? (hopTarget?.accentColor || '#38bdf8') : 'rgba(51, 65, 85, 0.4)'
-        ctx.lineWidth = isRevealed ? 2.5 : 1.2
-        if (!isRevealed) {
-          ctx.setLineDash([4, 4])
+
+        if (!hasEvidence) {
+          // If no backing evidence, draw dashed slate-gray line
+          ctx.strokeStyle = 'rgba(100, 116, 139, 0.35)'
+          ctx.lineWidth = 1.2
+          ctx.setLineDash([4, 6])
         } else {
-          ctx.setLineDash([])
+          ctx.strokeStyle = isRevealed ? (hopTarget?.accentColor || '#38bdf8') : 'rgba(51, 65, 85, 0.4)'
+          ctx.lineWidth = isRevealed ? 2.5 : 1.2
+          if (!isRevealed) {
+            ctx.setLineDash([4, 4])
+          } else {
+            ctx.setLineDash([])
+          }
         }
         ctx.stroke()
         ctx.setLineDash([])
 
-        if (isRevealed) {
-          // Animated glowing packet particles traversing from p1 to p2
+        // ONLY animate glowing energy packet particles if isRevealed AND hasEvidence!
+        if (isRevealed && hasEvidence) {
           for (let p = 0; p < 3; p++) {
             const t = ((now * 0.8 * flowSpeed) + (p * 0.33) + (i * 0.25)) % 1
             const omt = 1 - t
@@ -557,25 +639,29 @@ export function PropagationGraph({ ppm: propPpm, candidates: propCandidates }: P
             ctx.fill()
             ctx.shadowBlur = 0
           }
+        }
 
+        if (isRevealed) {
           // Trajectory callout badge on the vector curve
           const midX = (p1.x + p2.x) / 2
           const midY = (p1.y + p2.y) / 2 + (i % 2 === 0 ? -28 : 28)
-          const callout = i === 0 ? 'Moved like this: Exfiltrated email attachment dropped onto YouTube' : i === 1 ? 'And moved like this: Crawlers rip and syndicate to TikTok & X' : 'And like this: Third-wave viral spillover into community discussion mirrors'
+          const callout = hasEvidence
+            ? (hopTarget?.evidenceDescription || hopTarget?.movementDescription || 'Lineage link verified')
+            : `Uncorroborated link to ${hopTarget?.platform || 'node'}`
 
           ctx.fillStyle = 'rgba(8, 12, 16, 0.92)'
-          ctx.strokeStyle = hopTarget?.accentColor || '#38bdf8'
+          ctx.strokeStyle = hasEvidence ? (hopTarget?.accentColor || '#38bdf8') : '#475569'
           ctx.lineWidth = 1
-          const badgeWidth = Math.min(260, w / 3)
+          const badgeWidth = Math.min(290, w / 2.8)
           ctx.beginPath()
           ctx.roundRect(midX - badgeWidth / 2, midY - 11, badgeWidth, 22, 4)
           ctx.fill()
           ctx.stroke()
 
-          ctx.fillStyle = hopTarget?.accentColor || '#38bdf8'
+          ctx.fillStyle = hasEvidence ? (hopTarget?.accentColor || '#38bdf8') : '#94a3b8'
           ctx.font = '700 9px monospace'
           ctx.textAlign = 'center'
-          ctx.fillText(callout.length > 44 ? callout.slice(0, 42) + '...' : callout, midX, midY + 3)
+          ctx.fillText(callout.length > 46 ? callout.slice(0, 44) + '...' : callout, midX, midY + 3)
         }
       }
 
@@ -955,21 +1041,32 @@ export function PropagationGraph({ ppm: propPpm, candidates: propCandidates }: P
     return () => cancelAnimationFrame(animId)
   }, [viewMode, currentResult, activePropagation, meshRevealedCount, meshSpeed, selectedMeshNodeIdx])
 
-  const isScenario = isSimulatedResult(currentResult)
-
   // Derive lineage and propagation nodes honestly from discovered appearances or demo walkthrough
   const derivedNodes: CascadeNode[] = useMemo(() => {
     if (rawCandidates.length > 0) {
-      return rawCandidates.map((c: any, i: number) => {
+      const sorted = [...rawCandidates].sort((a: any, b: any) => {
+        const tA = new Date(a.publishedAt || a.timestamp || 0).getTime()
+        const tB = new Date(b.publishedAt || b.timestamp || 0).getTime()
+        return tA - tB
+      })
+
+      const t0 = currentResult?.timestamp
+        ? new Date(currentResult.timestamp).getTime()
+        : (sorted[0]?.publishedAt || sorted[0]?.timestamp ? new Date(sorted[0].publishedAt || sorted[0].timestamp).getTime() : Date.now())
+
+      return sorted.map((c: any, i: number) => {
         const platform = c.platform || c.domain || 'Web'
         const reach = c.reachEstimate || c.views || (typeof c.similarity === 'number' ? Math.round(c.similarity * 150000) : 50000)
+        const candidateTime = new Date(c.publishedAt || c.timestamp || t0).getTime()
+        const deltaMinutes = Math.max(0, Math.round((candidateTime - t0) / 60000))
+
         return {
           id: c.id || `NODE-${String(i + 1).padStart(2, '0')}`,
           platform,
           username: c.author || c.publisher || c.displayLink || 'Indexed Node',
           url: c.url || c.link || '#',
-          publishedAt: c.publishedAt || c.timestamp || new Date().toISOString(),
-          deltaMinutes: i * 35,
+          publishedAt: new Date(candidateTime).toISOString(),
+          deltaMinutes,
           similarity: typeof c.similarity === 'number' ? c.similarity : (c.matchScore ? c.matchScore / 100 : 0.85),
           reachEstimate: reach,
           mutationType: c.classification === 'EXACT_MATCH' ? 'Identical Master Clone' : c.isCropped ? 'Aspect Ratio Crop' : c.isManipulated ? 'Modified Derivative' : 'Discovered Distribution Node',
@@ -981,7 +1078,7 @@ export function PropagationGraph({ ppm: propPpm, candidates: propCandidates }: P
       return cascadeEvents
     }
     return []
-  }, [rawCandidates, isScenario, useDemoHops])
+  }, [rawCandidates, isScenario, useDemoHops, currentResult])
 
   const hasNodes = derivedNodes.length > 0
   const totalReach = activePropagation?.totalReach ?? (hasNodes ? derivedNodes.reduce((acc, n) => acc + n.reachEstimate, 0) : 0)
@@ -1063,6 +1160,51 @@ export function PropagationGraph({ ppm: propPpm, candidates: propCandidates }: P
           }}>
             PRESET: {currentResult?.scenario?.toUpperCase() || 'DEMO'}
           </div>
+        </div>
+      )}
+
+      {/* Honest Absence of Prior Appearances Notice */}
+      {!isScenario && rawCandidates.length === 0 && (
+        <div
+          id="propagation-no-candidates-notice"
+          style={{
+            padding: '12px 18px',
+            borderRadius: 8,
+            background: 'rgba(15, 23, 42, 0.85)',
+            border: '1px dashed #334155',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 18, lineHeight: 1 }}>📡</span>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0', fontFamily: 'monospace' }}>
+                No prior appearance found on any configured platform.
+              </div>
+              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
+                Public network web crawling returned 0 verified prior appearances. Propagation graph cannot construct diffusion vectors without observed syndication nodes.
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={() => setUseDemoHops(!useDemoHops)}
+            style={{
+              padding: '6px 12px',
+              borderRadius: 6,
+              background: useDemoHops ? 'rgba(245, 158, 11, 0.2)' : 'rgba(56, 189, 248, 0.1)',
+              border: `1px solid ${useDemoHops ? '#f59e0b' : '#38bdf8'}`,
+              color: useDemoHops ? '#fbbf24' : '#38bdf8',
+              fontSize: 11,
+              fontWeight: 700,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            {useDemoHops ? 'Hide Demo Topology' : 'Preview Synthetic Cascade'}
+          </button>
         </div>
       )}
 

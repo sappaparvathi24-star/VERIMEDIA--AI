@@ -457,48 +457,57 @@ export class PersistenceManager {
   // Durable SQLite Persistence & Entity Integrity Helpers
   // ---------------------------------------------------------------------------
   ensureInvestigationExists(db, invId) {
-    if (!invId || !db) return;
+    const targetInvId = invId || 'INV-DEFAULT';
+    if (!db) return;
     try {
-      const existing = db.prepare('SELECT id FROM investigations WHERE id = ?').get(invId);
+      const org = db.prepare('SELECT id FROM organizations WHERE id = ?').get('org_verimedia_default');
+      if (!org) {
+        db.prepare("INSERT OR IGNORE INTO organizations (id, name) VALUES ('org_verimedia_default', 'VeriMedia Operations')").run();
+      }
+      const existing = db.prepare('SELECT id FROM investigations WHERE id = ?').get(targetInvId);
       if (!existing) {
-        const org = db.prepare('SELECT id FROM organizations WHERE id = ?').get('org_verimedia_default');
-        if (!org) {
-          db.prepare("INSERT OR IGNORE INTO organizations (id, name) VALUES ('org_verimedia_default', 'VeriMedia Operations')").run();
-        }
         db.prepare(`
           INSERT OR IGNORE INTO investigations (id, organization_id, title, status)
           VALUES (?, 'org_verimedia_default', 'Investigation ' || ?, 'ACTIVE')
-        `).run(invId, invId);
+        `).run(targetInvId, targetInvId);
       }
-    } catch (_) {}
+    } catch (err) {
+      console.warn('[Persistence] ensureInvestigationExists error:', err.message);
+    }
   }
 
   ensureRunExists(db, runId, investigationId) {
     if (!runId || !db) return;
     try {
+      const targetInvId = investigationId || 'INV-DEFAULT';
+      this.ensureInvestigationExists(db, targetInvId);
       const existing = db.prepare('SELECT id FROM analysis_runs WHERE id = ?').get(runId);
       if (!existing) {
-        this.ensureInvestigationExists(db, investigationId || 'INV-DEFAULT');
         db.prepare(`
           INSERT OR IGNORE INTO analysis_runs (id, investigation_id, method_name, method_version, start_time, status)
           VALUES (?, ?, 'DEFAULT_ANALYSIS', '1.0.0', datetime('now'), 'COMPLETED')
-        `).run(runId, investigationId || 'INV-DEFAULT');
+        `).run(runId, targetInvId);
       }
-    } catch (_) {}
+    } catch (err) {
+      console.warn('[Persistence] ensureRunExists error:', err.message);
+    }
   }
 
   ensureArtifactExists(db, artId, investigationId) {
     if (!artId || !db) return;
     try {
+      const targetInvId = investigationId || 'INV-DEFAULT';
+      this.ensureInvestigationExists(db, targetInvId);
       const existing = db.prepare('SELECT id FROM media_artifacts WHERE id = ?').get(artId);
       if (!existing) {
-        this.ensureInvestigationExists(db, investigationId || 'INV-DEFAULT');
         db.prepare(`
           INSERT OR IGNORE INTO media_artifacts (id, investigation_id, sha256)
-          VALUES (?, ?, '0'.repeat(64))
-        `).run(artId, investigationId || 'INV-DEFAULT');
+          VALUES (?, ?, ?)
+        `).run(artId, targetInvId, '0'.repeat(64));
       }
-    } catch (_) {}
+    } catch (err) {
+      console.warn('[Persistence] ensureArtifactExists error:', err.message);
+    }
   }
 
   saveInvestigation(inv) {
@@ -618,8 +627,11 @@ export class PersistenceManager {
     try {
       const db = getDatabase();
       if (!db) return;
-      if (art.investigationId) {
-        this.ensureInvestigationExists(db, art.investigationId);
+      const invId = art.investigationId || art.investigation_id || 'INV-DEFAULT';
+      this.ensureInvestigationExists(db, invId);
+      const duplicateOf = art.duplicateOf || art.duplicate_of || null;
+      if (duplicateOf) {
+        this.ensureArtifactExists(db, duplicateOf, invId);
       }
       db.prepare(`
         INSERT INTO media_artifacts (
@@ -645,7 +657,7 @@ export class PersistenceManager {
           updated_at = excluded.updated_at
       `).run({
         id: art.id,
-        investigation_id: art.investigationId || 'INV-DEFAULT',
+        investigation_id: invId,
         filename: art.filename || 'unnamed',
         byte_size: Number(art.byteSize || art.bytes || 0),
         mime_type: art.mimeType || 'application/octet-stream',
@@ -657,7 +669,7 @@ export class PersistenceManager {
         acquisition_timestamp: art.acquisitionTimestamp || art.createdAt || new Date().toISOString(),
         is_primary: art.isPrimary ? 1 : 0,
         is_demo: art.isDemo ? 1 : 0,
-        duplicate_of: art.duplicateOf || null,
+        duplicate_of: duplicateOf,
         metadata_json: typeof art.metadata === 'string' ? art.metadata : JSON.stringify(art.metadata || {}),
         limitations_json: typeof art.limitations === 'string' ? art.limitations : JSON.stringify(art.limitations || []),
         created_at: art.createdAt || new Date().toISOString(),

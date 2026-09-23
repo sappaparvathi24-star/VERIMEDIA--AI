@@ -1581,7 +1581,29 @@ const handleV1Detect = async (req, res) => {
       }
     });
 
-    if (mimeType.startsWith('video/') || mimeType.startsWith('audio/')) {
+    let earlyDiscoveryPromise = null;
+    const isUploadedVideoOrAudio = mimeType.startsWith('video/') || mimeType.startsWith('audio/');
+    if (!isUploadedVideoOrAudio) {
+      const searchSignals = buildQuerySignals(artifact, {
+        query: caption,
+        filename: artifact.filename,
+        claimStatement: caption
+      });
+      earlyDiscoveryPromise = multiSourceDiscovery.searchAll(searchSignals, {
+        imageBuffer: buffer,
+        imageBase64: buffer ? buffer.toString('base64') : null,
+        artifactId: artifact.id,
+        investigationId: invId,
+        perceptualHash: artifact.perceptualHash,
+        isVisualSearch: Boolean(buffer),
+        query: caption || artifact.metadata?.originalName || artifact.filename || 'visual-reverse-search'
+      }).catch(err => {
+        console.warn('[Discovery] Early parallel search failed:', err.message);
+        return null;
+      });
+    }
+
+    if (isUploadedVideoOrAudio) {
       // Route through the real service — it will run ffprobe if filePath is available,
       // or return an honest SKIPPED with reason if the file is not on disk.
       try {
@@ -1694,7 +1716,7 @@ const handleV1Detect = async (req, res) => {
 
     if (!isVideoOrAudio) {
       try {
-        const searchPromise = multiSourceDiscovery.searchAll(searchSignals, {
+        const searchPromise = earlyDiscoveryPromise || multiSourceDiscovery.searchAll(searchSignals, {
           imageBuffer,
           imageBase64: imageBuffer ? imageBuffer.toString('base64') : null,
           artifactId: artifact.id,
@@ -2113,7 +2135,7 @@ const handleV1Detect = async (req, res) => {
       }
     }
 
-    return res.json({
+    const detectionResultPayload = {
       job_id: `DET-REAL-${Date.now().toString(36)}`,
       platform,
       username,
@@ -2210,7 +2232,23 @@ const handleV1Detect = async (req, res) => {
       case_id: invId || null,
       investigationId: invId || null,
       processing_ms: 180
-    });
+    };
+
+    if (invId) {
+      try {
+        provenanceService.updateInvestigationMetadata(invId, {
+          detectionResult: detectionResultPayload,
+          filename: artifact.filename,
+          sha256: artifact.sha256,
+          trustScore: trustScore,
+          decision: decision
+        });
+      } catch (saveErr) {
+        console.warn('[Investigation] Could not persist detectionResult to metadata:', saveErr.message);
+      }
+    }
+
+    return res.json(detectionResultPayload);
   }
 
   // Simulated Scenario branch (explicitly labeled as simulation)
@@ -2548,29 +2586,46 @@ app.patch(['/api/v1/cases/:caseId', '/api/v1/cases/:caseId/'], requireAuth, (req
 // ---------------------------------------------------------------------------
 
 // List investigations (both real cases and demo scenarios with clear demarcation)
-app.get('/api/investigations', requireAuth, (req, res) => {
-  let all = provenanceService.getInvestigations();
-  // Filter by user's organization unless ADMIN or demo
-  if (req.user && req.user.role !== 'ADMIN' && req.organizationId) {
-    all = all.filter(inv => inv.isDemo || !inv.organizationId || inv.organizationId === req.organizationId);
-  }
+app.get('/api/investigations', (req, res) => {
+  authenticateUser(req, res, () => {
+    let all = provenanceService.getInvestigations();
+    // Filter by user's organization unless ADMIN or demo
+    if (req.user && req.user.role !== 'ADMIN' && req.organizationId) {
+      all = all.filter(inv => inv.isDemo || !inv.organizationId || inv.organizationId === req.organizationId || (inv.metadata && inv.metadata.organizationId === req.organizationId));
+    }
 
-  const list = all.map(inv => ({
-    id: inv.id,
-    title: inv.title,
-    description: inv.description,
-    status: inv.status,
-    artifactCount: (inv.artifactIds || []).length,
-    appearanceCount: (inv.appearanceIds || []).length,
-    findingCount: (inv.findingIds || []).length,
-    claimCount: (inv.claimIds || []).length,
-    isDemo: Boolean(inv.isDemo),
-    demoNotice: inv.isDemo ? 'DEMO SCENARIO — SIMULATED EVIDENCE' : null,
-    createdAt: inv.createdAt,
-    updatedAt: inv.updatedAt || inv.createdAt,
-    metadata: inv.metadata || {}
-  }));
-  res.json(list);
+    const list = all.map(inv => {
+      const primaryArtifactId = (inv.artifactIds && inv.artifactIds[0]) || null;
+      const art = primaryArtifactId ? provenanceService.store.getArtifact(primaryArtifactId) : null;
+      const trustScore = inv.metadata?.trustScore ?? (inv.metadata?.detectionResult?.trust?.trust_score ?? (inv.forensicConfidence != null ? Math.round(inv.forensicConfidence * 100) : null));
+      const filename = art?.filename || inv.metadata?.filename || (inv.title && inv.title.startsWith('Analysis: ') ? inv.title.replace(/^Analysis:\s*/, '').split(' — ')[0] : null);
+      const sha256 = art?.sha256 || inv.metadata?.sha256 || null;
+
+      return {
+        id: inv.id,
+        title: inv.title,
+        description: inv.description,
+        status: inv.status,
+        artifactCount: (inv.artifactIds || []).length,
+        appearanceCount: (inv.appearanceIds || []).length,
+        findingCount: (inv.findingIds || []).length,
+        claimCount: (inv.claimIds || []).length,
+        isDemo: Boolean(inv.isDemo),
+        demoNotice: inv.isDemo ? 'DEMO SCENARIO — SIMULATED EVIDENCE' : null,
+        createdAt: inv.createdAt,
+        updatedAt: inv.updatedAt || inv.createdAt,
+        trustScore,
+        decision: inv.metadata?.decision || inv.metadata?.detectionResult?.ai_analysis?.decision || null,
+        filename,
+        sha256,
+        detectionResult: inv.metadata?.detectionResult || null,
+        metadata: inv.metadata || {}
+      };
+    });
+
+    list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    res.json(list);
+  });
 });
 
 // Create a new investigation

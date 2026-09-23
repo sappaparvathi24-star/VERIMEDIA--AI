@@ -8,9 +8,11 @@ import { useStore } from './store'
 import { getHealth, getApiBaseUrl } from './services/api'
 
 export default function App() {
-  const { setHealth } = useStore()
+  const { setHealth, fetchInvestigations } = useStore()
 
   useEffect(() => {
+    fetchInvestigations().catch(() => {})
+
     const base = getApiBaseUrl()
     const targetUrl = base || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000')
 

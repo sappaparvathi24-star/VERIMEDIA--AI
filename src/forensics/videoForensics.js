@@ -195,14 +195,7 @@ export async function analyzeVideo(input, opts = {}) {
     const duration = meta.duration || 0;
     const keyframeTimestamp = duration > 1 ? 1 : (duration > 0.1 ? duration / 2 : 0);
 
-    // 2. Extract primary keyframe
-    const kfResult = await extractKeyframe(filePath, keyframeTimestamp);
-    let keyframeFingerprints = null;
-    if (kfResult.supported && kfResult.buffer) {
-      keyframeFingerprints = await computePerceptualFingerprints(kfResult.buffer);
-    }
-
-    // 3. Multi-frame sampling across video duration (up to 4 sample points)
+    // 2. Multi-frame sampling across video duration (up to 4 sample points) and primary keyframe in parallel
     const samplePoints = [];
     if (duration > 0.5) {
       samplePoints.push(duration * 0.2, duration * 0.5, duration * 0.8);
@@ -210,18 +203,32 @@ export async function analyzeVideo(input, opts = {}) {
       samplePoints.push(0);
     }
 
-    const sampledFrames = [];
-    for (let i = 0; i < samplePoints.length; i++) {
-      const pt = samplePoints[i];
-      const frameRes = await extractKeyframe(filePath, pt);
-      if (frameRes.supported && frameRes.buffer) {
-        const fps = await computePerceptualFingerprints(frameRes.buffer);
-        sampledFrames.push({
-          timestampSeconds: Number(pt.toFixed(2)),
-          fingerprints: fps
-        });
+    const kfPromise = extractKeyframe(filePath, keyframeTimestamp).then(async (kfRes) => {
+      let fingerprints = null;
+      if (kfRes.supported && kfRes.buffer) {
+        fingerprints = await computePerceptualFingerprints(kfRes.buffer);
       }
-    }
+      return { kfResult: kfRes, fingerprints };
+    });
+
+    const samplesPromise = Promise.all(
+      samplePoints.map(async (pt) => {
+        const frameRes = await extractKeyframe(filePath, pt);
+        if (frameRes.supported && frameRes.buffer) {
+          const fps = await computePerceptualFingerprints(frameRes.buffer);
+          return {
+            timestampSeconds: Number(pt.toFixed(2)),
+            fingerprints: fps
+          };
+        }
+        return null;
+      })
+    );
+
+    const [primaryKf, sampleResults] = await Promise.all([kfPromise, samplesPromise]);
+    const kfResult = primaryKf.kfResult;
+    const keyframeFingerprints = primaryKf.fingerprints;
+    const sampledFrames = sampleResults.filter(Boolean);
 
     // 4. Inter-frame similarity and jump detection
     let duplicateFramesDetected = false;
