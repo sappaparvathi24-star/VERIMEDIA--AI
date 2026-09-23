@@ -13,6 +13,8 @@ const CACHE_TTL_MS = 10 * 60 * 1000;
 // Google CSE daily quota tracker (resets at UTC midnight)
 let googleCseDailyCount = 0;
 let googleCseLastResetDate = new Date().toISOString().slice(0, 10);
+let googleCseDisabledReason = null;
+let googleCseDisabledUntil = 0;
 
 function checkGoogleQuota() {
   const today = new Date().toISOString().slice(0, 10);
@@ -21,6 +23,21 @@ function checkGoogleQuota() {
     googleCseLastResetDate = today;
   }
   return googleCseDailyCount < 95; // Leave 5 queries buffer
+}
+
+function isGoogleCseAvailable() {
+  if (googleCseDisabledReason) {
+    if (Date.now() < googleCseDisabledUntil) {
+      return false;
+    }
+    googleCseDisabledReason = null;
+  }
+  return checkGoogleQuota();
+}
+
+function disableGoogleCse(reason, cooldownMs = 60 * 60 * 1000) {
+  googleCseDisabledReason = reason;
+  googleCseDisabledUntil = Date.now() + cooldownMs;
 }
 
 function incrementGoogleQuota() {
@@ -92,7 +109,17 @@ function fetchJson(url, options = {}) {
       res.on('data', chunk => body += chunk);
       res.on('end', () => {
         if (res.statusCode >= 400) {
-          return reject(new Error(`Upstream returned HTTP ${res.statusCode}: ${body.slice(0, 300)}`));
+          let summary = '';
+          try {
+            const parsed = JSON.parse(body);
+            summary = parsed.error?.message || parsed.message || (typeof parsed === 'string' ? parsed : '');
+          } catch (_) {}
+          if (!summary) {
+            summary = body.replace(/[\r\n\t]+/g, ' ').trim().slice(0, 140);
+          }
+          const err = new Error(`Upstream returned HTTP ${res.statusCode}: ${summary}`);
+          err.statusCode = res.statusCode;
+          return reject(err);
         }
         try {
           const parsed = JSON.parse(body);
@@ -417,7 +444,7 @@ export async function searchGoogleImages(query, apiKey, cx, options = {}) {
   if (cached) return cached;
 
   // 1. First attempt: Google Programmable Search (Custom Search JSON API)
-  if (effectiveKey && effectiveCx && checkGoogleQuota()) {
+  if (effectiveKey && effectiveCx && isGoogleCseAvailable()) {
     try {
       let url = `https://www.googleapis.com/customsearch/v1?searchType=image&num=10&start=${start}&q=${encodeURIComponent(query.trim())}&key=${effectiveKey}&cx=${effectiveCx}`;
       incrementGoogleQuota();
@@ -426,6 +453,9 @@ export async function searchGoogleImages(query, apiKey, cx, options = {}) {
       try {
         data = await fetchJson(url);
       } catch (imgTypeErr) {
+        if (imgTypeErr.statusCode === 403 || imgTypeErr.message?.includes('403')) {
+          throw imgTypeErr;
+        }
         const fallbackUrl = `https://www.googleapis.com/customsearch/v1?num=10&start=${start}&q=${encodeURIComponent(query.trim())}&key=${effectiveKey}&cx=${effectiveCx}`;
         data = await fetchJson(fallbackUrl);
       }
@@ -462,7 +492,13 @@ export async function searchGoogleImages(query, apiKey, cx, options = {}) {
         return payload;
       }
     } catch (cseErr) {
-      console.warn('[SearchProxy] Google Custom Search API image search attempt failed, switching to live image discovery:', cseErr.message);
+      const isForbidden = cseErr.statusCode === 403 || cseErr.message?.includes('403') || cseErr.message?.includes('access to Custom Search');
+      if (isForbidden) {
+        disableGoogleCse('Custom Search JSON API not enabled on project or lacks billing');
+        console.log('[SearchProxy] Google Custom Search API not enabled on GCP project (HTTP 403) — seamlessly using live image discovery engine.');
+      } else {
+        console.log('[SearchProxy] Google Custom Search API image search notice, falling back to live discovery:', (cseErr.message || '').slice(0, 100));
+      }
     }
   }
 
@@ -554,7 +590,7 @@ export async function searchGoogleWeb(query, apiKey, cx) {
   if (cached) return cached;
 
   // 1. First attempt: Google Custom Search API
-  if (effectiveKey && effectiveCx && checkGoogleQuota()) {
+  if (effectiveKey && effectiveCx && isGoogleCseAvailable()) {
     try {
       const url = `https://www.googleapis.com/customsearch/v1?num=10&q=${encodeURIComponent(query.trim())}&key=${effectiveKey}&cx=${effectiveCx}`;
       incrementGoogleQuota();
@@ -580,7 +616,13 @@ export async function searchGoogleWeb(query, apiKey, cx) {
         return payload;
       }
     } catch (cseErr) {
-      console.warn('[SearchProxy] Google Custom Search Web API failed, switching to live web discovery:', cseErr.message);
+      const isForbidden = cseErr.statusCode === 403 || cseErr.message?.includes('403') || cseErr.message?.includes('access to Custom Search');
+      if (isForbidden) {
+        disableGoogleCse('Custom Search JSON API not enabled on project or lacks billing');
+        console.log('[SearchProxy] Google Custom Search Web API not enabled on GCP project (HTTP 403) — seamlessly using live web discovery engine.');
+      } else {
+        console.log('[SearchProxy] Google Custom Search Web API notice, falling back to live discovery:', (cseErr.message || '').slice(0, 100));
+      }
     }
   }
 

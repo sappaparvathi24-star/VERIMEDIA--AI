@@ -1026,10 +1026,15 @@ Return ONLY a valid JSON object matching this exact schema:
     temperature: 0.2
   });
 
+  const resolvedInvId = investigationId || realArtifact?.investigationId || null;
+  const resolvedArtId = artifactId || realArtifact?.id || null;
+
   if (geminiResult && geminiResult.text) {
     try {
       const parsed = JSON.parse(geminiResult.text);
       return res.json({
+        investigationId: resolvedInvId,
+        artifactId: resolvedArtId,
         ...parsed,
         epistemicBoundary,
         _meta: {
@@ -1059,6 +1064,8 @@ Return ONLY a valid JSON object matching this exact schema:
   });
 
   return res.json({
+    investigationId: resolvedInvId,
+    artifactId: resolvedArtId,
     ...fallbackResult,
     epistemicBoundary
   });
@@ -1653,8 +1660,18 @@ const handleV1Detect = async (req, res) => {
 
   // Real detection branch if artifact or investigation is provided
   if (artifact) {
-    const invId = artifact.investigationId || investigationId;
-    const inv = invId ? provenanceService.getInvestigation(invId) : null;
+    let invId = artifact.investigationId || investigationId;
+    if (!invId) {
+      const defaultInv = provenanceService.createInvestigation({
+        title: `Analysis: ${artifact.filename || artifact.id} — ${new Date().toISOString()}`,
+        description: `Automated investigation for media detection of ${artifact.filename || artifact.id}`,
+        createdBy: req.user?.email || 'analyst@verimedia.ai',
+        isDemo: false
+      });
+      invId = defaultInv.id;
+      artifact.investigationId = invId;
+    }
+    const inv = provenanceService.getInvestigation(invId);
     const forensic = artifact.metadata?.forensicAnalysis || null;
 
     // Check if media is video or audio
@@ -2136,6 +2153,8 @@ const handleV1Detect = async (req, res) => {
     }
 
     const detectionResultPayload = {
+      investigationId: invId,
+      artifactId: artifact.id,
       job_id: `DET-REAL-${Date.now().toString(36)}`,
       platform,
       username,
@@ -2229,8 +2248,9 @@ const handleV1Detect = async (req, res) => {
         providerStatuses: discoveryResult?.providerStatuses || {}
       },
       timestamp: new Date().toISOString(),
-      case_id: invId || null,
-      investigationId: invId || null,
+      case_id: invId,
+      investigationId: invId,
+      artifactId: artifact.id,
       processing_ms: 180
     };
 
@@ -2344,8 +2364,9 @@ const handleV1Detect = async (req, res) => {
       source: 'fallback'
     },
     timestamp: new Date().toISOString(),
-    case_id: null,
-    investigationId: null,
+    case_id: investigationId || null,
+    investigationId: investigationId || null,
+    artifactId: artifactId || null,
     processing_ms: 45
   });
 };
@@ -2871,6 +2892,8 @@ app.post('/api/investigations/:id/artifacts/upload', uploadLimiter, requireAuth,
 
       return res.status(202).json({
         success: true,
+        investigationId: req.params.id,
+        artifactId: artifact.id,
         status: job.status,
         jobId: job.jobId,
         pollUrl: job.pollUrl,
@@ -2909,6 +2932,8 @@ app.post('/api/investigations/:id/artifacts/upload', uploadLimiter, requireAuth,
 
     res.status(201).json({
       success: true,
+      investigationId: req.params.id,
+      artifactId: artifact.id,
       artifact,
       forensicAnalysis,
       extractedMetadata: {
@@ -3047,6 +3072,8 @@ const handleRegisterArtifact = async (req, res) => {
       return res.status(202).json({
         status: 'registered',
         success: true,
+        investigationId: invId,
+        artifactId: artifact.id,
         jobId: job.jobId,
         pollUrl: job.pollUrl,
         artifact: {
@@ -3088,6 +3115,8 @@ const handleRegisterArtifact = async (req, res) => {
     res.status(201).json({
       status: 'registered',
       success: true,
+      investigationId: invId,
+      artifactId: artifact.id,
       artifact: {
         id: artifact.id,
         filename: artifact.filename,
@@ -3472,6 +3501,8 @@ app.post(['/artifacts/upload', '/artifacts/upload/', '/api/artifacts/upload', '/
     // Prompt 6: Return immediately with 202 Accepted and pollable job ID
     return res.status(202).json({
       success: true,
+      investigationId: invId,
+      artifactId: artifact.id,
       status: jobResult.status,
       jobId: jobResult.jobId,
       pollUrl: `/api/jobs/${jobResult.jobId}`,
@@ -3788,7 +3819,11 @@ app.post('/api/investigations/:id/analyze', analysisLimiter, requireAuth, author
       req
     });
 
-    res.json(analysisResult);
+    res.json({
+      investigationId: req.params.id,
+      artifactId: targetArtifactId,
+      ...analysisResult
+    });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
@@ -4360,7 +4395,11 @@ const handleDiscoveryJobCreation = async (req, res) => {
       options: options || {}
     });
 
-    res.status(201).json(result);
+    res.status(201).json({
+      investigationId: invId,
+      artifactId: targetArtifactId,
+      ...result
+    });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }

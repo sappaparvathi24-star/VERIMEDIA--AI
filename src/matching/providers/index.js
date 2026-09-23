@@ -199,7 +199,11 @@ export class MultiSourceDiscoveryManager {
           reason: vErr.message,
           queryType: 'REAL_VISUAL_QUERY'
         };
-        console.warn(`[Discovery Provider Audit Error] Provider: ${visionProvider.id} | Error: ${vErr.message}`);
+        if (vErr.message && (vErr.message.includes('billing') || vErr.message.includes('403') || vErr.message.includes('restricted'))) {
+          console.log(`[Discovery Provider Audit] Provider: ${visionProvider.id} | Status: RESTRICTED | Note: ${vErr.message.slice(0, 100)}`);
+        } else {
+          console.warn(`[Discovery Provider Audit Error] Provider: ${visionProvider.id} | Error: ${vErr.message.slice(0, 120)}`);
+        }
       }
     }
 
@@ -257,7 +261,11 @@ export class MultiSourceDiscoveryManager {
           reason: err.message,
           queryType: providerQueryType
         };
-        console.warn(`[Discovery Provider Audit Error] Provider: ${provider.id} (${provider.name}) | Error: ${err.message}`);
+        if (err.message && (err.message.includes('billing') || err.message.includes('403') || err.message.includes('restricted') || err.message.includes('not have the access'))) {
+          console.log(`[Discovery Provider Audit] Provider: ${provider.id} (${provider.name}) | Status: RESTRICTED | Note: ${err.message.slice(0, 100)}`);
+        } else {
+          console.warn(`[Discovery Provider Audit Error] Provider: ${provider.id} (${provider.name}) | Error: ${err.message.slice(0, 120)}`);
+        }
       }
     });
 

@@ -11,10 +11,22 @@ import { DEFAULT_FORENSIC_STAGES, INITIAL_VERIFICATION_JOBS } from './initialDat
 
 export function buildDetectionResultFromInvestigation(inv: any): DetectionResult {
   if (inv.detectionResult) {
-    return inv.detectionResult
+    const res = { ...inv.detectionResult }
+    if (!res.investigationId) res.investigationId = inv.id
+    if (!res.case_id) res.case_id = inv.id
+    if (!res.artifactId && (inv.artifactIds?.[0] || inv.artifacts?.[0]?.id)) {
+      res.artifactId = inv.artifactIds?.[0] || inv.artifacts?.[0]?.id
+    }
+    return res
   }
   if (inv.metadata?.detectionResult) {
-    return inv.metadata.detectionResult
+    const res = { ...inv.metadata.detectionResult }
+    if (!res.investigationId) res.investigationId = inv.id
+    if (!res.case_id) res.case_id = inv.id
+    if (!res.artifactId && (inv.artifactIds?.[0] || inv.artifacts?.[0]?.id)) {
+      res.artifactId = inv.artifactIds?.[0] || inv.artifacts?.[0]?.id
+    }
+    return res
   }
 
   const art = inv.artifacts?.[0] || inv.primaryArtifact || null
@@ -34,6 +46,7 @@ export function buildDetectionResultFromInvestigation(inv: any): DetectionResult
     timestamp: inv.createdAt || new Date().toISOString(),
     case_id: inv.id,
     investigationId: inv.id,
+    artifactId: art?.id || inv.artifactIds?.[0] || inv.id,
     processing_ms: 120,
     is_demo: Boolean(inv.isDemo),
     mode: inv.isDemo ? 'DEMO_SCENARIO' : 'PERSISTED_INVESTIGATION',
@@ -306,8 +319,32 @@ export const useStore = create<AppState>((set, get) => ({
   selectedCaseId: null,
   stats: { total: 0, threats: 0, dmca: 0, clean: 0 },
 
-  setCurrentResult: (r) => set({ currentResult: r }),
+  setCurrentResult: (r) => {
+    if (r) {
+      if (!r.investigationId && (r.case_id || (r as any).artifact?.investigationId)) {
+        r.investigationId = r.case_id || (r as any).artifact?.investigationId
+      }
+      if (!r.case_id && r.investigationId) {
+        r.case_id = r.investigationId
+      }
+      if (!r.artifactId && (r as any).artifact?.id) {
+        r.artifactId = (r as any).artifact.id
+      }
+    }
+    set({ currentResult: r })
+  },
   addResult: (r) => {
+    if (r) {
+      if (!r.investigationId && (r.case_id || (r as any).artifact?.investigationId)) {
+        r.investigationId = r.case_id || (r as any).artifact?.investigationId
+      }
+      if (!r.case_id && r.investigationId) {
+        r.case_id = r.investigationId
+      }
+      if (!r.artifactId && (r as any).artifact?.id) {
+        r.artifactId = (r as any).artifact.id
+      }
+    }
     set(s => ({ results: [r, ...s.results].slice(0, 200) }))
     // Sync with persistent backend investigations ledger
     get().fetchInvestigations().catch(() => {})

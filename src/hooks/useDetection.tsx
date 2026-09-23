@@ -153,6 +153,17 @@ export function useDetection() {
     try {
       const result: DetectionResult = await detect(req)
 
+      if (result) {
+        const finalInvId = result.investigationId || req.investigationId || result.case_id || null
+        result.investigationId = finalInvId
+        if (finalInvId && !result.case_id) {
+          result.case_id = finalInvId
+        }
+        if (req.artifactId && !result.artifactId) {
+          result.artifactId = req.artifactId
+        }
+      }
+
       // Format comparison reports with 3-way classification based on real candidates or simulated demo scenarios
       const isDemo = Boolean(req.scenario && req.scenario !== 'normal')
       const existingCandidates = (result as any).candidates || []
@@ -246,6 +257,7 @@ export function useDetection() {
       setScanStageStatus('fusion', 'RUNNING', 'Synthesizing evidence fusion matrix...')
 
       // Step 2: Trigger immediate detection synthesis without blocking on long background job streaming
+      const targetInvestigationId = options?.investigationId || uploadRes?.investigationId || art?.investigationId || undefined
       const result: any = await detect({
         platform: options?.platform || 'YouTube',
         username: options?.username || 'analyst_upload',
@@ -253,12 +265,14 @@ export function useDetection() {
         content_type: options?.contentType || 'news',
         scenario: 'normal',
         artifactId: art.id,
-        investigationId: options?.investigationId
+        investigationId: targetInvestigationId
       })
 
-      if (result && options?.investigationId) {
-        result.investigationId = options.investigationId
-        result.case_id = options.investigationId
+      if (result) {
+        const finalInvId = result.investigationId || targetInvestigationId || result.case_id || null
+        result.investigationId = finalInvId
+        result.case_id = finalInvId
+        result.artifactId = result.artifactId || art.id
       }
 
       // Ensure artifact object has valid media preview URLs for guaranteed visual display

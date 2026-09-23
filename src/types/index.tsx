@@ -117,6 +117,16 @@ export interface DetectionResult {
   case_id: string | null
   processing_ms: number
   investigationId?: string | null
+  artifactId?: string | null
+  candidates?: any[]
+  discovery?: {
+    ran?: boolean
+    status?: string
+    reason?: string | null
+    count?: number
+    candidates?: any[]
+    providerStatuses?: Record<string, any>
+  }
   is_demo?: boolean
   mode?: string
   disclaimer?: string | null

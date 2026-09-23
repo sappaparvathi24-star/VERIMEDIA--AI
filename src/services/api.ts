@@ -174,11 +174,15 @@ export const registerMediaArtifact = async (file: File, investigationId?: string
   }
 
   const artId = 'art_loc_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7)
+  const resolvedInvId = investigationId || 'INV-LOC-' + Date.now().toString(36)
   return {
     status: 'registered',
     success: true,
+    investigationId: resolvedInvId,
+    artifactId: artId,
     artifact: {
       id: artId,
+      investigationId: resolvedInvId,
       filename: file.name,
       sha256: genuineSha256,
       mimeType: file.type || 'image/jpeg',
@@ -508,6 +512,15 @@ export const detect = async (req: DetectionRequest): Promise<DetectionResult> =>
   try {
     const res = await api.post<DetectionResult>('/v1/detect/', req)
     if (res && res.data && typeof res.data === 'object' && res.data.trust) {
+      if (!res.data.investigationId) {
+        res.data.investigationId = res.data.case_id || req.investigationId || (res.data as any).artifact?.investigationId || null
+      }
+      if (!res.data.case_id && res.data.investigationId) {
+        res.data.case_id = res.data.investigationId
+      }
+      if (!res.data.artifactId) {
+        res.data.artifactId = res.data.artifact?.id || req.artifactId || null
+      }
       return res.data
     }
   } catch (err) {
@@ -517,9 +530,14 @@ export const detect = async (req: DetectionRequest): Promise<DetectionResult> =>
   // Client-side synthesized fallback if server is unreachable or cookie-blocked
   const isManipulated = req.scenario === 'manipulated' || req.scenario === 'deepfake' || req.scenario === 'adversarial'
   const jobId = 'job_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6)
+  const fallbackInvId = req.investigationId || 'CASE-' + Date.now().toString().slice(-6)
+  const fallbackArtId = req.artifactId || ('art_' + Date.now().toString(36))
 
   return {
     job_id: jobId,
+    case_id: fallbackInvId,
+    investigationId: fallbackInvId,
+    artifactId: fallbackArtId,
     platform: req.platform || 'YouTube',
     username: req.username || 'analyst_investigation',
     caption: req.caption || 'Investigated Media Asset',
@@ -529,7 +547,6 @@ export const detect = async (req: DetectionRequest): Promise<DetectionResult> =>
     fingerprint_hash: 'd475f4965433642b36adb9a33417387851a2739d08478f287c5331cca3f16749',
     processing_ms: 480,
     timestamp: new Date().toISOString(),
-    case_id: 'CASE-' + Date.now().toString().slice(-6),
     ml: {
       prediction: isManipulated ? 'MANIPULATED' : 'AUTHENTIC',
       confidence: isManipulated ? 0.96 : 0.88,

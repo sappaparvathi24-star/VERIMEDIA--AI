@@ -195,6 +195,7 @@ export function InvestigationFlow() {
   const [activeCase, setActiveCase] = useState<{ id: string; title: string } | null>(null)
   const [isCaseSkipped, setIsCaseSkipped] = useState(false)
   const [isCreatingCase, setIsCreatingCase] = useState(false)
+  const [scannerMode, setScannerMode] = useState<'upload' | 'headline' | 'dossiers'>('upload')
 
   const isCaseReady = Boolean(activeCase || isCaseSkipped)
 
@@ -224,16 +225,31 @@ export function InvestigationFlow() {
     setScanError(null)
 
     try {
+      let targetCaseId = activeCase?.id
+      if (!targetCaseId) {
+        try {
+          const caseTitle = caseNameInput.trim() || caption || selectedFile.name.replace(/\.[^/.]+$/, '')
+          const res = await createInvestigation({ title: caseTitle })
+          targetCaseId = res?.id || res?.investigation?.id
+          if (targetCaseId) {
+            setActiveCase({ id: targetCaseId, title: caseTitle })
+          }
+        } catch (e) {
+          console.warn('Auto-create investigation notice:', e)
+        }
+      }
+
       await runMediaInvestigation(selectedFile, {
         platform: platform || 'YouTube',
         username: username || 'analyst_upload',
-        caption: activeCase?.title || caption || selectedFile.name,
+        caption: activeCase?.title || caseNameInput.trim() || caption || selectedFile.name,
         contentType: contentType || 'news',
-        investigationId: activeCase?.id
+        investigationId: targetCaseId
       })
       setCurrentStage(1)
     } catch (err: any) {
       console.error('Investigation error:', err)
+      setScanError(err?.message || 'Investigation error occurred')
     }
   }
 
@@ -263,14 +279,15 @@ export function InvestigationFlow() {
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        justifyContent: 'center',
-        minHeight: 'calc(100vh - 120px)',
-        padding: '32px 20px',
-        maxWidth: 900,
+        justifyContent: 'flex-start',
+        width: '100%',
+        maxWidth: 960,
         margin: '0 auto',
+        padding: '24px 20px 60px',
+        boxSizing: 'border-box'
       }}>
         {/* Main Title & Subtitle */}
-        <div style={{ textAlign: 'center', marginBottom: 28 }}>
+        <div style={{ textAlign: 'center', marginBottom: 20 }}>
           <div style={{
             display: 'inline-flex',
             alignItems: 'center',
@@ -284,241 +301,333 @@ export function InvestigationFlow() {
             fontWeight: 700,
             letterSpacing: '0.08em',
             textTransform: 'uppercase',
-            marginBottom: 12
+            marginBottom: 10
           }}>
             <ShieldCheck size={14} /> Multi-Engine Deepfake & Provenance Inspector
           </div>
           <h1 style={{
-            fontSize: 32,
+            fontSize: 28,
             fontWeight: 800,
             letterSpacing: '-0.02em',
-            margin: '0 0 10px 0',
+            margin: '0 0 8px 0',
             color: '#ffffff',
             lineHeight: 1.2
           }}>
             Upload Media for Forensic Analysis
           </h1>
           <p style={{
-            fontSize: 15,
+            fontSize: 14,
             color: '#94a3b8',
-            maxWidth: 620,
+            maxWidth: 640,
             margin: '0 auto',
-            lineHeight: 1.6
+            lineHeight: 1.5
           }}>
             Drop any image, video, or audio file to run multi-signal Error Level Analysis (ELA), camera EXIF validation, reverse web discovery, and cryptographic provenance verification.
           </p>
         </div>
 
-        {/* Quick Headline & Claim Verification Card */}
+        {/* Workspace Mode Tabs */}
         {!selectedFile && (
-          <div style={{ width: '100%', marginBottom: 24 }}>
-            <ClaimSearchBar variant="card" />
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            background: 'rgba(15, 23, 42, 0.75)',
+            padding: '4px',
+            borderRadius: 12,
+            border: '1px solid #1e2d3d',
+            marginBottom: 20,
+            width: '100%',
+            maxWidth: 680,
+            justifyContent: 'center'
+          }}>
+            <button
+              type="button"
+              onClick={() => setScannerMode('upload')}
+              style={{
+                flex: 1,
+                padding: '9px 16px',
+                borderRadius: 9,
+                border: scannerMode === 'upload' ? '1px solid rgba(0, 212, 255, 0.4)' : '1px solid transparent',
+                background: scannerMode === 'upload' ? 'linear-gradient(135deg, rgba(0, 212, 255, 0.2) 0%, rgba(2, 132, 199, 0.2) 100%)' : 'transparent',
+                color: scannerMode === 'upload' ? '#00d4ff' : '#94a3b8',
+                fontWeight: scannerMode === 'upload' ? 700 : 500,
+                fontSize: 13,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <UploadCloud size={16} />
+              <span>Upload Media Asset</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setScannerMode('headline')}
+              style={{
+                flex: 1,
+                padding: '9px 16px',
+                borderRadius: 9,
+                border: scannerMode === 'headline' ? '1px solid rgba(0, 212, 255, 0.4)' : '1px solid transparent',
+                background: scannerMode === 'headline' ? 'linear-gradient(135deg, rgba(0, 212, 255, 0.2) 0%, rgba(2, 132, 199, 0.2) 100%)' : 'transparent',
+                color: scannerMode === 'headline' ? '#00d4ff' : '#94a3b8',
+                fontWeight: scannerMode === 'headline' ? 700 : 500,
+                fontSize: 13,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <Globe size={16} />
+              <span>Headline & Claim Check</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setScannerMode('dossiers')}
+              style={{
+                flex: 1,
+                padding: '9px 16px',
+                borderRadius: 9,
+                border: scannerMode === 'dossiers' ? '1px solid rgba(0, 212, 255, 0.4)' : '1px solid transparent',
+                background: scannerMode === 'dossiers' ? 'linear-gradient(135deg, rgba(0, 212, 255, 0.2) 0%, rgba(2, 132, 199, 0.2) 100%)' : 'transparent',
+                color: scannerMode === 'dossiers' ? '#00d4ff' : '#94a3b8',
+                fontWeight: scannerMode === 'dossiers' ? 700 : 500,
+                fontSize: 13,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <History size={16} />
+              <span>Recent Dossiers ({investigations.length})</span>
+            </button>
           </div>
         )}
 
         {/* Upload Container */}
         <div style={{ width: '100%' }}>
-          {/* Fix 1: Active Case Chip or New Investigation Creation Form */}
-          {activeCase ? (
-            <div style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 10,
-              padding: '8px 16px',
-              borderRadius: 20,
-              background: 'rgba(34, 197, 94, 0.1)',
-              border: '1px solid rgba(34, 197, 94, 0.35)',
-              color: '#4ade80',
-              fontSize: 13,
-              fontWeight: 700,
-              marginBottom: 18,
-              boxShadow: '0 0 15px rgba(34, 197, 94, 0.15)'
-            }}>
-              <FolderCheck size={16} />
-              <span>Case Linked: <strong>{activeCase.title}</strong></span>
-              <span style={{ fontSize: 11, color: '#86efac', fontFamily: 'monospace', background: 'rgba(34, 197, 94, 0.2)', padding: '2px 8px', borderRadius: 10 }}>
-                {activeCase.id}
-              </span>
-              <button
-                type="button"
-                onClick={() => { setActiveCase(null); setIsCaseSkipped(false); }}
-                style={{ background: 'none', border: 'none', color: '#86efac', cursor: 'pointer', padding: 2, display: 'flex', alignItems: 'center' }}
-                title="Change Case"
-              >
-                <X size={14} />
-              </button>
+          {/* Sub-view: Headline Claim Verification */}
+          {scannerMode === 'headline' && !selectedFile && (
+            <div style={{ width: '100%', marginBottom: 24 }}>
+              <ClaimSearchBar variant="card" />
             </div>
-          ) : !selectedFile ? (
-            <div style={{
-              width: '100%',
-              padding: 18,
-              borderRadius: 12,
-              background: 'linear-gradient(180deg, rgba(14, 23, 38, 0.85) 0%, rgba(10, 16, 26, 0.95) 100%)',
-              border: '1px solid rgba(0, 212, 255, 0.35)',
-              marginBottom: 20,
-              boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <FolderPlus size={18} style={{ color: '#00d4ff' }} />
-                  <span style={{ fontSize: 13, fontWeight: 800, color: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                    Step 1 — Create New Investigation
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setIsCaseSkipped(true)}
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    color: '#38bdf8',
-                    fontSize: 12,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    textDecoration: 'underline'
-                  }}
-                >
-                  Skip — auto-name this case
-                </button>
-              </div>
+          )}
 
-              <form onSubmit={handleCreateCase} style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                <input
-                  type="text"
-                  value={caseNameInput}
-                  onChange={(e) => setCaseNameInput(e.target.value)}
-                  placeholder="Case name (e.g. Q3-election-clip)"
-                  style={{
-                    flex: 1,
-                    padding: '10px 14px',
-                    borderRadius: 8,
-                    background: '#080c10',
-                    border: '1px solid #1e2d3d',
-                    color: '#f8fafc',
-                    fontSize: 14,
-                    outline: 'none'
-                  }}
-                />
-                <button
-                  type="submit"
-                  disabled={!caseNameInput.trim() || isCreatingCase}
-                  style={{
-                    padding: '10px 20px',
-                    borderRadius: 8,
-                    background: caseNameInput.trim() && !isCreatingCase ? 'linear-gradient(135deg, #00d4ff 0%, #0284c7 100%)' : '#1e293b',
-                    border: 'none',
-                    color: caseNameInput.trim() && !isCreatingCase ? '#080c10' : '#64748b',
-                    fontSize: 13,
-                    fontWeight: 800,
-                    cursor: caseNameInput.trim() && !isCreatingCase ? 'pointer' : 'not-allowed',
-                    whiteSpace: 'nowrap',
+          {/* Sub-view: Media Upload Dropzone & Stage */}
+          {(scannerMode === 'upload' || selectedFile) && (
+            <>
+              {!selectedFile ? (
+                <div>
+                  {/* Case Link / Name Input */}
+                  <div style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 6
-                  }}
-                >
-                  {isCreatingCase ? 'Creating…' : 'Create Investigation'}
-                </button>
-              </form>
-            </div>
-          ) : null}
+                    justifyContent: 'space-between',
+                    flexWrap: 'wrap',
+                    gap: 12,
+                    marginBottom: 16,
+                    padding: '10px 16px',
+                    borderRadius: 10,
+                    background: '#0a1019',
+                    border: '1px solid #1a2736'
+                  }}>
+                    {activeCase ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <FolderCheck size={16} color="#22c55e" />
+                        <span style={{ fontSize: 13, color: '#f8fafc' }}>
+                          Linked Case: <strong style={{ color: '#4ade80' }}>{activeCase.title}</strong>
+                        </span>
+                        <span style={{ fontSize: 11, color: '#86efac', fontFamily: 'monospace', background: 'rgba(34, 197, 94, 0.15)', padding: '2px 8px', borderRadius: 8 }}>
+                          {activeCase.id}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setActiveCase(null)}
+                          style={{ background: 'none', border: 'none', color: '#38bdf8', cursor: 'pointer', fontSize: 11, textDecoration: 'underline' }}
+                        >
+                          Change
+                        </button>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 260 }}>
+                        <FolderPlus size={15} color="#00d4ff" />
+                        <span style={{ fontSize: 12, color: '#94a3b8', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                          Case Name:
+                        </span>
+                        <input
+                          type="text"
+                          value={caseNameInput}
+                          onChange={(e) => setCaseNameInput(e.target.value)}
+                          placeholder="Optional case name (e.g. Q3-election-clip) — auto-assigned if blank"
+                          style={{
+                            flex: 1,
+                            padding: '7px 12px',
+                            borderRadius: 6,
+                            background: '#060a10',
+                            border: '1px solid #1e2d3d',
+                            color: '#f8fafc',
+                            fontSize: 12,
+                            outline: 'none'
+                          }}
+                        />
+                      </div>
+                    )}
 
-          {!selectedFile ? (
-            /* Empty Drag & Drop Zone Gated by Case Creation */
-            <div style={{ position: 'relative', width: '100%' }}>
-              {!isCaseReady && (
-                <div style={{
-                  position: 'absolute',
-                  top: 14,
-                  left: '50%',
-                  transform: 'translateX(-50%)',
-                  zIndex: 10,
-                  background: 'rgba(8, 12, 16, 0.94)',
-                  border: '1px solid rgba(0, 212, 255, 0.5)',
-                  color: '#38bdf8',
-                  padding: '6px 18px',
-                  borderRadius: 20,
-                  fontSize: 12,
-                  fontWeight: 700,
-                  pointerEvents: 'none',
-                  boxShadow: '0 4px 16px rgba(0,0,0,0.6)'
-                }}>
-                  💡 Create an investigation to begin (or click Skip)
+                    <span style={{ fontSize: 11, color: '#64748b' }}>
+                      Instant Multi-Engine Analysis • Auto-Indexed Dossier
+                    </span>
+                  </div>
+
+                  {/* UNGATED, FULL-VISIBILITY DROP ZONE */}
+                  <div
+                    onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                    onDragLeave={(e) => { e.preventDefault(); setIsDragging(false); }}
+                    onDrop={handleFileDrop}
+                    onClick={() => fileInputRef.current?.click()}
+                    style={{
+                      borderRadius: 14,
+                      border: `2px dashed ${isDragging ? '#00d4ff' : 'rgba(0, 212, 255, 0.35)'}`,
+                      background: isDragging
+                        ? 'rgba(0, 212, 255, 0.08)'
+                        : 'linear-gradient(180deg, rgba(14, 23, 38, 0.85) 0%, rgba(10, 16, 26, 0.95) 100%)',
+                      padding: '42px 24px',
+                      textAlign: 'center',
+                      cursor: 'pointer',
+                      opacity: 1,
+                      transition: 'all 0.2s ease',
+                      boxShadow: isDragging ? '0 0 35px rgba(0, 212, 255, 0.25)' : '0 10px 30px rgba(0, 0, 0, 0.4)',
+                    }}
+                  >
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*,video/*,audio/*,.pdf"
+                      style={{ display: 'none' }}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0]
+                        if (f) handleFileSelected(f)
+                      }}
+                    />
+
+                    <div style={{
+                      width: 72,
+                      height: 72,
+                      borderRadius: '50%',
+                      background: 'rgba(0, 212, 255, 0.12)',
+                      border: '1px solid rgba(0, 212, 255, 0.4)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      margin: '0 auto 16px auto',
+                      color: '#00d4ff',
+                      boxShadow: '0 0 24px rgba(0, 212, 255, 0.2)'
+                    }}>
+                      <UploadCloud size={36} />
+                    </div>
+
+                    <div style={{ fontSize: 19, fontWeight: 800, color: '#f8fafc', marginBottom: 8 }}>
+                      Drag & Drop Media Here, or <span style={{ color: '#00d4ff', textDecoration: 'underline' }}>Browse Files</span>
+                    </div>
+                    <div style={{ fontSize: 13, color: '#64748b', marginBottom: 20 }}>
+                      Supports JPEG, PNG, WebP, GIF, MP4, WebM, MP3, WAV (up to 100MB)
+                    </div>
+
+                    <div style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      flexWrap: 'wrap',
+                      justifyContent: 'center',
+                      gap: 12,
+                      padding: '8px 18px',
+                      borderRadius: 20,
+                      background: 'rgba(255, 255, 255, 0.04)',
+                      border: '1px solid rgba(255, 255, 255, 0.08)',
+                      fontSize: 12,
+                      color: '#94a3b8'
+                    }}>
+                      <span>🔬 Real ELA Heatmaps</span>
+                      <span>•</span>
+                      <span>📷 Hardware EXIF</span>
+                      <span>•</span>
+                      <span>🌐 Multi-Source Search</span>
+                      <span>•</span>
+                      <span>✨ VeriMedia AI Reasoning</span>
+                    </div>
+                  </div>
+
+                  {/* Quick Test Demo Scenarios */}
+                  <div style={{ marginTop: 20, width: '100%' }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      Or test with sample forensic scenarios:
+                    </div>
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+                      gap: 10
+                    }}>
+                      {DEMO_PIECES.slice(0, 3).map((demo) => (
+                        <button
+                          key={demo.id}
+                          type="button"
+                          onClick={() => handleLaunchDemo(demo)}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 12,
+                            padding: '10px 14px',
+                            borderRadius: 8,
+                            background: '#0b131e',
+                            border: '1px solid #1e2d3d',
+                            color: '#f8fafc',
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                            transition: 'all 0.15s ease'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.borderColor = '#00d4ff'
+                            e.currentTarget.style.background = '#101c2c'
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.borderColor = '#1e2d3d'
+                            e.currentTarget.style.background = '#0b131e'
+                          }}
+                        >
+                          <img
+                            src={demo.mediaUrl}
+                            alt={demo.title}
+                            style={{ width: 40, height: 40, borderRadius: 6, objectFit: 'cover' }}
+                            onError={(e) => {
+                              (e.target as HTMLElement).style.display = 'none'
+                            }}
+                          />
+                          <div style={{ minWidth: 0, flex: 1 }}>
+                            <div style={{ fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {demo.icon} {demo.title}
+                            </div>
+                            <div style={{ fontSize: 10, color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {demo.subtitle}
+                            </div>
+                          </div>
+                          <span style={{ fontSize: 11, color: '#00d4ff', fontWeight: 600 }}>
+                            Inspect ➔
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
-              )}
-              <div
-                onDragOver={(e) => { e.preventDefault(); if (isCaseReady) setIsDragging(true) }}
-                onDragLeave={(e) => { e.preventDefault(); if (isCaseReady) setIsDragging(false) }}
-                onDrop={(e) => { if (isCaseReady) handleFileDrop(e) }}
-                onClick={() => { if (isCaseReady) fileInputRef.current?.click() }}
-                style={{
-                  borderRadius: 14,
-                  border: `2px dashed ${isDragging ? '#00d4ff' : 'rgba(255, 255, 255, 0.15)'}`,
-                  background: isDragging
-                    ? 'rgba(0, 212, 255, 0.06)'
-                    : 'linear-gradient(180deg, rgba(14, 23, 38, 0.7) 0%, rgba(10, 16, 26, 0.9) 100%)',
-                  padding: '48px 32px',
-                  textAlign: 'center',
-                  cursor: isCaseReady ? 'pointer' : 'not-allowed',
-                  opacity: isCaseReady ? 1 : 0.55,
-                  transition: 'all 0.2s ease',
-                  boxShadow: isDragging ? '0 0 30px rgba(0, 212, 255, 0.2)' : '0 10px 30px rgba(0, 0, 0, 0.3)',
-                }}
-              >
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*,video/*,audio/*,.pdf"
-                style={{ display: 'none' }}
-                onChange={(e) => {
-                  const f = e.target.files?.[0]
-                  if (f) handleFileSelected(f)
-                }}
-              />
-
-              <div style={{
-                width: 72,
-                height: 72,
-                borderRadius: '50%',
-                background: 'rgba(0, 212, 255, 0.1)',
-                border: '1px solid rgba(0, 212, 255, 0.3)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                margin: '0 auto 20px auto',
-                color: '#00d4ff'
-              }}>
-                <UploadCloud size={34} />
-              </div>
-
-              <div style={{ fontSize: 18, fontWeight: 700, color: '#f8fafc', marginBottom: 6 }}>
-                Drag & Drop Media Here, or <span style={{ color: '#00d4ff', textDecoration: 'underline' }}>Browse Files</span>
-              </div>
-              <div style={{ fontSize: 13, color: '#64748b', marginBottom: 20 }}>
-                Supports JPEG, PNG, WebP, GIF, MP4, WebM, MP3, WAV (up to 100MB)
-              </div>
-
-              <div style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 16,
-                padding: '8px 18px',
-                borderRadius: 8,
-                background: 'rgba(255, 255, 255, 0.04)',
-                fontSize: 12,
-                color: '#94a3b8'
-              }}>
-                <span>🔬 Real ELA Heatmaps</span>
-                <span>•</span>
-                <span>📷 Hardware EXIF</span>
-                <span>•</span>
-                <span>🌐 Multi-Source Search</span>
-                <span>•</span>
-                <span>✨ VeriMedia AI Reasoning</span>
-              </div>
-            </div>
-          </div>
-          ) : (
+              ) : (
             /* File Staged with Preview & Optional Context */
             <div style={{
               borderRadius: 14,
@@ -852,8 +961,11 @@ export function InvestigationFlow() {
               </div>
             </div>
           )}
+          </>
+          )}
 
           {/* Persisted Investigations Ledger */}
+          {(scannerMode === 'dossiers' || (scannerMode === 'upload' && !selectedFile)) && (
           <div style={{
             marginTop: 36,
             borderTop: '1px solid rgba(30, 45, 61, 0.8)',
@@ -1021,6 +1133,7 @@ export function InvestigationFlow() {
               </div>
             )}
           </div>
+          )}
         </div>
       </div>
     )

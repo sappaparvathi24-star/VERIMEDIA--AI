@@ -816,10 +816,21 @@ export function EvidenceReasoningPanel() {
             ? candidatesData
             : (currentResult as any)?.candidates || (currentResult as any)?.discovery?.candidates || []
 
-        const builtCandidates = buildCandidatesFromRealData(
+        let builtCandidates = buildCandidatesFromRealData(
           reasoning,
           candidateSource
         )
+
+        const isCurrentScanSimulated = currentResult ? isSimulatedResult(currentResult) : true
+
+        // If no external candidate URLs were discovered, but this is a real scan,
+        // build a dynamic candidate from the real scan and attach real reasoning
+        if (builtCandidates.length === 0 && !isCurrentScanSimulated) {
+          const defaultScanCand = buildDefaultCandidateFromScan(currentResult)
+          if (defaultScanCand) {
+            builtCandidates = [defaultScanCand]
+          }
+        }
 
         if (builtCandidates.length > 0) {
           setRealReasoning(reasoning)
